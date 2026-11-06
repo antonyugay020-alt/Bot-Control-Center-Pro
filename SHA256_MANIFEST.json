@@ -77,7 +77,7 @@
     "bcc/lifecycle.py": "a2a96045689576175bbbbe9797811ba533626a94464321e541ab3b69b15a950b",
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
-    "bcc/market.py": "1f0e91c630860f4736ef6bcd7a4efaab624e25321955296e47b7d00906b92cdc",
+    "bcc/market.py": "aab72409cca1b209ff520ecf6682bf57bc90c67aaeeec1f74dec1047dcfbb494",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
     "bcc/market_hub.py": "828ec6e2b878013c3a65d5c50d30194a8f7461470736d73a959e6bb984a34b77",
@@ -361,6 +361,7 @@
     "tools/windows_ai_launcher.py": "89bb4ef92af88230b9471e35248c2db12a3df1b0d9a61924cb8508f7e6e94f70",
     "tools/windows_check.py": "93eab4c64726fe0bc3e5d976c6133bbb2f1b56462f308d38a8d4d58fd4f41a19",
     "tests/test_qt_snapshot_shutdown.py": "304e5a61ad3ccf684ce4e565e7f226bdcc33c2ee7538fc1968acc6349390398b",
-    "tests/test_provider_access_boundaries.py": "1b2cbd17d51650f67efd36b9320a777b333bcd712a37ae7a18d873d91238aeda"
+    "tests/test_provider_access_boundaries.py": "1b2cbd17d51650f67efd36b9320a777b333bcd712a37ae7a18d873d91238aeda",
+    "tests/test_provider_denial_admission.py": "5b29511c3ebc4f7022cd83f93a678c2bc883a86b47a3d74930e054b0c7f7b95f"
   }
 }

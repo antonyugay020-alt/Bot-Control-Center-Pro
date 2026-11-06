@@ -234,6 +234,16 @@ class PublicData:
                 parsed.username is not None or parsed.password is not None or
                 parsed.fragment):
             raise ValueError("Непубличный источник или закрытые данные в URL")
+        # Denied provider access is an admission fence, not only an HTTP
+        # request error. Check before Market Data Hub subscriptions or cache
+        # reads so stale shared data cannot bypass a provider's 403/451.
+        with self._lock:
+            denial = self._access_denials.get(host)
+            if denial is not None:
+                expires, http_status = denial
+                if time.monotonic() < expires:
+                    raise SourceAccessDenied(host, http_status)
+                del self._access_denials[host]
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.
         # Registration is refreshed by actual demand, not by a synthetic scan.
         if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
@@ -278,13 +288,6 @@ class PublicData:
                     raise DataUnavailable("Market Data Hub: нет свежего снимка (очередь или источник недоступен)")
                 self.stop_event.wait(0.05)
             raise DataUnavailable("Получение данных остановлено")
-        with self._lock:
-            denial = self._access_denials.get(host)
-            if denial is not None:
-                expires, http_status = denial
-                if time.monotonic() < expires:
-                    raise SourceAccessDenied(host, http_status)
-                del self._access_denials[host]
         now = time.time()
         key = (url, json.dumps(params, sort_keys=True))
         with self._lock:
