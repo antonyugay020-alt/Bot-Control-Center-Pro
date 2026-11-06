@@ -53,6 +53,8 @@ class PublicCache:
                     "CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY,value TEXT NOT NULL,until REAL NOT NULL);"
                     "CREATE TABLE IF NOT EXISTS lease(k TEXT PRIMARY KEY,owner TEXT NOT NULL,until REAL NOT NULL);"
                     "CREATE TABLE IF NOT EXISTS cooldown(host TEXT PRIMARY KEY,until REAL NOT NULL);"
+                    "CREATE TABLE IF NOT EXISTS provider_denial("
+                    "host TEXT PRIMARY KEY,status INTEGER NOT NULL,until_mono REAL NOT NULL);"
                     "CREATE TABLE IF NOT EXISTS request_budget(host TEXT PRIMARY KEY,slot INTEGER NOT NULL,count INTEGER NOT NULL);"
                     "CREATE INDEX IF NOT EXISTS cache_until ON cache(until);"
                     "CREATE INDEX IF NOT EXISTS lease_until ON lease(until);"
@@ -99,10 +101,25 @@ class PublicCache:
                 self._ready = False
 
     @staticmethod
+    def _denied(db, host):
+        row = db.execute(
+            "SELECT status,until_mono FROM provider_denial WHERE host=?", (host,)
+        ).fetchone()
+        return int(row[0]) if row and time.monotonic() < row[1] else None
+
+    def denied_status(self, host):
+        """Share policy refusals across processes; do not use wall-clock expiry."""
+        self._ensure_schema()
+        with self.db() as db:
+            return self._denied(db, host)
+
+    @staticmethod
     def _cached(db, key, host, now):
         # A public response already cached inside its validated TTL does not
         # consume exchange request budget. A remote cooldown must prevent new
         # HTTP requests, not invalidate data that was fetched before it.
+        if PublicCache._denied(db, host) is not None:
+            raise CacheBusy("Источник отклонил публичный доступ: " + host)
         row = db.execute("SELECT value,until FROM cache WHERE k=?", (key,)).fetchone()
         if row and row[1] > now:
             return row[0]
@@ -120,6 +137,8 @@ class PublicCache:
         ).hexdigest()
         self._ensure_schema()
         with self.db() as db:
+            if self._denied(db, host) is not None:
+                raise CacheBusy("Источник отклонил публичный доступ: " + host)
             row = db.execute(
                 "SELECT value FROM cache WHERE k=? AND until>?",
                 (key, time.time()),
@@ -173,7 +192,8 @@ class PublicCache:
             db.commit()
         return key, owner, None
 
-    def finish(self, key, owner, host, value=None, ttl=0, cooldown=0):
+    def finish(self, key, owner, host, value=None, ttl=0, cooldown=0,
+               denial_status=None):
         if owner is None:
             return
         # Serialization may be expensive for a long candle history. It must not
@@ -197,6 +217,19 @@ class PublicCache:
                     db.execute(
                         "INSERT INTO cooldown VALUES(?,?) ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)",
                         (host, time.time() + cooldown),
+                    )
+                if denial_status is not None:
+                    if denial_status not in (403, 451) or cooldown <= 0:
+                        raise ValueError("Invalid public-provider denial")
+                    # Atomic with lease release: another worker cannot read a
+                    # cached response or reserve a request after the refusal.
+                    db.execute(
+                        "INSERT INTO provider_denial(host,status,until_mono) VALUES(?,?,?) "
+                        "ON CONFLICT(host) DO UPDATE SET "
+                        "status=CASE WHEN excluded.until_mono>until_mono "
+                        "THEN excluded.status ELSE status END,"
+                        "until_mono=max(until_mono,excluded.until_mono)",
+                        (host, denial_status, time.monotonic() + cooldown),
                     )
                 db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
                 if time.monotonic() >= self._next_cleanup:
