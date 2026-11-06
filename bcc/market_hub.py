@@ -234,9 +234,12 @@ class HubRegistry:
         return valid
 
     def finish(self, key, delay, error=''):
-        with self._connect() as db:
-            db.execute('UPDATE hub_subscriptions SET next_due=?,last_error=? WHERE k=?',
-                       (time.time() + delay, str(error)[:300], key))
+        """Legacy unfenced completion is deliberately unavailable.
+
+        Only finish_owned may mutate producer acknowledgements. Otherwise an
+        obsolete worker or producer could bypass the lease-generation barrier.
+        """
+        raise RuntimeError('Unfenced Market Data Hub completion is forbidden')
 
 
 class MarketDataHub:
