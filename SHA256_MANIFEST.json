@@ -2,7 +2,7 @@
   "checkpoint": "BCC_CLOUD_SOURCE_PREP_20261106_INTERNAL_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
-    ".github/workflows/bcc-ci.yml": "a86e35bd6cf820518ae86dd52beb5ea0f14a3e65a4eee5da1315e8c4577a66ab",
+    ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
     ".gitignore": "6a2468f793feb183c2cba194369da612fa93b2881bb84b62d78788d0dd30e108",
     "ACCEPTANCE_WINDOWS_RU.md": "be3c80aa6fd83af9a28b6a6bb98f1562d61f78215901addc0faf0806596c9796",
     "AI_API_LOGIN_WINDOWS.bat": "76197685ecfcac5961a3d281b4027dcf9db05e6e553f9b4f6ed68ee2f8e71b04",
@@ -171,7 +171,7 @@
     "tests/test_coordinated_deletion_system.py": "eb4ac7ad3d0d02e6a0d378a1d96f35acce447dde1889d91e0104e80f3ef6e93b",
     "tests/test_coordination_architecture.py": "770bc09400c3af0192028d2eb34e6b74be82be513dabce6136b57347c48c20a3",
     "tests/test_core.py": "de9765788bbb35b79ed9cd4910af658171fdcf2f7a12f34e779e2dbb281e7a7f",
-    "tests/test_cross_platform_checkout_integrity.py": "e931d75946a9cce05fcba186522dd5eec283f715a1bdb62824fe07e65218e7ae",
+    "tests/test_cross_platform_checkout_integrity.py": "80f49045281512117336acb09d7bbd7ebdf4e766c1a59b46123b383bbe791df1",
     "tests/test_delete_with_open_paper.py": "622fda0ca8a3fb281b2938ae63f4f9cdd01f249fa7879ed825eafe2e283b7128",
     "tests/test_deposit_adjustment.py": "8fede31904eb2201735cf817c5a4de609af4ff0270ec08f1f91fb00ee868185a",
     "tests/test_desktop_launcher_contract.py": "2e367636abb21d0fa8f96d45f22786c95b4a1e08f1fb2b599e643ad3fa23475d",
