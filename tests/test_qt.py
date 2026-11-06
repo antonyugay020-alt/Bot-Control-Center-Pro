@@ -1001,14 +1001,18 @@ def test_grid_preview_uses_selected_coin_section_side_capital_and_stop(app):
     wizard = BotWizard(cfg)
     wizard.steps.setCurrentRow(5)
     wizard.update_summary()
-    assert "SHORT" in wizard.review.text()
-    assert "Условный SL: 120" in wizard.review.text()
+    audit = wizard.review.text()
+    assert "SHORT" in audit  # Deterministic effective-policy audit covers BTC.
+    assert "Условный SL: 120" in wizard.preview_status.text()
+    assert "BTCUSDT" in wizard.preview_status.text()
     assert float(wizard.preview.item(1, 1).text()) == 115
     assert float(wizard.preview.item(0, 3).text()) == 50
     wizard.preview_coin.setCurrentIndex(wizard.preview_coin.findData("ETHUSDT"))
     wizard.update_summary()
-    assert "LONG" in wizard.review.text()
-    assert "Условный SL: 80" in wizard.review.text()
+    assert wizard.review.text() == audit  # Navigation cannot rewrite audit.
+    assert "LONG" in wizard.preview_status.text()
+    assert "ETHUSDT" in wizard.preview_status.text()
+    assert "Условный SL: 80" in wizard.preview_status.text()
     assert float(wizard.preview.item(1, 1).text()) == 85
     assert float(wizard.preview.item(0, 3).text()) == 37.5
     wizard.close()
