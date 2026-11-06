@@ -4,7 +4,7 @@
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
     ".gitignore": "6a2468f793feb183c2cba194369da612fa93b2881bb84b62d78788d0dd30e108",
-    "ACCEPTANCE_WINDOWS_RU.md": "be3c80aa6fd83af9a28b6a6bb98f1562d61f78215901addc0faf0806596c9796",
+    "ACCEPTANCE_WINDOWS_RU.md": "06efa67464f8c6ea745dce5bb8f61d06318e02bb49172a151b3ff0ea55b484f5",
     "AI_API_LOGIN_WINDOWS.bat": "76197685ecfcac5961a3d281b4027dcf9db05e6e553f9b4f6ed68ee2f8e71b04",
     "AI_CYCLE_WINDOWS.bat": "14b0b353759dece5a3af16a75b44a746a6fb851e34f29b93e3740ff0cdec4454",
     "AI_DEVELOPMENT_RU.md": "c2ed415bf94b5d7ad0344837456e490a0bae54e4483f06633966bf5afa69c8cf",
@@ -69,7 +69,7 @@
     "bcc/flow_layout.py": "1e5d9c4b48fbd8a31046030276a74a2c488a9ee90a3d8e89027b2714cd3b054a",
     "bcc/funding.py": "a52f6023260951eac98f77028b26a09d2eb5c64eeb18c1374ea5590da95072b8",
     "bcc/gui_check.py": "4394ec3e4ebedb54515cd2955f38972eff72bf66da4ab9a64598888b9ba445c0",
-    "bcc/health.py": "50ff1358f5e9fdd070480b475349465acae6ceb53e32fddf041b8ab20145d2b4",
+    "bcc/health.py": "9f1f05e73059ff311cc2b7adb8c33e18b9c79c38d3e97309c0089b06d52e82fb",
     "bcc/hub_supervisor.py": "ff0c354844d1984c69e5b34c337845aacd22924b3bd38d7888c5395089a25acf",
     "bcc/indicators.py": "7b906a08f76a78cc7dead46d5c976d6442cbea95d303348ac962fd132137c48a",
     "bcc/inspection.py": "b2f1d65d90c875220c83ab27ac585c422749c8e00dc41656b3beba0d5ff467a4",
@@ -77,7 +77,7 @@
     "bcc/lifecycle.py": "a2a96045689576175bbbbe9797811ba533626a94464321e541ab3b69b15a950b",
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
-    "bcc/market.py": "390eb310956ec909dd927b3dff58abbb962f62c6994e072d1db567b1d13aeea9",
+    "bcc/market.py": "1f0e91c630860f4736ef6bcd7a4efaab624e25321955296e47b7d00906b92cdc",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
     "bcc/market_hub.py": "828ec6e2b878013c3a65d5c50d30194a8f7461470736d73a959e6bb984a34b77",
@@ -357,9 +357,10 @@
     "tools/seal_source.py": "41da1a0b320b6aaf2ffa0140e976249720407fea6f1df51138e225a74d3f2b8c",
     "tools/start_windows_check.ps1": "a774ae6d90b784461811b0ab810af9c04547108c38ab749d7c11a700f4278a66",
     "tools/verify_package.py": "47a8badcb14833b5dc96d41d1a8c346c3d4085dda763693df31b49cd2e5fc67f",
-    "tools/verify_windows.py": "8baff5a6e5b038fcee183239c7574952f55ac950207aa2648935e8763d625f92",
+    "tools/verify_windows.py": "18274ba21648b5c1ddcd5a93aa9007bf15ea918c75c8a0ddf3aa17a8c39c4abc",
     "tools/windows_ai_launcher.py": "89bb4ef92af88230b9471e35248c2db12a3df1b0d9a61924cb8508f7e6e94f70",
     "tools/windows_check.py": "93eab4c64726fe0bc3e5d976c6133bbb2f1b56462f308d38a8d4d58fd4f41a19",
-    "tests/test_qt_snapshot_shutdown.py": "304e5a61ad3ccf684ce4e565e7f226bdcc33c2ee7538fc1968acc6349390398b"
+    "tests/test_qt_snapshot_shutdown.py": "304e5a61ad3ccf684ce4e565e7f226bdcc33c2ee7538fc1968acc6349390398b",
+    "tests/test_provider_access_boundaries.py": "1b2cbd17d51650f67efd36b9320a777b333bcd712a37ae7a18d873d91238aeda"
   }
 }
