@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .data_cache import CacheBusy, PublicCache
+from .data_cache import CacheBusy, ProviderDenied, PublicCache
 from .market_clock import book_is_fresh, clock, market_now, observed_quote, utc_bounds
 
 
@@ -214,6 +214,25 @@ class PublicData:
             and bool(params.get('symbol'))
             or '/tickers' in url and params.get('category') == 'linear'))
 
+    def _assert_provider_allowed(self, host):
+        """One admission contract for direct GET, Hub reads and post-HTTP use."""
+        with self._lock:
+            denial = self._access_denials.get(host)
+            if denial is not None:
+                expires, http_status = denial
+                if time.monotonic() < expires:
+                    raise SourceAccessDenied(host, http_status)
+                del self._access_denials[host]
+        if isinstance(self.shared, PublicCache):
+            try:
+                status = self.shared.denied_status(host)
+            except CacheBusy as exc:
+                raise DataUnavailable(
+                    "Общий кэш: невозможно проверить запрет источника " + host
+                ) from exc
+            if status is not None:
+                raise SourceAccessDenied(host, status)
+
     def get(self, url, params=None, ttl=0):
         began = time.monotonic()
 
@@ -234,26 +253,8 @@ class PublicData:
                 parsed.username is not None or parsed.password is not None or
                 parsed.fragment):
             raise ValueError("Непубличный источник или закрытые данные в URL")
-        # Denied provider access is an admission fence, not only an HTTP
-        # request error. Check before Market Data Hub subscriptions or cache
-        # reads so stale shared data cannot bypass a provider's 403/451.
-        with self._lock:
-            denial = self._access_denials.get(host)
-            if denial is not None:
-                expires, http_status = denial
-                if time.monotonic() < expires:
-                    raise SourceAccessDenied(host, http_status)
-                del self._access_denials[host]
-        # A provider refusal is global to all consumers of this shared
-        # market cache, not just the worker that received HTTP 403/451.
-        # Test this fence before a Hub subscription OR any in-memory hit.
-        if isinstance(self.shared, PublicCache):
-            try:
-                status = self.shared.denied_status(host)
-            except CacheBusy as exc:
-                raise DataUnavailable("Общий запрет источника недоступен: " + host) from exc
-            if status is not None:
-                raise SourceAccessDenied(host, status)
+        # A refusal is a fleet-wide admission fence, not a retryable cache miss.
+        self._assert_provider_allowed(host)
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.
         # Registration is refreshed by actual demand, not by a synthetic scan.
         if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
@@ -284,6 +285,8 @@ class PublicData:
             while not self.stop_event.is_set():
                 try:
                     cached = self.shared.read_fresh(url, params, host)
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as exc:
                     # A transient SQLite reader/writer conflict is not a
                     # failed upstream market request. Retry within the same
@@ -301,7 +304,11 @@ class PublicData:
         now = time.time()
         key = (url, json.dumps(params, sort_keys=True))
         with self._lock:
-            if ttl > 0 and key in self.cache and 0 <= now - self.cache[key][0] <= ttl:
+            # Shared-cache workers have one authoritative cache. A private
+            # in-memory copy cannot be invalidated by another worker's 403/451,
+            # so it must never bypass the shared host-scoped policy fence.
+            if (self.shared is None and ttl > 0 and key in self.cache
+                    and 0 <= now - self.cache[key][0] <= ttl):
                 return received(self.cache[key][1], "memory_cache")
         if now < self.cooldowns.get(host, 0):
             # A local exchange cooldown must deny NEW requests, not a fresh
@@ -310,6 +317,8 @@ class PublicData:
             if self.shared:
                 try:
                     cached = self.shared.read_fresh(url, params, host)
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as exc:
                     raise DataUnavailable(str(exc)) from exc
                 if cached is not None:
@@ -335,6 +344,8 @@ class PublicData:
                     shared_key, owner, cached = self.shared.begin(
                         url, params, host, priority=is_position_critical)
                     break
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as e:
                     if (str(e) != "Данные уже запрашиваются другим ботом"
                             or time.monotonic() >= lease_deadline):
@@ -408,14 +419,19 @@ class PublicData:
             )
             )
             self._finish_shared(shared_key, owner, host, data, cache_ttl)
-        with self._lock:
-            self.cache[key] = (now, data)
-            if len(self.cache) > 1000:
-                self.cache = {
-                    k: v
-                    for k, v in self.cache.items()
-                    if now - v[0] < 600 or k[0] == "bars"
-                }
+        # Another in-flight request can receive a 403/451 while this HTTP
+        # request is completing. Its host-wide denial takes precedence over
+        # this otherwise successful response, even if our lease was valid.
+        self._assert_provider_allowed(host)
+        if self.shared is None:
+            with self._lock:
+                self.cache[key] = (now, data)
+                if len(self.cache) > 1000:
+                    self.cache = {
+                        k: v
+                        for k, v in self.cache.items()
+                        if now - v[0] < 600 or k[0] == "bars"
+                    }
         return received(data, "http")
 
     def bybit(self, route, params):
