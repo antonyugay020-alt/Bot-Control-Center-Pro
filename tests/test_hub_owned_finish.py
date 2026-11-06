@@ -7,14 +7,16 @@ def test_stale_owner_cannot_acknowledge_after_handover(tmp_path):
     registry = HubRegistry(tmp_path / "hub.sqlite")
     key = registry.subscribe(URL, {"symbol": "BTCUSDT"})
     assert registry.claim_leader("old")
-    assert registry.finish_owned(key, 1, "old")
+    old_token = registry.leader_token("old")
+    assert registry.finish_owned(key, 1, "old", token=old_token)
     registry.release_leader("old")
     assert registry.claim_leader("new")
-    assert not registry.finish_owned(key, 500, "old", "stale")
+    new_token = registry.leader_token("new")
+    assert not registry.finish_owned(key, 500, "old", "stale", token=old_token)
     with registry._connect() as db:
         row = db.execute("SELECT last_error FROM hub_subscriptions WHERE k=?", (key,)).fetchone()
     assert row[0] == ""
-    assert registry.finish_owned(key, 3, "new", "new-owner")
+    assert registry.finish_owned(key, 3, "new", "new-owner", token=new_token)
     with registry._connect() as db:
         row = db.execute("SELECT last_error FROM hub_subscriptions WHERE k=?", (key,)).fetchone()
     assert row[0] == "new-owner"
