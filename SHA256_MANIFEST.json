@@ -103,11 +103,11 @@
     "bcc/strategies.py": "1a9ac7897d8b51aa7853b20e0a277f650d963827d1e23a9b7cd17416ae5d95c7",
     "bcc/strategy_dispatch.py": "97215ee81a5af63dec007097045244757d56cc226bfbf26767d9411d228e882b",
     "bcc/strategy_picker.py": "e35e1afb869c308fe63db5a4ab3c9e8f147675f4510eb967d29e617227120ca5",
-    "bcc/supervisor.py": "bb3773cd7ac5836e9e2d3c9217a6a77e0b362ab84d9360a05ca20381d13c5551",
+    "bcc/supervisor.py": "efcb26adac6a0247e0155a9d26b9d8b2aee4e4c1733f0e6b3eabf444e119e2ed",
     "bcc/support.py": "c64fd445dba89d569230c631de3b5fae8d51b87113b6b21fa18d19389f6643d5",
     "bcc/trade_fence.py": "2cf535c93460728650e332420b676cc935ec2d57b525d6b99d3f492f2b469931",
     "bcc/trading.py": "3f313e49cabcb7662d65933e7a247d043d3c5043784ca4cc77827c2e8f626415",
-    "bcc/transfer.py": "309b8eec954a75a3cc3e848c153a60691c09e25d85e3cd7897095e43564ac1c4",
+    "bcc/transfer.py": "24a29073cca9bf05fd04c50cdf4e9d168aeada641bf2b3f38f7b13029f920fdc",
     "bcc/ui.py": "20ecb51893cb26a53df04339cb7dbf41d07adb22b67b45171eafc7dcadd78061",
     "bcc/widgets.py": "1a3c7adeb1d803316dab25166019fee036e428e8743e2c66525ce166351aaac0",
     "bcc/wizard.py": "9d4accac33b355d067154e326e687e0770b4625bdc4dddaaed6115a2fe14a031",
@@ -360,6 +360,7 @@
     "tools/verify_windows.py": "8baff5a6e5b038fcee183239c7574952f55ac950207aa2648935e8763d625f92",
     "tools/windows_ai_launcher.py": "89bb4ef92af88230b9471e35248c2db12a3df1b0d9a61924cb8508f7e6e94f70",
     "tools/windows_check.py": "93eab4c64726fe0bc3e5d976c6133bbb2f1b56462f308d38a8d4d58fd4f41a19",
-    "tests/test_qt_snapshot_shutdown.py": "304e5a61ad3ccf684ce4e565e7f226bdcc33c2ee7538fc1968acc6349390398b"
+    "tests/test_qt_snapshot_shutdown.py": "304e5a61ad3ccf684ce4e565e7f226bdcc33c2ee7538fc1968acc6349390398b",
+    "tests/test_fleet_export_admission.py": "bee592006b17ed329f14a0c1b080d57e7ae96ed60ce63f0107d8cb893287e170"
   }
 }
