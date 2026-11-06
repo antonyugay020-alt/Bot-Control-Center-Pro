@@ -78,6 +78,10 @@ def check_polymarket():
                 checked[outcome] = {"status": "PASS", "best_ask": best}
                 if candidate is None:
                     candidate = {"outcome": outcome, "best_ask": best, "book_at": stamp}
+            except SourceAccessDenied:
+                # A denied CLOB token is a venue-wide access failure, not an
+                # ordinary missing ask. Keep the HTTP status for the QA gate.
+                raise
             except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
                 checked[outcome] = {"status": "UNAVAILABLE", "error": str(exc)}
         # A broken token cannot be hidden by a healthy opposite outcome.
