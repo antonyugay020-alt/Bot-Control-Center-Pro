@@ -963,30 +963,21 @@ class BotWizard(QDialog):
             self.preview.setVisible(has_grid)
             self.preview_note.setVisible(has_grid)
             self.preview_status.setVisible(has_grid)
-            review_text = (
-                "Проверьте параметры и сохраните бота. Он появится в MY BOTS "
-                "и будет готов к отдельному запуску."
-            )
-            if getattr(self, "dropped_overrides", None):
-                review_text += "\nПри сохранении будут исключены настройки удалённых "                                "монет, рынков и секций: " + ", ".join(
-                                   self.dropped_overrides[:8])
-                if len(self.dropped_overrides) > 8:
-                    review_text += f" (и ещё {len(self.dropped_overrides) - 8})"
-            if (kind in ("VELES", "POLYMARKET") and not lightweight
-                    and self.steps.currentRow() == self.steps.count() - 1):
-                # A passive effective-rule diff: inherited per-coin/market
-                # timing and VELES signals are reviewed before the user saves.
-                # This never applies a configuration or accesses a worker.
-                from .constructor_review import constructor_change_review_text
-                review_text += "\n\n" + constructor_change_review_text(self.cfg, c)
+            # Review is a pure function of the publishable draft, not of
+            # which coin/section is currently highlighted in the preview.
+            # The bounded effective-risk sample covers the selected matrix
+            # deterministically; the interactive grid is rendered separately.
+            from .constructor_review import constructor_review_text
+            self.review.setText(constructor_review_text(
+                self.cfg, c,
+                dropped_overrides=getattr(self, "dropped_overrides", ()),
+                include_change_audit=(
+                    not lightweight
+                    and self.steps.currentRow() == self.steps.count() - 1
+                ),
+            ))
             if has_grid and not lightweight:
                 self.update_grid_preview(c)
-                # Review the *effective* selected coin/section risk, not only
-                # global defaults.  The grid and SL shown here are computed
-                # by the same plan/effective policy used in the preview.
-                if self.preview.rowCount():
-                    review_text += "\n\n" + self.preview_status.text()
-            self.review.setText(review_text)
         except (ValueError, KeyError, TypeError) as e:
             self.summary.setText("Не удалось сформировать сводку: " + str(e))
             if hasattr(self, "summary_status"):
