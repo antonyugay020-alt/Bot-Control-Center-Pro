@@ -86,6 +86,10 @@ def test_unreliable_clock_never_enables_execution(measured, monkeypatch, fault):
     reference, _, sample = measured
 
     def probe(provider):
+        # All alternate clocks are intentionally unavailable in this negative
+        # test: a defective primary alone must never authorize PAPER execution.
+        if provider in ("OKX", "Bitget"):
+            return {"source": provider, "samples": []}
         a = sample(0.6)
         if provider == "Binance":
             if fault == "cached":
