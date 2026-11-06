@@ -143,7 +143,12 @@ class PublicData:
     # and durable Hub subscriptions. A host allowlist alone is insufficient:
     # it permits private GET routes, alternate ports and query credentials.
     PUBLIC_PATHS = {
-        "api.bybit.com": None,  # restricted to /v5/market/ below
+        "api.bybit.com": frozenset({
+            "/v5/market/tickers", "/v5/market/orderbook",
+            "/v5/market/instruments-info", "/v5/market/risk-limit",
+            "/v5/market/kline", "/v5/market/mark-price-kline",
+            "/v5/market/funding/history",
+        }),
         "gamma-api.polymarket.com": frozenset({"/markets"}),
         "clob.polymarket.com": frozenset({"/book"}),
         "data-api.polymarket.com": frozenset({"/v2/tokens"}),
@@ -176,14 +181,56 @@ class PublicData:
                 or "//" in path or any(part in (".", "..") for part in path.split("/"))):
             raise ValueError("Непубличный источник или закрытые данные в URL")
         allowed = cls.PUBLIC_PATHS[host]
-        if host == "api.bybit.com":
-            valid_route = path.startswith("/v5/market/") and len(path) > len("/v5/market/")
-        elif host == "clob.polymarket.com" and path.startswith("/clob-markets/"):
+        if host == "clob.polymarket.com" and path.startswith("/clob-markets/"):
             valid_route = path.count("/") == 2 and len(path) > len("/clob-markets/")
         else:
             valid_route = path in allowed
         if not valid_route:
             raise ValueError("Маршрут не относится к разрешённым публичным GET")
+        return host
+
+    # The Hub stores public GET arguments durably. Never allow a caller to
+    # smuggle credentials into that registry (or send them in direct mode).
+    # Public outcome identifiers are named token_id and are NOT auth tokens.
+    _PRIVATE_QUERY_NAMES = frozenset({
+        "apikey", "apisecret", "secret", "clientsecret", "privatekey",
+        "accesskey", "accesstoken", "refreshtoken", "authorization",
+        "auth", "password", "passphrase", "signature", "sign",
+        "cookie", "session", "bearer", "jwt", "token",
+    })
+
+    @classmethod
+    def validated_public_request(cls, url, params):
+        """One admission for HTTP, Hub enqueue and legacy Hub dequeue.
+
+        The URL is checked independently from query arguments, and the
+        arguments are bounded, flat public scalars. Error messages never
+        interpolate potentially sensitive values or keys.
+        """
+        host = cls.validated_public_host(url)
+        if params is None:
+            return host
+        if type(params) is not dict or len(params) > 32:
+            raise ValueError("Недопустимые параметры публичного GET")
+        for name, value in params.items():
+            if (type(name) is not str
+                    or re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", name) is None
+                    or name.lower().replace("_", "") in cls._PRIVATE_QUERY_NAMES):
+                raise ValueError("Непубличный параметр GET")
+            if type(value) is str:
+                if len(value) > 4096 or any(
+                        ord(ch) < 32 or ord(ch) == 127 for ch in value):
+                    raise ValueError("Недопустимое значение публичного GET")
+            elif type(value) is int:
+                if abs(value) > 2 ** 63:
+                    raise ValueError("Недопустимое значение публичного GET")
+            elif type(value) is float:
+                if not math.isfinite(value):
+                    raise ValueError("Недопустимое значение публичного GET")
+            elif value is None or type(value) is bool:
+                pass
+            else:
+                raise ValueError("Недопустимое значение публичного GET")
         return host
 
     def __init__(self):
@@ -294,7 +341,7 @@ class PublicData:
 
         if self.stop_event.is_set():
             raise DataUnavailable("Получение данных остановлено")
-        host = self.validated_public_host(url)
+        host = self.validated_public_request(url, params)
         # A refusal is a fleet-wide admission fence, not a retryable cache miss.
         self._assert_provider_allowed(host)
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.

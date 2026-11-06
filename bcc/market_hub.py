@@ -147,9 +147,7 @@ class HubRegistry:
         if type(priority) is not bool:
             raise ValueError('Hub priority flag must be boolean')
         from .market import PublicData
-        PublicData.validated_public_host(url)
-        if not isinstance(params, (dict, type(None))):
-            raise ValueError('Hub params must be a JSON object')
+        PublicData.validated_public_request(url, params)
         key, encoded = self.identity(url, params)
         now = time.time()
         with self._connect() as db:
@@ -217,10 +215,8 @@ class HubRegistry:
         valid = []
         for (key, url, raw_params), is_urgent in rows:
             try:
-                PublicData.validated_public_host(url)
                 params = json.loads(raw_params, parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
-                if not isinstance(params, (dict, type(None))):
-                    raise ValueError('Subscription params must be a JSON object')
+                PublicData.validated_public_request(url, params)
                 if self.identity(url, params)[0] != key:
                     raise ValueError('Subscription identity differs from persisted data')
             except (ValueError, TypeError, UnicodeError):
