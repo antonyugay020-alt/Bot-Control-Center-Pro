@@ -333,8 +333,16 @@ def main():
         except Exception as e:
             report.update(status="FAIL", error=str(e))
         finally:
-            atomic_json(args.output / "gui_report.json", report)
             window.close()
+            # Qt closes a dialog immediately, but its background monitor still
+            # owns a QThreadPool reader. Windows forbids deleting a SQLite file
+            # until all readers have released their handles. Join the reader
+            # before deleting the acceptance workspace; never pretend a
+            # screenshot PASS proves clean ownership of process resources.
+            monitor = window.running_monitor
+            if monitor is not None and not monitor.wait_for_snapshot_shutdown(30000):
+                report.update(status="FAIL", error="Монитор: фоновый SQLite reader не завершился за 30 секунд")
+            atomic_json(args.output / "gui_report.json", report)
             window.deleteLater()
             QTimer.singleShot(0, app.quit)
 
