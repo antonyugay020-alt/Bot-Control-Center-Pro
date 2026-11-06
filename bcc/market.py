@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .data_cache import CacheBusy, PublicCache
+from .data_cache import CacheBusy, ProviderDenied, PublicCache
 from .market_clock import book_is_fresh, clock, market_now, observed_quote, utc_bounds
 
 
@@ -251,7 +251,7 @@ class PublicData:
             try:
                 status = self.shared.denied_status(host)
             except CacheBusy as exc:
-                raise DataUnavailable("Общий запрет источника недоступен: " + host) from exc
+                raise DataUnavailable("Общий кэш: невозможно проверить запрет источника " + host) from exc
             if status is not None:
                 raise SourceAccessDenied(host, status)
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.
@@ -284,6 +284,8 @@ class PublicData:
             while not self.stop_event.is_set():
                 try:
                     cached = self.shared.read_fresh(url, params, host)
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as exc:
                     # A transient SQLite reader/writer conflict is not a
                     # failed upstream market request. Retry within the same
@@ -310,6 +312,8 @@ class PublicData:
             if self.shared:
                 try:
                     cached = self.shared.read_fresh(url, params, host)
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as exc:
                     raise DataUnavailable(str(exc)) from exc
                 if cached is not None:
@@ -335,6 +339,8 @@ class PublicData:
                     shared_key, owner, cached = self.shared.begin(
                         url, params, host, priority=is_position_critical)
                     break
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as e:
                     if (str(e) != "Данные уже запрашиваются другим ботом"
                             or time.monotonic() >= lease_deadline):
