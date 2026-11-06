@@ -68,7 +68,7 @@
     "bcc/fleet.py": "5c10de977f44f3c0041802b1434f5e7cb51abe0445a731fa1a2b8f0194fe9da4",
     "bcc/flow_layout.py": "1e5d9c4b48fbd8a31046030276a74a2c488a9ee90a3d8e89027b2714cd3b054a",
     "bcc/funding.py": "a52f6023260951eac98f77028b26a09d2eb5c64eeb18c1374ea5590da95072b8",
-    "bcc/gui_check.py": "dfddbed8f921b936c3b1752545a8caf166de6c31b8f514d23791a136b7ec3d5b",
+    "bcc/gui_check.py": "4394ec3e4ebedb54515cd2955f38972eff72bf66da4ab9a64598888b9ba445c0",
     "bcc/health.py": "50ff1358f5e9fdd070480b475349465acae6ceb53e32fddf041b8ab20145d2b4",
     "bcc/hub_supervisor.py": "ff0c354844d1984c69e5b34c337845aacd22924b3bd38d7888c5395089a25acf",
     "bcc/indicators.py": "7b906a08f76a78cc7dead46d5c976d6442cbea95d303348ac962fd132137c48a",
@@ -82,7 +82,7 @@
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
     "bcc/market_hub.py": "828ec6e2b878013c3a65d5c50d30194a8f7461470736d73a959e6bb984a34b77",
     "bcc/market_selection.py": "92995ed897565f90f5ade52973cdef75375b2adc6b95e7ba98bdca0e34344c91",
-    "bcc/monitoring.py": "dc18b8879f806a31938ba8366d7cdb7b09fd0ed5d21108ea958aea5c0945e440",
+    "bcc/monitoring.py": "156aec7d9383e9879bef48149fd93cc9ad2957a4d517a4149c7619628f426622",
     "bcc/poly_indicators.py": "becefd35bde14aa42e000c5293d1a7dd6e2d7f6a71c39dfc7d073fe292d11a2d",
     "bcc/polymarket_config.py": "8719f0ef426329ada9406e7f8f0c309dfb77aefcaffcca74e25de434cc9f461f",
     "bcc/position_journal.py": "7499689fb7cb8c60aa4a02260502f1f15ab946cc59b00c3a8e29dafb227c024f",
@@ -359,6 +359,7 @@
     "tools/verify_package.py": "47a8badcb14833b5dc96d41d1a8c346c3d4085dda763693df31b49cd2e5fc67f",
     "tools/verify_windows.py": "8baff5a6e5b038fcee183239c7574952f55ac950207aa2648935e8763d625f92",
     "tools/windows_ai_launcher.py": "89bb4ef92af88230b9471e35248c2db12a3df1b0d9a61924cb8508f7e6e94f70",
-    "tools/windows_check.py": "93eab4c64726fe0bc3e5d976c6133bbb2f1b56462f308d38a8d4d58fd4f41a19"
+    "tools/windows_check.py": "93eab4c64726fe0bc3e5d976c6133bbb2f1b56462f308d38a8d4d58fd4f41a19",
+    "tests/test_qt_snapshot_shutdown.py": "304e5a61ad3ccf684ce4e565e7f226bdcc33c2ee7538fc1968acc6349390398b"
   }
 }
