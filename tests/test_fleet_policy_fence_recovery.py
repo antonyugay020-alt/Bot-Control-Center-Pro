@@ -193,3 +193,153 @@ def test_local_cooldown_read_preserves_racing_policy_denial(tmp_path, monkeypatc
     finally:
         consumer.close()
         producer.close()
+
+
+def test_policy_refusal_invalidates_only_rejected_host_cache(tmp_path, monkeypatch):
+    path = tmp_path / "fleet.sqlite"
+    cache = PublicCache(path)
+    other_host = "gamma-api.polymarket.com"
+    other_url = "https://gamma-api.polymarket.com/markets"
+    denial_url = "https://api.bybit.com/v5/market/instruments-info"
+    try:
+        key, owner, _ = cache.begin(URL, PARAMS, HOST)
+        cache.finish(key, owner, HOST, {"old": True}, ttl=7200)
+        key, owner, _ = cache.begin(other_url, {}, other_host)
+        cache.finish(key, owner, other_host, {"independent": True}, ttl=7200)
+        key, owner, _ = cache.begin(denial_url, {}, HOST)
+        cache.finish(key, owner, HOST, cooldown=3600, denial_status=451)
+        with pytest.raises(ProviderDenied):
+            cache.read_fresh(URL, PARAMS, HOST)
+        assert cache.read_fresh(other_url, {}, other_host) == {"independent": True}
+        with cache.db() as db:
+            rows = db.execute("SELECT host FROM cache").fetchall()
+            _, expiry_mono, recorded_mono, expiry_utc = db.execute(
+                "SELECT status,until_mono,recorded_mono,until_utc "
+                "FROM provider_denial WHERE host=?", (HOST,)
+            ).fetchone()
+        assert rows == [(other_host,)]
+        with monkeypatch.context() as patch:
+            patch.setattr(cache_module.time, "monotonic", lambda: expiry_mono + 1)
+            patch.setattr(cache_module.time, "time", lambda: expiry_utc + 1)
+            assert cache.denied_status(HOST) is None
+            # An old quote must not reappear just because the fence expired.
+            assert cache.read_fresh(URL, PARAMS, HOST) is None
+            assert cache.begin(URL, PARAMS, HOST)[1] is not None
+    finally:
+        cache.close()
+
+
+def test_inflight_success_cannot_repopulate_rejected_host_cache(tmp_path):
+    cache = PublicCache(tmp_path / "fleet.sqlite")
+    try:
+        first_key, first_owner, _ = cache.begin(URL, PARAMS, HOST)
+        other_url = "https://api.bybit.com/v5/market/instruments-info"
+        second_key, second_owner, _ = cache.begin(other_url, {}, HOST)
+        cache.finish(second_key, second_owner, HOST, cooldown=3600, denial_status=403)
+        cache.finish(first_key, first_owner, HOST, {"stale": True}, ttl=7200)
+        with cache.db() as db:
+            assert db.execute(
+                "SELECT count(*) FROM cache WHERE host=?", (HOST,)
+            ).fetchone()[0] == 0
+    finally:
+        cache.close()
+
+
+def test_legacy_cache_rows_without_host_are_never_reused(tmp_path):
+    import hashlib
+    import json
+
+    path = tmp_path / "fleet.sqlite"
+    key = hashlib.sha256(json.dumps([URL, PARAMS], sort_keys=True).encode()).hexdigest()
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "CREATE TABLE cache(k TEXT PRIMARY KEY,value TEXT NOT NULL,until REAL NOT NULL)"
+        )
+        db.execute(
+            "INSERT INTO cache VALUES(?,?,?)",
+            (key, json.dumps({"old": True}), time.time() + 7200),
+        )
+    cache = PublicCache(path)
+    try:
+        assert cache.read_fresh(URL, PARAMS, HOST) is None
+        with cache.db() as db:
+            columns = {row[1] for row in db.execute("PRAGMA table_info(cache)")}
+        assert "host" in columns
+    finally:
+        cache.close()
+
+
+def test_shared_worker_ignores_unowned_memory_cache(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.delenv("BCC_MARKET_HUB_MODE", raising=False)
+    transport = PublicData()
+    transport.shared = PublicCache(tmp_path / "fleet.sqlite")
+    transport.cache[(URL, json.dumps(PARAMS, sort_keys=True))] = (
+        time.time(), {"old": True}
+    )
+
+    class Response:
+        status_code = 200
+        headers = {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"new": True}
+
+    class Session:
+        def get(self, *args, **kwargs):
+            return Response()
+
+        def close(self):
+            pass
+
+    transport._thread.session = Session()
+    try:
+        assert transport.get(URL, PARAMS, ttl=3600) == {"new": True}
+        assert transport._thread.last_read["via"] == "http"
+    finally:
+        transport.close()
+
+
+def test_successful_http_cannot_override_racing_policy_refusal(tmp_path, monkeypatch):
+    monkeypatch.delenv("BCC_MARKET_HUB_MODE", raising=False)
+    path = tmp_path / "fleet.sqlite"
+    producer = PublicCache(path)
+    consumer = PublicData()
+    consumer.shared = PublicCache(path)
+
+    class Response:
+        status_code = 200
+        headers = {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"valid": True}
+
+    class Session:
+        def get(self, *args, **kwargs):
+            url = "https://api.bybit.com/v5/market/instruments-info"
+            key, owner, _ = producer.begin(url, {}, HOST)
+            producer.finish(key, owner, HOST, cooldown=3600, denial_status=451)
+            return Response()
+
+        def close(self):
+            pass
+
+    consumer._thread.session = Session()
+    try:
+        with pytest.raises(SourceAccessDenied) as exc:
+            consumer.get(URL, PARAMS, ttl=3600)
+        assert (exc.value.host, exc.value.http_status) == (HOST, 451)
+        with producer.db() as db:
+            assert db.execute(
+                "SELECT count(*) FROM cache WHERE host=?", (HOST,)
+            ).fetchone()[0] == 0
+    finally:
+        consumer.close()
+        producer.close()
