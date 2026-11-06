@@ -12,7 +12,7 @@
     "AI_USE_CHATGPT_WINDOWS.bat": "98231d8a93569852101648a309e7d874c213e96678cfb508cc19fbe4efb7062c",
     "AI_USE_EXISTING_API_WINDOWS.bat": "13e992537a87c5562141f9f6391d8920c5ca9c57cbc9b0bf6d7ec48012b6cb10",
     "ARCHITECTURE_ACTUAL_STATUS_RU.md": "862b2886efb30f4f8eb4839ef622b44166a5389835560521e6f906fd5dd9b036",
-    "ARCHITECTURE_TARGET_UNIVERSAL_RU.md": "98f9b824a3d836815db6f966e54759d32fe30c10a5cceffe116a0b9c146bd301",
+    "ARCHITECTURE_TARGET_UNIVERSAL_RU.md": "71ad21a12eaeafa82cb88805bdeae23f8048b1b8c6e0bcb2ce0ee74054fa0934",
     "BCC_AI_MISSION_RU.md": "7af61442a41e3af323e74b426ebffab17529d911a45b951b07c4f950d94716fc",
     "BUILD_INFO.json": "86d1085997b91c13b336acfc07fdcc0f1edd78a5b2195bb870f3a0b66ca71452",
     "CHECK_WINDOWS.bat": "48b58218779b2b6582d0b2ebc3a74e7b030103642f30d49d0243145d7ade42af",
@@ -63,7 +63,7 @@
     "bcc/constructor_transaction.py": "1cfd25a130450f820f5dc623f11568641820f6b84c9eb73c194eb5f4a87ad578",
     "bcc/control.py": "64a9d9fe889ec9e9f989f6793050ffa09f00fcfedaf6346d95ddfcda08ce3092",
     "bcc/coordination.py": "4372dbb71bf5d80b484642e8b857da1cc34af7c6bd845d879de3e8d8326a49c8",
-    "bcc/data_cache.py": "9432d7939bc0187b8cdfbaa118403cb68b9e1f665bf84c19ced4e43c467123cb",
+    "bcc/data_cache.py": "512098b45c615c25359156374efc2c0ee5c8358c5548d7ef871c99b40c45e9b7",
     "bcc/execution.py": "7ca97407a77e226f7d9c9ce3274d0074913d35264fbf4a29823acf607a71f50a",
     "bcc/fleet.py": "5c10de977f44f3c0041802b1434f5e7cb51abe0445a731fa1a2b8f0194fe9da4",
     "bcc/flow_layout.py": "1e5d9c4b48fbd8a31046030276a74a2c488a9ee90a3d8e89027b2714cd3b054a",
@@ -77,7 +77,7 @@
     "bcc/lifecycle.py": "a2a96045689576175bbbbe9797811ba533626a94464321e541ab3b69b15a950b",
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
-    "bcc/market.py": "b790a3a3f3f47bb1f9992c669b86b2166881e0765e6d806c2966f6577e28a69d",
+    "bcc/market.py": "2adeb53bbb3ad13200962211af091de69437bb487318036d967b87651529c590",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
     "bcc/market_hub.py": "310db4673af951d9b712b088859df2e67e70b0af263cdf3d4ad90e8469245505",
@@ -363,9 +363,10 @@
     "tests/test_qt_snapshot_shutdown.py": "304e5a61ad3ccf684ce4e565e7f226bdcc33c2ee7538fc1968acc6349390398b",
     "tests/test_provider_access_boundaries.py": "1b2cbd17d51650f67efd36b9320a777b333bcd712a37ae7a18d873d91238aeda",
     "tests/test_provider_denial_admission.py": "5b29511c3ebc4f7022cd83f93a678c2bc883a86b47a3d74930e054b0c7f7b95f",
-    "tests/test_shared_provider_denial.py": "2c8477c492784ff43b3d3999b3cf34659df2ae84b8f9b02a9cebf6fbc1d95bf1",
+    "tests/test_shared_provider_denial.py": "2774bea15ce522763ef7c3d7828969f4647342f402660c862f4de5facba3db12",
     "tests/test_hub_lease_fencing.py": "67194602a5d7f2b0156b31e2acc70468fb07f29e7a28cc041c0150992b9b9a72",
     "tests/test_fleet_export_admission.py": "bee592006b17ed329f14a0c1b080d57e7ae96ed60ce63f0107d8cb893287e170",
-    "tests/test_cross_workflow_architecture.py": "9252595001d094d94c02e653408931725a649d332f9ff92178370697a89d22f1"
+    "tests/test_cross_workflow_architecture.py": "9252595001d094d94c02e653408931725a649d332f9ff92178370697a89d22f1",
+    "tests/test_fleet_policy_fence_recovery.py": "05b10244e33a61e467a8fc6ea2d220e81d69081228ea69c85573c3f4ac4020d9"
   }
 }
