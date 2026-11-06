@@ -73,3 +73,34 @@ def test_denial_must_not_be_written_by_obsolete_lease_owner(tmp_path):
         assert cache.denied_status(HOST) == 451
     finally:
         cache.close()
+
+
+@pytest.mark.parametrize("status", [403, 451])
+def test_real_http_policy_refusal_is_published_to_other_worker(tmp_path, monkeypatch, status):
+    monkeypatch.delenv("BCC_MARKET_HUB_MODE", raising=False)
+    path = tmp_path / "fleet_public.sqlite"
+    transport = PublicData()
+    transport.shared = PublicCache(path)
+
+    class FakeResponse:
+        status_code = status
+        headers = {"Retry-After": "120"}
+
+    class FakeSession:
+        def get(self, *args, **kwargs):
+            return FakeResponse()
+
+        def close(self):
+            pass
+
+    transport._thread.session = FakeSession()
+    reader = PublicCache(path)
+    try:
+        with pytest.raises(SourceAccessDenied):
+            transport.get(URL, PARAMS)
+        assert reader.denied_status(HOST) == status
+        with pytest.raises(CacheBusy, match="отклонил публичный доступ"):
+            reader.begin(URL, PARAMS, HOST)
+    finally:
+        transport.close()
+        reader.close()
