@@ -19,23 +19,44 @@ LOG_FILES = ("engine.log", "console.log")
 PREFIX = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 
 
-def export_bots(repo, folders, target, history=True, *, owner_gate=None):
+def export_bots(repo, folders, target, history=True, *, owner_gate=None,
+                source_owner_batch=None):
+    """Export one coherent multi-owner snapshot under a fleet-wide admission fence.
+
+    A per-bot gate cannot protect an earlier snapshot from START/EDIT while
+    later bots are still being copied. The Supervisor supplies a canonical
+    batch gate; all OS BotLocks remain held through the last snapshot. Direct
+    legacy callers retain their individual admission contract.
+    """
     target = Path(target).resolve()
     if target.suffix.lower() != ".zip" or target.is_relative_to(repo.bots):
         raise ValueError("Сохраните ZIP переноса вне папки MY_BOTS")
+    sources = tuple(repo.resolve(folder) for folder in folders)
+    if len(sources) != len(set(sources)):
+        raise ValueError("Повторяющийся бот в пакете экспорта")
     with tempfile.TemporaryDirectory(prefix=".bcc-export-", dir=target.parent) as temp:
         temp = Path(temp)
         pending = temp / "export.zip"
         manifest = []
-        with zipfile.ZipFile(pending, "w", zipfile.ZIP_DEFLATED) as archive:
-            for i, folder in enumerate(folders):
-                folder = repo.resolve(folder)
-                # When invoked through Supervisor, an owner-wide OS fence
-                # makes the entire snapshot serializable with STOP, retirement,
-                # config edits and financial commits, not just the BotLock lease.
-                with (owner_gate(folder) if owner_gate is not None else nullcontext()), BotLock(folder):
+        with ExitStack() as batch, zipfile.ZipFile(pending, "w", zipfile.ZIP_DEFLATED) as archive:
+            if source_owner_batch is not None:
+                # Same canonical stripe/OS-gate ordering as import and edit.
+                # The batch owns every BotLock before any archive bytes are read.
+                batch.enter_context(source_owner_batch(sources))
+                for folder in sorted(sources, key=lambda path: path.as_posix()):
+                    batch.enter_context(BotLock(folder))
                     check_launch_lease(folder)
                     recover_deposit_change(folder)
+            for i, folder in enumerate(sources):
+                # In batch mode, these guards remain held for the *entire*
+                # archive. Legacy standalone transfers retain per-bot gates.
+                gate = (owner_gate(folder) if source_owner_batch is None and
+                        owner_gate is not None else nullcontext())
+                lock = BotLock(folder) if source_owner_batch is None else nullcontext()
+                with gate, lock:
+                    if source_owner_batch is None:
+                        check_launch_lease(folder)
+                        recover_deposit_change(folder)
                     cfg, _ = repo.load(folder)
                     has_ledger = guard_paper_recovery(folder)
                     prefix = f"bot_{i:04d}"
