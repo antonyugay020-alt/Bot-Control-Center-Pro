@@ -11,12 +11,103 @@ import math
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from itertools import combinations
 
 from .clock_diagnostics import probe_source
 
 
 class ClockUnavailable(ValueError):
     pass
+
+
+# Independent public clock references. A single provider (even with two
+# samples) never authorizes a PAPER decision. Probe the second pair only if the
+# primary pair cannot establish a bounded consensus. This avoids making every
+# Polymarket/Bybit worker depend on *both* original clock hosts being reachable.
+PRIMARY_CLOCKS = ("Bybit", "Binance")
+FALLBACK_CLOCKS = ("OKX", "Bitget")
+
+
+def _provider_interval(provider, result, wall, anchor):
+    """Validate two uncached sub-millisecond samples from one provider.
+
+    This function returns a bounded interval, never a timestamp guess. The
+    second sample does not count as a second independent provider.
+    """
+    if not isinstance(result, dict) or result.get("source") != provider:
+        raise ClockUnavailable("Ответ другого источника времени: " + provider)
+    samples = result.get("samples")
+    if not isinstance(samples, list) or len(samples) != 2:
+        raise ClockUnavailable("Нет двух ответов времени: " + provider)
+    intervals = []
+    for sample in samples:
+        if not isinstance(sample, dict):
+            raise ClockUnavailable("Повреждён ответ времени: " + provider)
+        fields = (
+            "round_trip_seconds", "server_precision_seconds", "server_unix",
+            "received_monotonic", "local_received_unix",
+        )
+        if (
+            sample.get("error")
+            or sample.get("cached_response") is not False
+            or sample.get("local_clock_changed_during_request") is not False
+            or sample.get("http_status") != 200
+            or any(type(sample.get(key)) not in (int, float)
+                   or not math.isfinite(sample[key]) for key in fields)
+            or not 0 <= sample["round_trip_seconds"] <= 1
+            or not 0 < sample["server_precision_seconds"] <= 0.001
+        ):
+            raise ClockUnavailable("Нет двух точных некэшированных ответов времени " + provider)
+        elapsed = anchor - sample["received_monotonic"]
+        if not 0 <= elapsed <= 20 or abs(
+            wall - sample["local_received_unix"] - elapsed
+        ) > 0.05:
+            raise ClockUnavailable("Устаревшая/несогласованная метка времени: " + provider)
+        drift = elapsed * 0.0001
+        intervals.append((
+            sample["server_unix"] + elapsed - drift,
+            sample["server_unix"] + sample["round_trip_seconds"]
+            + sample["server_precision_seconds"] + elapsed + drift,
+        ))
+    low = max(interval[0] for interval in intervals)
+    high = min(interval[1] for interval in intervals)
+    if not 0 <= high - low <= 0.5:
+        raise ClockUnavailable("Два ответа источника не согласуются: " + provider)
+    return low, high
+
+
+def _clock_consensus(intervals, wall):
+    """Find a unique maximal independent-provider consensus, or fail closed.
+
+    Never silently choose between two disjoint groups of apparently healthy
+    clocks. A lone surviving source is not enough to execute PAPER orders.
+    """
+    providers = sorted(intervals)
+    for size in range(len(providers), 1, -1):
+        groups = []
+        for group in combinations(providers, size):
+            low = max(intervals[name][0] for name in group)
+            high = min(intervals[name][1] for name in group)
+            if (
+                0 <= high - low <= 0.5
+                and max(abs(low - wall), abs(high - wall)) <= 300
+            ):
+                groups.append((low, high, group))
+        if len(groups) == 1:
+            return groups[0]
+        if groups:
+            raise ClockUnavailable("Неоднозначный кворум независимых источников времени")
+    raise ClockUnavailable("Нет двух независимых согласованных источников времени")
+
+
+def _validated_clock_sources(results, wall, anchor):
+    valid, errors = {}, {}
+    for provider, result in results:
+        try:
+            valid[provider] = _provider_interval(provider, result, wall, anchor)
+        except ClockUnavailable as exc:
+            errors[provider] = str(exc)
+    return valid, errors
 
 
 class MarketClock:
@@ -65,77 +156,44 @@ class MarketClock:
                 )
             self._attempted = mono
             with ThreadPoolExecutor(max_workers=2) as pool:
-                results = list(pool.map(probe_source, ("Bybit", "Binance")))
+                primary = list(zip(PRIMARY_CLOCKS, pool.map(probe_source, PRIMARY_CLOCKS)))
+            results = primary
             wall, anchor = time.time(), time.monotonic()
-            intervals = []
+            candidates, errors = _validated_clock_sources(results, wall, anchor)
             try:
-                for result in results:
-                    good = []
-                    for sample in result["samples"]:
-                        if (
-                            sample.get("error")
-                            or sample.get("cached_response") is not False
-                            or sample.get("local_clock_changed_during_request")
-                            is not False
-                            or sample.get("http_status") != 200
-                            or not 0 <= sample.get("round_trip_seconds", math.inf) <= 1
-                            or not 0
-                            < sample.get("server_precision_seconds", math.inf)
-                            <= 0.001
-                        ):
-                            continue
-                        elapsed = anchor - sample["received_monotonic"]
-                        if not 0 <= elapsed <= 20:
-                            continue
-                        if abs(wall - sample["local_received_unix"] - elapsed) > 0.05:
-                            continue
-                        drift = elapsed * 0.0001
-                        good.append(
-                            (
-                                sample["server_unix"] + elapsed - drift,
-                                sample["server_unix"]
-                                + sample["round_trip_seconds"]
-                                + sample["server_precision_seconds"]
-                                + elapsed
-                                + drift,
-                            )
-                        )
-                    if len(good) != 2:
-                        raise ClockUnavailable(
-                            "Нет двух точных некэшированных ответов времени "
-                            + result["source"]
-                        )
-                    intervals.extend(good)
-                low = max(x[0] for x in intervals)
-                high = min(x[1] for x in intervals)
-                if (
-                    not all(math.isfinite(x) for x in (low, high))
-                    or not 0 <= high - low <= 0.5
-                ):
-                    raise ClockUnavailable(
-                        "Время Bybit и Binance не согласуется или слишком неточно"
-                    )
-                if max(abs(low - wall), abs(high - wall)) > 300:
-                    raise ClockUnavailable(
-                        "Расхождение времени API и ПК превышает 5 минут"
-                    )
-            except (KeyError, TypeError, ClockUnavailable) as exc:
-                self.evidence = {
-                    "status": "UNAVAILABLE",
-                    "error": str(exc),
-                    "sources": results,
-                }
-                if valid:
-                    logging.warning("CLOCK refresh deferred: %s", exc)
-                    return
-                raise ClockUnavailable(str(exc)) from exc
+                low, high, selected = _clock_consensus(candidates, wall)
+            except ClockUnavailable:
+                # Fallback is a fresh independent *time* reference, not a
+                # replacement for blocked exchange market data or an HTTP
+                # proxy. No stale orderbook is ever made executable by this.
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    fallback = list(zip(FALLBACK_CLOCKS, pool.map(probe_source, FALLBACK_CLOCKS)))
+                results = primary + fallback
+                wall, anchor = time.time(), time.monotonic()
+                candidates, errors = _validated_clock_sources(results, wall, anchor)
+                try:
+                    low, high, selected = _clock_consensus(candidates, wall)
+                except ClockUnavailable as exc:
+                    self.evidence = {
+                        "status": "UNAVAILABLE",
+                        "error": str(exc),
+                        "provider_errors": errors,
+                        "sources": [result for _, result in results],
+                    }
+                    if valid:
+                        logging.warning("CLOCK refresh deferred: %s", exc)
+                        return
+                    raise ClockUnavailable(str(exc)) from exc
             self._reference = (low, high, wall, anchor)
             self.evidence = {
                 "status": "PASS",
                 "os_clock_adjusted": False,
+                "selected_sources": list(selected),
+                "fallback_used": len(results) > len(PRIMARY_CLOCKS),
+                "provider_errors": errors,
                 "server_minus_pc_lower_seconds": low - wall,
                 "server_minus_pc_upper_seconds": high - wall,
-                "sources": results,
+                "sources": [result for _, result in results],
             }
             logging.info(
                 "CLOCK public UTC minus PC [%+.3f, %+.3f] seconds",
