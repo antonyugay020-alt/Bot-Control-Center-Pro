@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 import sqlite3
 import threading
 import time
@@ -66,7 +67,8 @@ class PublicCache:
                     "CREATE TABLE IF NOT EXISTS cooldown(host TEXT PRIMARY KEY,until REAL NOT NULL);"
                     "CREATE TABLE IF NOT EXISTS provider_denial("
                     "host TEXT PRIMARY KEY,status INTEGER NOT NULL,until_mono REAL NOT NULL,"
-                    "recorded_mono REAL NOT NULL DEFAULT 0,until_utc REAL NOT NULL DEFAULT 0);"
+                    "recorded_mono REAL NOT NULL DEFAULT 0,until_utc REAL NOT NULL DEFAULT 0,"
+                    "boot_epoch REAL NOT NULL DEFAULT 0);"
                     "CREATE TABLE IF NOT EXISTS request_budget(host TEXT PRIMARY KEY,slot INTEGER NOT NULL,count INTEGER NOT NULL);"
                     "CREATE INDEX IF NOT EXISTS cache_until ON cache(until);"
                     "CREATE INDEX IF NOT EXISTS lease_until ON lease(until);"
@@ -98,6 +100,9 @@ class PublicCache:
                         "ALTER TABLE provider_denial ADD COLUMN "
                         "until_utc REAL NOT NULL DEFAULT 0"
                     )
+                if "boot_epoch" not in columns:
+                    db.execute("ALTER TABLE provider_denial ADD COLUMN "
+                               "boot_epoch REAL NOT NULL DEFAULT 0")
                 # Old rows only had monotonic deadlines. Conservatively carry
                 # their remaining refusal into the new UTC fallback, bounded
                 # by the maximum supported 403/451 policy interval (3600s).
@@ -152,19 +157,30 @@ class PublicCache:
                 self._ready = False
 
     @staticmethod
+    def _boot_epoch():
+        """Independent OS boot witness; uptime alone cannot prove a reboot."""
+        try:
+            import psutil
+            value = float(psutil.boot_time())
+            return value if math.isfinite(value) and value > 0 else 0.0
+        except (ImportError, OSError, ValueError, AttributeError):
+            return 0.0
+
+    @staticmethod
     def _denied(db, host):
         row = db.execute(
-            "SELECT status,until_mono,recorded_mono,until_utc "
+            "SELECT status,until_mono,recorded_mono,until_utc,boot_epoch "
             "FROM provider_denial WHERE host=?", (host,)
         ).fetchone()
         if row is None:
             return None
         now_mono = time.monotonic()
-        if row[2] and now_mono < row[2]:
-            # Monotonic time resets after an OS restart. An old uptime-based
-            # deadline cannot be compared with a new boot's uptime. For this
-            # case only, use the persisted UTC deadline rather than retaining
-            # a denial for the previous boot's entire uptime.
+        boot = PublicCache._boot_epoch()
+        # A later reboot may already have MORE uptime than the previous
+        # recorded_mono, so the old monotonic-reset heuristic is insufficient.
+        rebooted = bool(row[4] and boot and abs(row[4] - boot) > 60)
+        # Rows migrated from the legacy schema have no boot witness.
+        if rebooted or (row[2] and now_mono < row[2]):
             return int(row[0]) if time.time() < row[3] else None
         return int(row[0]) if now_mono < row[1] else None
 
@@ -296,26 +312,40 @@ class PublicCache:
                     # They must not become available again after the denial
                     # expires without a fresh authorized upstream GET.
                     db.execute("DELETE FROM cache WHERE host=?", (host,))
-                    # Replace an expired policy row before extending a fresh
-                    # denial. This also prevents pre-reboot uptime values from
-                    # leaking into a newly established refusal.
+                    # Reconcile under the same SQLite write transaction.
+                    # Monotonic deadlines cannot be compared across boots.
                     if self._denied(db, host) is None:
                         db.execute("DELETE FROM provider_denial WHERE host=?", (host,))
+                    previous = db.execute(
+                        "SELECT status,until_mono,recorded_mono,until_utc,boot_epoch "
+                        "FROM provider_denial WHERE host=?", (host,)
+                    ).fetchone()
                     now_mono = time.monotonic()
                     now_utc = time.time()
+                    boot = self._boot_epoch()
+                    deadline_mono = now_mono + cooldown
+                    deadline_utc = now_utc + cooldown
+                    status = denial_status
+                    if previous is not None:
+                        if previous[0] == 451:
+                            status = 451
+                        deadline_utc = max(deadline_utc, previous[3])
+                        same_boot = (
+                            bool(boot and previous[4] and abs(boot - previous[4]) <= 60)
+                            or (not boot and not previous[4]
+                                and now_mono >= previous[2])
+                        )
+                        if same_boot:
+                            deadline_mono = max(deadline_mono, previous[1])
+                        else:
+                            deadline_mono = now_mono + max(
+                                cooldown, max(0, previous[3] - now_utc)
+                            )
                     db.execute(
-                        "INSERT INTO provider_denial("
-                        "host,status,until_mono,recorded_mono,until_utc"
-                        ") VALUES(?,?,?,?,?) "
-                        "ON CONFLICT(host) DO UPDATE SET "
-                        "status=CASE WHEN provider_denial.status=451 OR "
-                        "excluded.status=451 THEN 451 ELSE 403 END,"
-                        "recorded_mono=CASE WHEN excluded.until_mono>until_mono "
-                        "THEN excluded.recorded_mono ELSE recorded_mono END,"
-                        "until_mono=max(until_mono,excluded.until_mono),"
-                        "until_utc=max(until_utc,excluded.until_utc)",
-                        (host, denial_status, now_mono + cooldown,
-                         now_mono, now_utc + cooldown),
+                        "INSERT OR REPLACE INTO provider_denial("
+                        "host,status,until_mono,recorded_mono,until_utc,boot_epoch"
+                        ") VALUES(?,?,?,?,?,?)",
+                        (host, status, deadline_mono, now_mono, deadline_utc, boot),
                     )
                 db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
                 if time.monotonic() >= self._next_cleanup:

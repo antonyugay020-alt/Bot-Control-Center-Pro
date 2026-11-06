@@ -343,3 +343,65 @@ def test_successful_http_cannot_override_racing_policy_refusal(tmp_path, monkeyp
     finally:
         consumer.close()
         producer.close()
+
+
+def test_reboot_with_later_uptime_uses_durable_utc_fence(tmp_path, monkeypatch):
+    cache = PublicCache(tmp_path / "fleet.sqlite")
+    try:
+        _fence(cache)
+        with cache.db() as db:
+            expiry_mono, recorded_mono, expiry_utc, boot = db.execute(
+                "SELECT until_mono,recorded_mono,until_utc,boot_epoch "
+                "FROM provider_denial WHERE host=?", (HOST,)
+            ).fetchone()
+        if not boot:
+            pytest.skip("OS boot witness unavailable")
+        with monkeypatch.context() as patch:
+            patch.setattr(PublicCache, "_boot_epoch", staticmethod(lambda: boot + 86400))
+            patch.setattr(cache_module.time, "monotonic", lambda: recorded_mono + 10)
+            assert recorded_mono + 10 < expiry_mono
+            patch.setattr(cache_module.time, "time", lambda: expiry_utc - 20)
+            assert cache.denied_status(HOST) == 451
+            patch.setattr(cache_module.time, "time", lambda: expiry_utc + 1)
+            assert cache.denied_status(HOST) is None
+    finally:
+        cache.close()
+
+
+def test_cross_boot_denials_merge_remaining_utc_not_previous_uptime(
+    tmp_path, monkeypatch
+):
+    cache = PublicCache(tmp_path / "fleet.sqlite")
+    try:
+        first, first_owner, _ = cache.begin(URL, PARAMS, HOST)
+        other_url = "https://api.bybit.com/v5/market/instruments-info"
+        second, second_owner, _ = cache.begin(other_url, {}, HOST)
+        cache.finish(first, first_owner, HOST, cooldown=3600, denial_status=451)
+        with cache.db() as db:
+            expiry_utc, boot = db.execute(
+                "SELECT until_utc,boot_epoch FROM provider_denial WHERE host=?",
+                (HOST,),
+            ).fetchone()
+        if not boot:
+            pytest.skip("OS boot witness unavailable")
+        with monkeypatch.context() as patch:
+            patch.setattr(PublicCache, "_boot_epoch", staticmethod(lambda: boot + 86400))
+            patch.setattr(cache_module.time, "monotonic", lambda: 500.0)
+            patch.setattr(cache_module.time, "time", lambda: expiry_utc - 1800)
+            # The second HTTP request was already in flight before refusal.
+            cache.finish(second, second_owner, HOST, cooldown=90, denial_status=403)
+            with cache.db() as db:
+                status, until_mono, until_utc = db.execute(
+                    "SELECT status,until_mono,until_utc FROM provider_denial "
+                    "WHERE host=?", (HOST,)
+                ).fetchone()
+            assert status == 451
+            assert until_mono == pytest.approx(2300)
+            assert until_utc == pytest.approx(expiry_utc)
+            patch.setattr(cache_module.time, "monotonic", lambda: 2290.0)
+            assert cache.denied_status(HOST) == 451
+            patch.setattr(cache_module.time, "monotonic", lambda: 2310.0)
+            patch.setattr(cache_module.time, "time", lambda: expiry_utc + 10)
+            assert cache.denied_status(HOST) is None
+    finally:
+        cache.close()
