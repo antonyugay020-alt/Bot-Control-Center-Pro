@@ -41,9 +41,12 @@ def test_install_and_start_share_private_python_environment():
         assert "pyside6" in text
         assert "requirements" in installer
     assert "pythonw.exe" in launcher
-    assert "if errorlevel 1 goto dependencies" in launcher
+    # Only the project-owned interpreter may start the desktop; the former
+    # global pyw fallback could launch against a different Python environment.
+    assert "if errorlevel 1 goto install" in launcher
     assert "exit /b 1" in launcher
-    assert 'start "" pyw -3' in launcher
+    assert 'start "" "%pyw%"' in launcher
+    assert 'start "" pyw -3' not in launcher
 
 
 @pytest.mark.parametrize("action", ["nonzero", "exception"])
