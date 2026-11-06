@@ -14,8 +14,24 @@ def test_clock_parsers_keep_polymarket_whole_second_uncertainty():
     assert parse_time(
         "Bybit", {"retCode": 0, "result": {"timeNano": "1700000000123000000"}}
     )[0] == pytest.approx(1700000000.123)
+    assert parse_time("OKX", {"code": "0", "data": [{"ts": "1700000000123"}]}) == (
+        1700000000.123, 0.001,
+    )
+    assert parse_time("Bitget", {"code": "00000", "data": {"serverTime": "1700000000123"}}) == (
+        1700000000.123, 0.001,
+    )
     with pytest.raises(ValueError):
         parse_time("Polymarket", True)
+    for provider, payload in (
+        ("OKX", {"code": "1", "data": [{"ts": "1700000000123"}]}),
+        ("OKX", {"code": "0", "data": [{"ts": True}]}),
+        ("OKX", {"code": "0", "data": [{"ts": "-1"}]}),
+        ("Bitget", {"code": "00000", "data": {"serverTime": False}}),
+        ("Bitget", {"code": "00001", "data": {"serverTime": "1700000000123"}}),
+        ("Unknown", {"time": 1700000000}),
+    ):
+        with pytest.raises(ValueError):
+            parse_time(provider, payload)
 
 
 def test_clock_interval_and_clock_jump_are_explicit():
