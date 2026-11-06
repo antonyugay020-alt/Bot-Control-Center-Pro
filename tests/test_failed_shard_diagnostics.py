@@ -26,7 +26,9 @@ def test_complete_failure_keeps_merged_junit_and_cannot_run_as_pass(tmp_path, mo
         return 1 if status in ('failure', 'error') else 0
     monkeypatch.setattr(runner, 'run_logged_command', command)
     output = tmp_path / 'run/shards'
-    assert runner.run(inventory, output, headless=True) == (0 if result == 'success' else 1)
+    # This test validates merged JUnit fidelity, not headless exclusions.
+    # Native Windows QA forbids headless exclusions altogether.
+    assert runner.run(inventory, output) == (0 if result == 'success' else 1)
     merged = ET.parse(output.parent / 'tests.xml').getroot()
     assert len(list(merged.iter('testcase'))) == 2
     if result != 'success':
