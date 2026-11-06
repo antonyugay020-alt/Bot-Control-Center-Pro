@@ -59,7 +59,9 @@ class PublicCache:
                     if mode.lower() != "wal":
                         raise CacheBusy("Не удалось включить совместный доступ к кэшу")
                 db.executescript(
-                    "CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY,value TEXT NOT NULL,until REAL NOT NULL);"
+                    "CREATE TABLE IF NOT EXISTS cache("
+                    "k TEXT PRIMARY KEY,value TEXT NOT NULL,until REAL NOT NULL,"
+                    "host TEXT NOT NULL DEFAULT '');"
                     "CREATE TABLE IF NOT EXISTS lease(k TEXT PRIMARY KEY,owner TEXT NOT NULL,until REAL NOT NULL);"
                     "CREATE TABLE IF NOT EXISTS cooldown(host TEXT PRIMARY KEY,until REAL NOT NULL);"
                     "CREATE TABLE IF NOT EXISTS provider_denial("
@@ -69,6 +71,17 @@ class PublicCache:
                     "CREATE INDEX IF NOT EXISTS cache_until ON cache(until);"
                     "CREATE INDEX IF NOT EXISTS lease_until ON lease(until);"
                 )
+                # The previous cache schema did not record provider ownership
+                # for each response. Legacy rows have an empty host and must
+                # never be admitted as verified host-specific market data.
+                cache_columns = {
+                    row[1] for row in db.execute("PRAGMA table_info(cache)")
+                }
+                if "host" not in cache_columns:
+                    db.execute(
+                        "ALTER TABLE cache ADD COLUMN host TEXT NOT NULL DEFAULT ''"
+                    )
+                db.execute("CREATE INDEX IF NOT EXISTS cache_host ON cache(host)")
                 # An existing shared cache can have the original three-column
                 # provider_denial table. Migrate in place, preserving active
                 # refusals across upgrades and independently running workers.
@@ -169,7 +182,9 @@ class PublicCache:
         status = PublicCache._denied(db, host)
         if status is not None:
             raise ProviderDenied(host, status)
-        row = db.execute("SELECT value,until FROM cache WHERE k=?", (key,)).fetchone()
+        row = db.execute(
+            "SELECT value,until FROM cache WHERE k=? AND host=?", (key, host)
+        ).fetchone()
         if row and row[1] > now:
             return row[0]
         cooldown = db.execute(
@@ -190,8 +205,8 @@ class PublicCache:
             if status is not None:
                 raise ProviderDenied(host, status)
             row = db.execute(
-                "SELECT value FROM cache WHERE k=? AND until>?",
-                (key, time.time()),
+                "SELECT value FROM cache WHERE k=? AND host=? AND until>?",
+                (key, host, time.time()),
             ).fetchone()
         return json.loads(row[0]) if row else None
 
@@ -258,10 +273,14 @@ class PublicCache:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT owner FROM lease WHERE k=?", (key,)).fetchone()
             if row and row[0] == owner:
-                if encoded is not None:
+                # A second in-flight GET may complete after another request
+                # from the same host was rejected. Never publish that older
+                # response into the shared cache while the policy fence holds.
+                if encoded is not None and self._denied(db, host) is None:
                     db.execute(
-                        "INSERT OR REPLACE INTO cache VALUES(?,?,?)",
-                        (key, encoded, time.time() + ttl),
+                        "INSERT OR REPLACE INTO cache(k,value,until,host) "
+                        "VALUES(?,?,?,?)",
+                        (key, encoded, time.time() + ttl, host),
                     )
                 if cooldown:
                     db.execute(
@@ -273,6 +292,10 @@ class PublicCache:
                         raise ValueError("Invalid public-provider denial")
                     # Atomic with lease release: another worker cannot read a
                     # cached response or reserve a request after the refusal.
+                    # Invalidate only this host's cached market responses.
+                    # They must not become available again after the denial
+                    # expires without a fresh authorized upstream GET.
+                    db.execute("DELETE FROM cache WHERE host=?", (host,))
                     # Replace an expired policy row before extending a fresh
                     # denial. This also prevents pre-reboot uptime values from
                     # leaking into a newly established refusal.
