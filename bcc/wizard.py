@@ -979,9 +979,14 @@ class BotWizard(QDialog):
                 # This never applies a configuration or accesses a worker.
                 from .constructor_review import constructor_change_review_text
                 review_text += "\n\n" + constructor_change_review_text(self.cfg, c)
-            self.review.setText(review_text)
             if has_grid and not lightweight:
                 self.update_grid_preview(c)
+                # Review the *effective* selected coin/section risk, not only
+                # global defaults.  The grid and SL shown here are computed
+                # by the same plan/effective policy used in the preview.
+                if self.preview.rowCount():
+                    review_text += "\n\n" + self.preview_status.text()
+            self.review.setText(review_text)
         except (ValueError, KeyError, TypeError) as e:
             self.summary.setText("Не удалось сформировать сводку: " + str(e))
             if hasattr(self, "summary_status"):
@@ -1414,15 +1419,29 @@ class BotWizard(QDialog):
                 self, "Монета рынка", "Выберите монету", symbols, editable=True)
             if not ok:
                 return
-            if symbol not in symbols:
-                self.error.setText("Монета отсутствует в конструкторе")
-                return
-            duration_text, ok = QInputDialog.getItem(
-                self, "Длительность рынка", "Выберите длительность в секундах",
-                [str(value) for value in durations], editable=False)
-            if not ok:
-                return
-            selected = market_key(cfg, symbol, int(duration_text))
+            # Accept a complete market key from keyboard/older Qt pickers,
+            # while retaining independent coin/duration selectors for large
+            # matrices.  Never silently reinterpret an invalid market key.
+            if ':' in symbol:
+                try:
+                    direct_coin, direct_seconds = symbol.rsplit(':', 1)
+                    direct_duration = int(direct_seconds)
+                except ValueError:
+                    direct_coin, direct_duration = None, None
+                if direct_coin not in symbols or direct_duration not in durations:
+                    self.error.setText("Рынок отсутствует в конструкторе")
+                    return
+                selected = market_key(cfg, direct_coin, direct_duration)
+            else:
+                if symbol not in symbols:
+                    self.error.setText("Монета отсутствует в конструкторе")
+                    return
+                duration_text, ok = QInputDialog.getItem(
+                    self, "Длительность рынка", "Выберите длительность в секундах",
+                    [str(value) for value in durations], editable=False)
+                if not ok:
+                    return
+                selected = market_key(cfg, symbol, int(duration_text))
         symbol, duration_text = selected.rsplit(":", 1)
         duration = int(duration_text)
         # Both the typed controls and the separate indicator GroupEditor must
