@@ -20,6 +20,23 @@ class DataUnavailable(RuntimeError):
     pass
 
 
+class SourceAccessDenied(DataUnavailable):
+    """An upstream provider denied access; not a missing candle or stale quote.
+
+    HTTP 451 is a legal/geographic denial, and 403 is an access denial. Neither
+    grants permission to substitute another exchange or trade on old data.
+    The structured status is intentionally free of request parameters/tokens.
+    """
+
+    def __init__(self, host, http_status):
+        self.host = host
+        self.http_status = int(http_status)
+        super().__init__(
+            f"{host}: HTTP {self.http_status}: публичный источник отклонил доступ; "
+            "торговые решения заблокированы"
+        )
+
+
 def executable_quote(book):
     """Use only positive-depth levels for marks, signals and liquidation.
 
@@ -128,6 +145,9 @@ class PublicData:
         self._lock = threading.RLock()
         self.stop_event = threading.Event()
         self.cooldowns = {}
+        # Independent monotonic denial fence. A system clock jump cannot
+        # accidentally re-enable a region-blocked venue or cached snapshot.
+        self._access_denials = {}
         self.cache = {}
         self.shared = None
         self._cache_warning_at = -math.inf
@@ -258,6 +278,13 @@ class PublicData:
                     raise DataUnavailable("Market Data Hub: нет свежего снимка (очередь или источник недоступен)")
                 self.stop_event.wait(0.05)
             raise DataUnavailable("Получение данных остановлено")
+        with self._lock:
+            denial = self._access_denials.get(host)
+            if denial is not None:
+                expires, http_status = denial
+                if time.monotonic() < expires:
+                    raise SourceAccessDenied(host, http_status)
+                del self._access_denials[host]
         now = time.time()
         key = (url, json.dumps(params, sort_keys=True))
         with self._lock:
@@ -305,7 +332,28 @@ class PublicData:
                 return received(cached, "shared_cache")
         try:
             response = self.session.get(url, params=params, timeout=(3, 8))
-            if response.status_code in (403, 418, 429):
+            if response.status_code in (403, 451):
+                # Never evade a provider's geographic/policy restrictions with
+                # mirrors, other venues, cached prices, or silent retries.
+                # The hub records a matching host-wide cooldown so hundreds
+                # of workers cannot retry the same denied endpoint.
+                try:
+                    requested = float(response.headers.get("Retry-After", 90))
+                except (TypeError, ValueError):
+                    requested = 90
+                delay = (3600 if response.status_code == 451 else
+                         max(90, min(3600, requested)))
+                with self._lock:
+                    self._access_denials[host] = (
+                        time.monotonic() + delay, response.status_code
+                    )
+                    self.cooldowns[host] = max(
+                        self.cooldowns.get(host, 0), time.time() + delay
+                    )
+                if self.shared:
+                    self._finish_shared(shared_key, owner, host, cooldown=delay)
+                raise SourceAccessDenied(host, response.status_code)
+            if response.status_code in (418, 429):
                 try:
                     delay = max(
                         90, min(3600, float(response.headers.get("Retry-After", 90)))

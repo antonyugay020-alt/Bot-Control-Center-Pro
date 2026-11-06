@@ -315,6 +315,45 @@ def valid_png_capture(path):
     return False
 
 
+def source_access_blockers(path):
+    """Record verified public-host denials without weakening the release gate.
+
+    GitHub-hosted Windows runners may be region-blocked by an exchange. That
+    cannot be fixed by changing venue, using cached prices or pretending a
+    403/451 is a valid PAPER fill. Keep a small structured, credential-free
+    diagnostic separate from software regression and from release approval.
+    """
+    from bcc.market import PublicData
+
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return []
+    if not isinstance(payload, dict) or not isinstance(payload.get("checks"), list):
+        return []
+    expected = {"Bybit USDT Futures", "Polymarket Gamma + CLOB", "Binance spot impulse"}
+    blockers = []
+    for row in payload["checks"]:
+        if (not isinstance(row, dict) or type(row.get("source")) is not str
+                or row["source"] not in expected):
+            continue
+        if row.get("status") != "RESTRICTED":
+            continue
+        details = row.get("restriction")
+        if (not isinstance(details, dict)
+                or type(details.get("host")) is not str
+                or details["host"] not in PublicData.HOSTS
+                or type(details.get("http_status")) is not int
+                or details["http_status"] not in (403, 451)):
+            continue
+        blockers.append({
+            "source": row["source"], "host": details["host"],
+            "http_status": details["http_status"],
+            "classification": "EXTERNAL_PROVIDER_ACCESS_DENIED",
+        })
+    return blockers
+
+
 def validate_required_evidence(output):
     """Fail closed on missing, malformed or incomplete *required* Windows evidence.
 
@@ -408,6 +447,11 @@ def validate_required_evidence(output):
         expected = {"Bybit USDT Futures", "Polymarket Gamma + CLOB", "Binance spot impulse"}
         if not isinstance(report, dict) or report.get("read_only") is not True or report.get("all_available") is not True:
             problems.append("public_sources.json: публичные источники не подтверждены")
+            for blocker in source_access_blockers(output / "public_sources.json"):
+                problems.append(
+                    "public_sources.json: " + blocker["source"] + " — HTTP "
+                    + str(blocker["http_status"]) + " (" + blocker["host"] + ")"
+                )
         else:
             passed = {x["source"] for x in report.get("checks", [])
                       if isinstance(x, dict) and x.get("status") == "PASS"}
@@ -522,6 +566,7 @@ def main():
         report["test_totals"] = read_test_totals(output / "tests.xml")
     except (OSError, ValueError, ET.ParseError):
         report["test_totals"] = None
+    report["source_access_blockers"] = source_access_blockers(output / "public_sources.json")
     report["evidence_errors"] = validate_required_evidence(output)
     if report["evidence_errors"]:
         report["steps"].append({

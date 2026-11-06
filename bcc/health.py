@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import VERSION
-from .market import DataUnavailable, PolymarketData, PublicData
+from .market import DataUnavailable, PolymarketData, PublicData, SourceAccessDenied
 from .market_clock import book_age_bounds, clock
 from .storage import atomic_json
 
@@ -78,6 +78,10 @@ def check_polymarket():
                 checked[outcome] = {"status": "PASS", "best_ask": best}
                 if candidate is None:
                     candidate = {"outcome": outcome, "best_ask": best, "book_at": stamp}
+            except SourceAccessDenied:
+                # A denied CLOB token is a venue-wide access failure, not an
+                # ordinary missing ask. Keep the HTTP status for the QA gate.
+                raise
             except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
                 checked[outcome] = {"status": "UNAVAILABLE", "error": str(exc)}
         # A broken token cannot be hidden by a healthy opposite outcome.
@@ -125,6 +129,11 @@ def check_sources():
             result.update(status="PASS", evidence=callback())
         except NoLiquidity as e:
             result.update(status="NO_LIQUIDITY", error=str(e))
+        except SourceAccessDenied as e:
+            result.update(
+                status="RESTRICTED", error=str(e),
+                restriction={"host": e.host, "http_status": e.http_status},
+            )
         except Exception as e:
             result.update(status="UNAVAILABLE", error=str(e))
         result["elapsed_seconds"] = round(time.monotonic() - start, 3)
@@ -144,6 +153,10 @@ def check_sources():
         "read_only": True,
         "trading_clock": clock.evidence,
         "checks": checks,
+        "source_restrictions": [
+            {"source": c["source"], **c["restriction"]}
+            for c in checks if c["status"] == "RESTRICTED"
+        ],
         "all_available": all(c["status"] == "PASS" for c in checks),
     }
     if any(
