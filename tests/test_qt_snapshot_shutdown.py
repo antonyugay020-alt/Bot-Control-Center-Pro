@@ -17,8 +17,12 @@ def test_native_monitor_snapshot_quiescence_releases_sqlite_before_cleanup(
 ):
     app = QApplication.instance() or QApplication([])
     db_file = tmp_path / "coordination.sqlite"
-    with sqlite3.connect(db_file) as db:
+    db = sqlite3.connect(db_file)
+    try:
         db.execute("CREATE TABLE snapshot (id INTEGER PRIMARY KEY)")
+        db.commit()
+    finally:
+        db.close()
     started = threading.Event()
     release = threading.Event()
 
