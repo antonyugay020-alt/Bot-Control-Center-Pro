@@ -1,0 +1,31 @@
+{
+  "kind": "INTERNAL_READONLY_PAPER_AUDIT",
+  "source": "paper_accounts.zip/paper_accounts.sqlite3",
+  "sha256": "e98e036f91c9ea67fabb9e816db72469fc60875891cf6e1bad130e2dc022cfa2",
+  "bytes": 1252458496,
+  "sqlite_quick_check": "ok",
+  "profiles": 1512,
+  "rows": 276966,
+  "completed": 276780,
+  "wins": 237781,
+  "losses": 38999,
+  "pending_excluded": 186,
+  "win_rate_pct": "85.90974781414842112869426982",
+  "pnl_usd": "-128538.4918",
+  "fees_usd": "39607.5570",
+  "spent_usd": "4819268.8970",
+  "roi_spent_pct": "-2.667178249381671719572447007",
+  "roi_initial_capital_pct": "-17.00244600529100529100529101",
+  "bad_counts": {
+    "duplicates_profile_market": 0,
+    "duplicates_profile_condition": 0
+  },
+  "group_counts": {
+    "asset": 7,
+    "impulse": 42,
+    "configured_ask": 243,
+    "actual_ask": 490,
+    "impulse_actual_ask": 2129
+  },
+  "note": "Independent read-only arithmetic verification of stored PAPER outcomes; external market proofs not reverified. No real orders."
+}

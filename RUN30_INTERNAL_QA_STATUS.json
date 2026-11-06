@@ -1,0 +1,39 @@
+{
+  "kind": "INTERNAL_SOURCE_CHECKPOINT_NOT_RELEASE",
+  "checkpoint": "BCC_CONSTRUCTOR_EFFECTIVE_PREFLIGHT_RUN30_INTERNAL_NOT_RELEASE",
+  "based_on": "BCC_CONSTRUCTOR_BOUNDED_DRAFT_LOCK_RUN29_INTERNAL_NOT_RELEASE.zip",
+  "changes": [
+    "Read-only all-selected effective-rule preflight for VELES coin/section and Polymarket coin/duration",
+    "Multi-error diagnostics for RSI/indicator rules, risk, ASK, entry timing including entry_seconds_before_close",
+    "Modern Qt review button and per-market invalid status/tooltip; changing fields invalidates prior check",
+    "No changes to workers, order routing, PAPER database or running bot settings"
+  ],
+  "qa": {
+    "targeted_constructor_tests": "995 PASS, 0 FAIL (confirmed exit code 0)",
+    "new_preflight_tests": "39 PASS, 0 FAIL (confirmed exit code 0; included in targeted set)",
+    "full_headless": "INCOMPLETE: stalled at ~9%, interrupted; no PASS claim",
+    "extended_constructor_poly_wizard": "INCOMPLETE: reached 100% progress, but process did not return a final exit status before timeout; no PASS claim",
+    "native_qt": "NOT_RUN: PySide6 unavailable in Linux environment",
+    "native_windows_qt_e2e": "NOT_RUN",
+    "release_ready": false,
+    "clean_unpack_targeted": "388 PASS, 0 FAIL, verified on clean unpack (confirmed exit code 0)"
+  },
+  "paper": {
+    "original_completed": 276780,
+    "original_pnl": "-128538.4918",
+    "original_roi_spent_pct": "-2.667178249381671719572447007",
+    "newer_completed": 4715,
+    "newer_pnl": "5097.5658",
+    "newer_roi_spent_pct": "4.286837101171048536358488189",
+    "newer_provisional": true,
+    "unchanged_since_run29": true
+  },
+  "safety": {
+    "live_settings_modified": false,
+    "orders_sent": false,
+    "paper_database_modified": false,
+    "user_release_created": false
+  },
+  "verified_at_utc": "2026-11-06T06:15:30.881043+00:00",
+  "source_manifest": "328 source files, SHA-256 PASS on clean unpack; final archive will be resealed after QA metadata"
+}

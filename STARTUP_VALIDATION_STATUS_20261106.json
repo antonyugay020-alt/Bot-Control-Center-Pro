@@ -1,0 +1,27 @@
+{
+  "release_certified": false,
+  "kind": "internal Windows desktop startup correction",
+  "changes": [
+    "START.bat: launches the actual Qt application independently from Codex and installs local runtime if needed",
+    "START_DIAGNOSTIC.bat: captures startup exceptions",
+    "launch.pyw: saves startup errors and provides error dialog"
+  ],
+  "verified_in_linux": {
+    "python_compileall": "PASS",
+    "launcher_regression_tests": "23 passed",
+    "startup_targeted_tests": "12 passed",
+    "additional_start_tests": "25 passed",
+    "additional_tests": "42 passed"
+  },
+  "not_verified": [
+    "Complete Windows Qt E2E",
+    "GUI creation/edit/start/stop/monitoring on Windows",
+    "All 3000+ pytest cases",
+    "Codex workspace-write permissions"
+  ],
+  "test_limitations": [
+    "PySide6 not available in this runtime; 11 Qt suites cannot collect",
+    "Longer non-Qt suite had errors and did not complete in execution window"
+  ],
+  "safety": "PAPER-only; do not use as LIVE trading release."
+}

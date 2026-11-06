@@ -1,0 +1,206 @@
+"""Cross-process public-read cache, single flight and exchange cooldowns."""
+
+import hashlib
+import json
+import sqlite3
+import threading
+import time
+import uuid
+from contextlib import contextmanager
+from pathlib import Path
+
+
+class CacheBusy(RuntimeError):
+    pass
+
+
+class PublicCache:
+    _guards = {}
+    _guards_lock = threading.Lock()
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._ready = False
+        self._setup_lock = threading.Lock()
+        self._next_cleanup = 0
+        with self._guards_lock:
+            self._guard = self._guards.setdefault(
+                str(self.path.resolve()), threading.RLock()
+            )
+        self._connection = None
+        self.stats = {
+            "connections": 0,
+            "operations": 0,
+            "local_busy": 0,
+            "sqlite_busy": 0,
+        }
+
+    def _ensure_schema(self):
+        with self._setup_lock:
+            if self._ready:
+                return
+            with self.db() as db:
+                # A WAL-mode *change* requires an exclusive SQLite lock. The
+                # HubRegistry may already have initialized this database and
+                # workers may be reading it: never issue a redundant change.
+                mode = db.execute("PRAGMA journal_mode").fetchone()[0]
+                if mode.lower() != "wal":
+                    mode = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+                    if mode.lower() != "wal":
+                        raise CacheBusy("Не удалось включить совместный доступ к кэшу")
+                db.executescript(
+                    "CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY,value TEXT NOT NULL,until REAL NOT NULL);"
+                    "CREATE TABLE IF NOT EXISTS lease(k TEXT PRIMARY KEY,owner TEXT NOT NULL,until REAL NOT NULL);"
+                    "CREATE TABLE IF NOT EXISTS cooldown(host TEXT PRIMARY KEY,until REAL NOT NULL);"
+                    "CREATE TABLE IF NOT EXISTS request_budget(host TEXT PRIMARY KEY,slot INTEGER NOT NULL,count INTEGER NOT NULL);"
+                    "CREATE INDEX IF NOT EXISTS cache_until ON cache(until);"
+                    "CREATE INDEX IF NOT EXISTS lease_until ON lease(until);"
+                )
+            self._ready = True
+
+    @contextmanager
+    def db(self):
+        # One short SQL operation at a time within this process. Keeping the
+        # connection open avoids the last-connection WAL checkpoint on every GET.
+        if not self._guard.acquire(timeout=0.2):
+            self.stats["local_busy"] += 1
+            raise CacheBusy("Общий кэш занят другим запросом этого процесса")
+        try:
+            if self._connection is None:
+                self._connection = sqlite3.connect(
+                    self.path,
+                    timeout=0.2,
+                    isolation_level=None,
+                    check_same_thread=False,
+                )
+                self.stats["connections"] += 1
+                self._connection.execute("PRAGMA busy_timeout=200")
+                self._connection.execute("PRAGMA synchronous=NORMAL")
+            self.stats["operations"] += 1
+            yield self._connection
+        except sqlite3.Error as exc:
+            self.stats["sqlite_busy"] += 1
+            raise CacheBusy(
+                "Общий кэш публичных данных недоступен: " + str(exc)
+            ) from exc
+        finally:
+            try:
+                if self._connection is not None and self._connection.in_transaction:
+                    self._connection.rollback()
+            finally:
+                self._guard.release()
+
+    def close(self):
+        with self._guard:
+            if self._connection is not None:
+                self._connection.close()
+                self._connection = None
+                self._ready = False
+
+    @staticmethod
+    def _cached(db, key, host, now):
+        # A public response already cached inside its validated TTL does not
+        # consume exchange request budget. A remote cooldown must prevent new
+        # HTTP requests, not invalidate data that was fetched before it.
+        row = db.execute("SELECT value,until FROM cache WHERE k=?", (key,)).fetchone()
+        if row and row[1] > now:
+            return row[0]
+        cooldown = db.execute(
+            "SELECT until FROM cooldown WHERE host=?", (host,)
+        ).fetchone()
+        if cooldown and cooldown[0] > now:
+            raise CacheBusy("Общий лимит запросов " + host)
+        return None
+
+    def read_fresh(self, url, params, host):
+        """Read-only cache lookup; never reserves a lease or request budget."""
+        key = hashlib.sha256(
+            json.dumps([url, params], sort_keys=True).encode()
+        ).hexdigest()
+        self._ensure_schema()
+        with self.db() as db:
+            row = db.execute(
+                "SELECT value FROM cache WHERE k=? AND until>?",
+                (key, time.time()),
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def begin(self, url, params, host, *, priority=False):
+        if type(priority) is not bool:
+            raise ValueError('Public GET priority must be boolean')
+        key = hashlib.sha256(
+            json.dumps([url, params], sort_keys=True).encode()
+        ).hexdigest()
+        self._ensure_schema()
+        owner = uuid.uuid4().hex
+        with self.db() as db:
+            # Cache hits are read-only. Only a miss reserves the writer for the
+            # atomic lease and host budget, then releases it before HTTP/JSON.
+            value = self._cached(db, key, host, time.time())
+            if value is not None:
+                return key, None, json.loads(value)
+            db.execute("BEGIN IMMEDIATE")
+            now = time.time()
+            value = self._cached(db, key, host, now)
+            if value is not None:
+                db.commit()
+                return key, None, json.loads(value)
+            lease = db.execute("SELECT until FROM lease WHERE k=?", (key,)).fetchone()
+            if lease and lease[0] > now:
+                raise CacheBusy("Данные уже запрашиваются другим ботом")
+            slot = int(now)
+            budget = db.execute(
+                "SELECT slot,count FROM request_budget WHERE host=?", (host,)
+            ).fetchone()
+            maximum = 10 if host == "api.binance.com" else 60
+            count = budget[1] if budget and budget[0] == slot else 0
+            # Keep one fifth of Bybit's existing shared request budget for
+            # executable books of OPEN PAPER positions. Background scanners
+            # cannot consume the reserved capacity, while priority requests
+            # still obey the same hard 60-per-second total budget.
+            reserved = 12 if host == "api.bybit.com" else 0
+            allowed = maximum if priority else maximum - reserved
+            if count >= allowed:
+                raise CacheBusy("Общий бюджет публичных запросов исчерпан; ожидание")
+            db.execute(
+                "INSERT OR REPLACE INTO request_budget VALUES(?,?,?)",
+                (host, slot, count + 1),
+            )
+            db.execute(
+                "INSERT OR REPLACE INTO lease VALUES(?,?,?)", (key, owner, now + 20)
+            )
+            db.commit()
+        return key, owner, None
+
+    def finish(self, key, owner, host, value=None, ttl=0, cooldown=0):
+        if owner is None:
+            return
+        # Serialization may be expensive for a long candle history. It must not
+        # run while blocking every other bot's short write transaction.
+        encoded = (
+            json.dumps(value, allow_nan=False)
+            if value is not None and ttl > 0
+            else None
+        )
+        self._ensure_schema()
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT owner FROM lease WHERE k=?", (key,)).fetchone()
+            if row and row[0] == owner:
+                if encoded is not None:
+                    db.execute(
+                        "INSERT OR REPLACE INTO cache VALUES(?,?,?)",
+                        (key, encoded, time.time() + ttl),
+                    )
+                if cooldown:
+                    db.execute(
+                        "INSERT INTO cooldown VALUES(?,?) ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)",
+                        (host, time.time() + cooldown),
+                    )
+                db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
+                if time.monotonic() >= self._next_cleanup:
+                    db.execute("DELETE FROM cache WHERE until<?", (time.time() - 120,))
+                    db.execute("DELETE FROM lease WHERE until<?", (time.time(),))
+                    self._next_cleanup = time.monotonic() + 30
+                db.commit()

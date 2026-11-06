@@ -1,0 +1,183 @@
+{
+  "base_archive": "Bot_Control_Center_Pro_v17_0_9_Windows_Check_11(1).zip",
+  "date": "2026-11-04",
+  "release_ready": false,
+  "requirements": [
+    {
+      "scope": "Polymarket constructor and canonical entry fields",
+      "code": [
+        "bcc/wizard.py",
+        "bcc/widgets.py",
+        "bcc/config.py",
+        "bcc/polymarket_config.py"
+      ],
+      "local_verification": "Canonical Polymarket timing/ASK/impulse/coin-duration overrides: actual Qt constructors and PAPER engine regression; native Windows and public-source cycles still pending.",
+      "native_windows": "PENDING",
+      "public_market_cycles": "BLOCKED_NETWORK"
+    },
+    {
+      "scope": "Polymarket persistence, timing evidence and official settlement",
+      "code": [
+        "bcc/worker.py",
+        "bcc/storage.py",
+        "bcc/transfer.py"
+      ],
+      "local_verification": "Stop/restart/crash/import, frozen actual entry evidence and official settlement replay; tracked new positions additionally reconcile shares/cost/fee against receipts.",
+      "public_market_cycles": "PENDING"
+    },
+    {
+      "scope": "VELES composite signals, independent entry/exit, Close -> Open, DCA, recovery",
+      "code": [
+        "bcc/strategies.py",
+        "bcc/indicators.py",
+        "bcc/trading.py",
+        "bcc/widgets.py"
+      ],
+      "local_verification": "Composite/independent signals, RSI 2m entry/1m exit, six timeframes, continuous handoff and multi-account replay. Complete comparison with VELES semantics remains open.",
+      "native_windows": "PENDING"
+    },
+    {
+      "scope": "VELES exact financial fidelity",
+      "status": "IMPLEMENTED_PUBLIC_MARGIN_MODEL_ACCEPTANCE_PENDING",
+      "remaining": [
+        "full native Windows and public-data acceptance",
+        "exact bankruptcy-price takeover/settlement, full UTA netting and ADL fidelity beyond PAPER depth execution",
+        "complete comparison with VELES constructor/indicator semantics"
+      ],
+      "implemented": [
+        "public Bybit mark-price and risk tiers",
+        "tier deduction allocated once across sections",
+        "dynamic Cross IM and fixed Isolated collateral",
+        "future DCA and fee reserves",
+        "preflight actual-depth margin validation",
+        "fail-closed increases when margin data is missing",
+        "separate PAPER isolated gap-loss limit evidence",
+        "same mark valuation in both Qt monitors",
+        "pending liquidation persisted through Stop and process crash",
+        "durable tier reduction with absolute remaining-quantity target and post-reduction collateral check",
+        "cross increasing-order cancellation and account-wide reassessment",
+        "IOC lot-aware liquidation chunks; manual close goal survives max-order chunks",
+        "restart/crash/import preserve stage and already executed reduction",
+        "public batch marks refresh exposed peers; strict model activated before first worker tick",
+        "active liquidation visible in Qt; other positions keep protective exits"
+      ],
+      "local_verification": "Public margin/risk-tier, DCA reserve, Cross/Isolated, staged liquidation, crash/import, manual close and shared risk regression. Exact exchange takeover/UTA/ADL and native acceptance remain open."
+    },
+    {
+      "scope": "MY_BOTS lifecycle, monitoring, transfers, settings inspection, sorting",
+      "code": [
+        "bcc/ui.py",
+        "bcc/lifecycle.py",
+        "bcc/monitoring.py",
+        "bcc/transfer.py",
+        "bcc/inspection.py"
+      ],
+      "local_verification": "Real offscreen Modern Qt create/edit/import/export/monitor, owner-isolated command/lifecycle tests and batch transfer races; native Windows E2E remains pending.",
+      "native_windows": "PENDING"
+    },
+    {
+      "scope": "Shared risk across worker processes",
+      "code": [
+        "bcc/shared_risk.py",
+        "bcc/runtime.py",
+        "bcc/trading.py",
+        "bcc/strategies.py",
+        "bcc/worker.py"
+      ],
+      "default_policy": {
+        "max_positions": 0,
+        "max_committed_usdt": 0
+      },
+      "local_verification": "Cross-process admission/reserves plus Coordinator START/STOP policy-publication boundary and stopped account preservation.",
+      "native_windows": "PENDING"
+    },
+    {
+      "scope": "PAPER asset journal and complete multi-owner transfer admission",
+      "code": [
+        "bcc/position_journal.py",
+        "bcc/storage.py",
+        "bcc/trading.py",
+        "bcc/funding.py",
+        "bcc/worker.py",
+        "bcc/supervisor.py",
+        "bcc/transfer.py"
+      ],
+      "local_verification": "test_position_journal_recovery.py and test_transfer_command_boundary.py; full regression evidence and exact source preserved together.",
+      "legacy_compatibility": "Existing untagged cycles retain original cash audit; history is not rewritten. New cycles carry receipt identities.",
+      "native_windows": "PENDING"
+    },
+    {
+      "scope": "Independent interactive acceptance lifetime, Qt close/reopen and scoped shutdown",
+      "code": [
+        "tools/acceptance_session.py",
+        "tools/windows_check.py",
+        "tests/test_acceptance_session_system.py",
+        "tests/test_native_dashboard_workflow_qt.py",
+        "tools/verify_package.py",
+        "tools/verify_windows.py",
+        "tests/test_source_stage_integrity.py"
+      ],
+      "local_verification": "Owned guardian and real worker/account, neighbor isolation, scoped Hub stop, failed/forced cleanup, queued start, retirement; separate Qt interpreters close/reopen without worker restart. Full current evidence is preserved with the exact source checkpoint.",
+      "native_windows": "PENDING_CURRENT_SOURCE",
+      "source_integrity": "Immutable initial manifest witness checked between stages, before/after manual Qt and at completion; changing code plus resealing requires a new acceptance run."
+    },
+    {
+      "scope": "Locale-independent evidence and independent exposed-position quote delivery",
+      "code": [
+        "bcc/scheduler.py",
+        "bcc/runtime_paths.py",
+        "tools/run_partitioned_tests.py",
+        "tools/qa_locale.py",
+        "tests/test_quote_history_isolation.py",
+        "tests/test_text_encoding_contract.py",
+        "tests/test_failed_shard_diagnostics.py"
+      ],
+      "local_verification": "Exact current clean-copy regression recorded with source checkpoint; CP1251 emulation is not native Windows evidence.",
+      "native_windows": "PENDING_CURRENT_SOURCE",
+      "live_incident": "Current dashboard quote failures require BCC_CURRENT_REPORT from the same running window."
+    }
+  ],
+  "constraints": [
+    "No real orders",
+    "No user account or trading configuration modified",
+    "No profitability analysis published",
+    "No release or DEV build delivered"
+  ],
+  "integration_status": "INTEGRATED_CURRENT_FULL_REGRESSION_RECORDED_IN_CHECKPOINT",
+  "verification_evidence": "Exact current source fingerprint, complete JUnit, offscreen Qt and process cleanup evidence are preserved with the canonical source checkpoint. Historical PASS counts in earlier metadata do not certify changed source.",
+  "archived_windows_evidence": {
+    "source_sha256": "076974070f14b316c4464a7281ec484eecadaa8922adfa9da5958fdd1feb7776",
+    "test_totals": {
+      "tests": 1364,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 5
+    },
+    "passed": 1359,
+    "native_qt": true,
+    "constructors": 8,
+    "public_source_health": "PASS_AT_RUN",
+    "manual_public_paper_cycles": "NOT_CONFIRMED",
+    "applies_to_current_source": false
+  },
+  "received_windows_201409": {
+    "source_sha256": "842cf689f1b235b71ab49050c2886833f48a04f0918a37ba32acace580a4a719",
+    "report_archive": "BCC_VALIDATION_RESULTS_20261104_201409_693772.zip",
+    "library_file_id": "libfile_c85213f9c4b08191815346625000af75",
+    "archive_sha256": "20524c21ab79d0d8affb84b02261abc3e7333482faf30aa1780901130bebdf1c",
+    "status": "WINDOWS_AUTOMATION_FAILED",
+    "test_totals": {
+      "tests": 1466,
+      "failures": 5,
+      "errors": 0,
+      "skipped": 5
+    },
+    "passed": 1456,
+    "inventory": "EXACT_MATCH_ACROSS_ALL_SHARDS",
+    "classification": "Five locale-dependent report readers: UTF-8 decoded with CP1251; one silent status mojibake and four UnicodeDecodeError failures",
+    "missing_aggregate": "Complete failed shard XML was incorrectly discarded from merged JUnit",
+    "manual_acceptance": "NOT_RUN",
+    "public_source_health": "NOT_RUN_AFTER_TEST_FAILURE",
+    "release_ready": false
+  }
+}

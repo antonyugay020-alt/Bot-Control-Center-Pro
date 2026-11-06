@@ -1,0 +1,44 @@
+{
+  "kind": "INTERNAL_SOURCE_CHECKPOINT_NOT_RELEASE",
+  "checkpoint": "BCC_CONSTRUCTOR_SECTIONS_TRANSACTION_RUN24_INTERNAL_NOT_RELEASE",
+  "based_on": "BCC_CONSTRUCTOR_PROVENANCE_RUN23_INTERNAL_NOT_RELEASE.zip",
+  "changes": [
+    "Unified pure VELES/Polymarket section-transaction staging and all-coin inherited risk/signal validation before Qt acceptance",
+    "Modern Qt VELES range edit, group bulk edit, add, generate and remove use one side-effect-free validator before committing widget state",
+    "Atomic rejection keeps the existing editor data unchanged on invalid RSI, parent identity, per-coin DCA/risk or signals",
+    "Polymarket entry_seconds_before_close and market overrides unchanged; regression coverage for preservation"
+  ],
+  "paper": {
+    "source": "paper_accounts.zip/paper_accounts.sqlite3",
+    "sha256": "e98e036f91c9ea67fabb9e816db72469fc60875891cf6e1bad130e2dc022cfa2",
+    "completed": 276780,
+    "pending_excluded": 186,
+    "new_snapshot": false,
+    "read_only": true,
+    "sqlite_integrity_check": "PASS",
+    "group_types": [
+      "asset",
+      "impulse",
+      "configured_ask",
+      "actual_ask",
+      "impulse_actual_ask"
+    ]
+  },
+  "qa": {
+    "constructor_headless": "977 PASS",
+    "polymarket_headless": "157 PASS",
+    "veles_core_headless": "114 PASS",
+    "unique_total": 1248,
+    "targeted_overlap": "462 PASS",
+    "monolithic_full": "NOT_COMPLETE: timeout",
+    "legacy_800_replay": "NOT_COMPLETE: timeout",
+    "qt_modules": "NOT_RUN: PySide6 absent",
+    "windows_qt_e2e": "NOT_RUN",
+    "release_ready": false
+  },
+  "safety": {
+    "running_bot_settings_modified": false,
+    "orders_sent": false,
+    "user_release_created": false
+  }
+}

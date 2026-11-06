@@ -1,0 +1,36 @@
+{
+  "kind": "INTERNAL_SOURCE_CHECKPOINT_NOT_RELEASE",
+  "checkpoint": "BCC_CONSTRUCTOR_BOUNDED_DRAFT_LOCK_RUN29_INTERNAL_NOT_RELEASE",
+  "based_on": "BCC_CONSTRUCTOR_PUBLICATION_GATEWAY_RUN28_INTERNAL_NOT_RELEASE.zip",
+  "changes": [
+    "Bounded cross-process Windows/POSIX draft locks prevent indefinite Qt editor freezes",
+    "One lock protects CAS save/delete with explicit contention timeout and crash recovery",
+    "No trading configuration or worker paths changed; entry_seconds_before_close preserved"
+  ],
+  "qa": {
+    "constructor_headless": "1576 PASS, 0 FAIL",
+    "targeted_lock_and_lifecycle": "275 PASS, 0 FAIL",
+    "full_headless": "2946 PASS, 0 FAIL (after reseal; excludes 11 PySide6 modules and heavy VELES replay)",
+    "original_full_headless_before_reseal": "2944 PASS, 2 FAIL due stale source SHA256; rerun after reseal 2946 PASS",
+    "native_qt": "NOT_RUN: PySide6 unavailable in Linux environment",
+    "native_windows_qt_e2e": "NOT_RUN",
+    "release_ready": false
+  },
+  "paper": {
+    "original_completed": 276780,
+    "original_pnl": "-128538.4918",
+    "original_roi_spent_pct": "-2.667178249381671719572447007",
+    "newer_completed": 4715,
+    "newer_pnl": "5097.5658",
+    "newer_roi_spent_pct": "4.286837101171048536358488189",
+    "newer_provisional": true,
+    "snapshots_unchanged_since_run28": true
+  },
+  "safety": {
+    "live_settings_modified": false,
+    "orders_sent": false,
+    "paper_database_modified": false,
+    "user_release_created": false
+  },
+  "verified_at_utc": "2026-11-06T05:26:53.773831+00:00"
+}

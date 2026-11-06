@@ -1,0 +1,41 @@
+{
+  "kind": "INTERNAL_SOURCE_CHECKPOINT_NOT_RELEASE",
+  "checkpoint": "BCC_CONSTRUCTOR_UNIFIED_POSTCOMMIT_RUN27_INTERNAL_NOT_RELEASE",
+  "based_on": "BCC_CONSTRUCTOR_DORMANT_REBASE_RUN26_INTERNAL_NOT_RELEASE.zip",
+  "changes": [
+    "Unified Modern Qt post-commit handling for Create/Edit/Open Draft",
+    "External imported JSON is never deleted after a bot commit",
+    "Inactive VELES and Polymarket settings retained only in version-bound drafts, including entry_seconds_before_close",
+    "Non-VELES/Polymarket strategies bypass constructor-specific postcommit validation"
+  ],
+  "audit": {
+    "old_database_completed": 276780,
+    "old_pnl_usd": "-128538.4918",
+    "old_win_rate_pct": "85.9097478141",
+    "old_roi_spent_pct": "-2.6671782494",
+    "new_database_completed": 4715,
+    "new_pnl_usd": "5097.5658",
+    "new_win_rate_pct": "97.5185577943",
+    "new_roi_spent_pct": "4.2868371012",
+    "new_database_provisional": true,
+    "unchanged_sha256_from_run26": true
+  },
+  "tests": {
+    "constructor_headless": "1583 PASS",
+    "other_shards": "not certified as single continuous run",
+    "native_windows_qt_e2e": "NOT_RUN",
+    "native_qt_modules": "NOT_RUN: PySide6 missing",
+    "release_ready": false
+  },
+  "safety": {
+    "live_bot_settings_modified": false,
+    "external_orders_sent": false,
+    "paper_databases_modified": false,
+    "user_release_created": false
+  },
+  "blockers": [
+    "Windows native Qt E2E not executed",
+    "Full continuous regression not confirmed",
+    "Newer PAPER database corrupted in observations"
+  ]
+}

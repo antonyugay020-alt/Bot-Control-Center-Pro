@@ -1,0 +1,30 @@
+{
+  "kind": "INTERNAL_SOURCE_CHECKPOINT_NOT_RELEASE",
+  "checkpoint": "BCC_CONSTRUCTOR_WORKSPACE_INTEGRITY_RUN21_INTERNAL_NOT_RELEASE",
+  "based_on": "BCC_CONSTRUCTOR_WORKSPACE_PERSISTENCE_RUN20_INTERNAL_NOT_RELEASE.zip",
+  "changes": [
+    "Constructor draft structural validation now checks nested coin/section/market policy shapes while allowing unfinished values and dormant overrides.",
+    "Unconditional legacy draft saves fail closed on corrupted existing JSON or a different strategy; no silent overwrite.",
+    "Added 92 randomized and cross-strategy create/edit/reload, dormant policy, corruption and conflict tests."
+  ],
+  "paper": {
+    "sha256": "e98e036f91c9ea67fabb9e816db72469fc60875891cf6e1bad130e2dc022cfa2",
+    "completed": 276780,
+    "pending_excluded": 186,
+    "pnl_reconciled": false,
+    "readonly": true,
+    "new_snapshot": false
+  },
+  "qa": {
+    "targeted_headless": "813 PASS, 0 FAIL",
+    "full_headless": "NOT_PASS: OS-process ledger gate integration test stalled; full suite interrupted",
+    "qt_tests": "NOT_RUN: PySide6 unavailable (offline installation failed)",
+    "windows_qt_e2e": "NOT_RUN: Windows environment unavailable",
+    "release_ready": false
+  },
+  "safety": {
+    "running_bot_settings_modified": false,
+    "orders_sent": false,
+    "user_release_created": false
+  }
+}

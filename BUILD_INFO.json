@@ -1,0 +1,116 @@
+{
+  "app_version": "17.0.9-INTEGRATED-ARCH-WIP",
+  "package": "BCC_CONSTRUCTOR_EFFECTIVE_PREFLIGHT_RUN30_INTERNAL_NOT_RELEASE",
+  "based_on": "BCC_CONSTRUCTOR_BOUNDED_DRAFT_LOCK_RUN29_INTERNAL_NOT_RELEASE.zip",
+  "latest_native_windows_check": "2026-11-02 16:46+05 R6.25: 1040 passed, 1 failed, 5 skips; lone failure was invalid Popen PID assertion on Windows redirector. W1 fix unverified on native Windows.",
+  "changes": "R6.12: isolated Windows installer and guarded launcher; diagnostics for abnormal Qt exit; namespaced PAPER secret redaction; strict PAPER capital IDs/amounts and Hub TTL/JSON validation; QA-only verified market Hub process cleanup after each integration test; R6.13: single isolated Windows QA entrypoint for both CHECK and VALIDATE; regression gate from clean copy.; R6.13 QA gate now records actual sealed checkpoint; cross-strategy create/edit/clone and mass transfer ledger contract tests for all eight engines; R6.14: bounded cross-platform Market Data Hub spawn lock, closes lock handles on every error, atomic hub PID metadata publication, 10 regression cases for timeout and failure recovery. R6.15: safe optional GUI preferences; require worker launch claim; fail closed on existing Hub without a valid leader lease; revoke startup claim and terminate a child if worker registration fails; authenticated direct replay test harness. R6.16: malformed Hub PID metadata no longer crashes ensure_hub; refuse a second Hub when an active leader has no verifiable process identity; malformed/empty/incorrect STOP commands are ignored without stopping or crashing a PAPER worker; dedicated fault-injection regression. R6.17: fail-closed PAPER SQLite state/journal/marker/intent decoding across all read, transaction and account recovery paths, with corruption matrix regression. R6.18: mandatory native Qt Dashboard action coverage (visible start/stop buttons -> controlled independent PAPER subprocess -> global monitoring -> Stop/Restart -> SQLite state/history audit); Windows JUnit fails closed if scenario absent, skipped or failed; Linux QA excludes new Qt module explicitly. R6.19: prevent simulated consoleless-launch failure from showing a native blocking MessageBox in Windows pytest; show the GUI notification only in the genuine pythonw.exe launcher; return nonzero on failed Windows startup; improve error text; add regression coverage for normal Python interpreter. R6.20: avoid repeated SQLite WAL negotiation/HubRegistry construction during producer readiness, isolate client-only environment from Hub producer, bound cold Windows startup separately from spawn lock timeout, include dedicated child startup diagnostics in Windows QA failure artifacts, regression for these scenarios. R6.21: child-authored one-time Hub lease readiness receipt with nonce and verified subprocess identity; bounded Windows pytest shards and merged complete JUnit, dedicated longer VELES replay group, no skipped tests. R6.22: hub child issues authenticated startup receipt immediately after acquiring leader lease, before processing slow HTTP subscriptions; deterministic regression for receipt order and denied leadership. R6.23: strict corrupted chart recovery with no account resets; failed process metadata reported without crashing monitoring; malformed and mismatched market hub subscription data quarantined without killing healthy clients and repaired by next genuine subscription; public HTTPS URL credentials/fragments denied; dedicated multi-component fault matrix. R6.24: validate all required persisted PAPER mappings, pending entries and chart marker before decisions; race-safe lifecycle status snapshot after verified process identity; reject malformed transfer manifest/config shapes before import staging; new cross-module corruption/monitoring/import fault matrix. R6.25: cross-check SQLite execution index against durable JSON events for audit, history and effective capital; validate pending events before cash arithmetic and transaction publication; reject private credentials in durable execution payloads; isolated failure-injection matrix. Windows QA inventory guard: default requires every Qt module; explicit Linux --headless permits non-Qt shards without weakening the native gate. Verified redirector-aware Market Data Hub startup: authenticate actual interpreter PID by fresh child challenge, exact cache/ready-file CLI, process lifetime; persist genuine service identity and clean it on failed registration.",
+  "native_qt_regression": "NOT_RUN: PySide6 unavailable on Linux; Windows Qt E2E mandatory",
+  "live_implemented": false,
+  "runtime_accounts_included": false,
+  "status": "INTERNAL SOURCE CHECKPOINT - NOT RELEASE; Windows Qt E2E NOT RUN",
+  "audit_followup": "R6.6 command durability + crash replay + chart snapshot + positive-depth executable quote integrity",
+  "live_market_paper_acceptance": "PENDING_WINDOWS_REAL_LOAD",
+  "headless_test_suite": "1193 passed (full continuous headless run, 2026-11-03; 6 Qt modules excluded)",
+  "qa_followup": "W1: correct Windows Hub redirector test identity and terminate authenticated real service; native Windows and fresh-market PAPER recheck required.",
+  "report_collection": "Test launcher auto-exports Hub/GUI/PAPER diagnostics after close; REPORT_NOW.bat supports post-exit collection; public cache includes aggregate subscription backlog.",
+  "test_w2_native": "NOT_RUN_WINDOWS",
+  "market_hub_architecture": "Position mark urgency propagated from scheduler via PublicData GET subscription to HubRegistry; SQLite priority lease 15s, renewed 5s; 5/6 urgent slots reserved max, one normal slot; risk mode pauses discovery while positions lack fresh marks; mark-only fast tick protects existing positions without waiting for candles; no stale order execution and exchange request budget unchanged.",
+  "load_limit": "The observed ~2500 public subscriptions across two running bots cannot all meet seconds-level quote freshness on one REST producer. Queue health is reported; overloaded symbols fail closed until reliable capacity is demonstrated.",
+  "w3_integrated_changes": {
+    "polymarket": "Recognized transient external/SQLite lock failures rollback entire PAPER tick and preserve worker; other exceptions remain fatal",
+    "market_health": "Polymarket external market errors reflected in process heartbeat while worker continues, never pretend healthy fills",
+    "market_hub": "Transient SQLite locks at startup leader claim, queue and subscription liveness do not terminate hub; other SQLite failures remain fatal",
+    "reports": "Worker traces copied and sanitized before reading process.json; invalid process metadata does not prevent PAPER ledger backup",
+    "new_tests": "W3 integration recovery tests verify rollback, diagnostic persistence, Hub contention, fail-closed corruption, redaction"
+  },
+  "checkpoint": "BCC_CONSTRUCTOR_EFFECTIVE_PREFLIGHT_RUN30_INTERNAL_NOT_RELEASE",
+  "hub_pipeline": "Nonblocking per-future producer dispatch; exclude in-flight SQL keys; urgency and regular fairness; atomic fenced acknowledgement under leader lease",
+  "market_hub_w6": {
+    "position_capacity": "One execution slot always idle for newly urgent position requests during background-only slow HTTP",
+    "request_budget": "Bybit shared 60 GET/s hard cap, 48 max regular, 12 reserved for position-critical metadata/books",
+    "priority_propagation": "Trusted Hub urgent subscription -> producer worker-local -> PublicData -> PublicCache",
+    "safety": "No direct exchange fallback and no relaxed quote TTL; fail-closed execution remains",
+    "windows_e2e": "NOT_RUN"
+  },
+  "architecture_integration": "RuntimeService/Fleet/Supervisor/Worker/Ledger connected with bounded admission; GUI command-only",
+  "changes_latest": "Unified RuntimeService/Modern Qt bootstrap; desired-state START cancellation and worker token fencing across independent processes; readiness requires successful reconciliation or truly empty durable SQLite registry, not empty transient Fleet queue.",
+  "architecture_change_2026_11_03": "Atomic operator-command admission across lifecycle Start/Stop, Drain/Resume, and manual PAPER Close; SQLite transactions include registration, intent, revision and observations where applicable. GUI admission independent of process status.",
+  "release_gate": "BLOCKED: native Windows Qt E2E and full advertised GUI acceptance not executed",
+  "architecture_change_2026_11_03_retirement": "Transactional retired-owner tombstones and retirement revisions prevent stale UI commands resurrecting deleted bot identities across processes; same-owner reconciliation/deletion stripe prevents in-process races.",
+  "architecture_change_2026_11_03_retirement_recovery": "Register durable retirement of previously unknown filesystem owner; forbid resurrection; resume interrupted delete under exclusive lease; fail closed on invalid marker; log worker exit authority; repeat full headless regression isolated from terminal process group: 1152 PASS.",
+  "architectural_delta": "Modern Qt create/edit/copy/import use Supervisor as exclusive operator authority; new owner identities registered in Coordinator; existing STOP/retirement and ledger commit fencing preserved; headless full 1174 PASS",
+  "release_ready": false,
+  "native_windows_verified": false,
+  "source_integration_review": "INTEGRATION_REVIEW_RU.md",
+  "internal_run14_changes": [
+    "Modern Qt VELES/Polymarket final review now shows effective added/removed/changed coin-market/section combinations, not just raw JSON patches",
+    "Polymarket inherited entry_seconds_before_close and indicator_filter changes counted in review",
+    "VELES entry/exit and risk changes counted per coin/section without mutating running bots",
+    "44 new deterministic/randomized constructor review tests"
+  ],
+  "internal_run15_note": "Modern Qt Polymarket matrix: bounded preview, full two-axis market selection, persistence regression; not Windows Qt E2E",
+  "run16_changes": [
+    "Modern Qt VELES review and grid preview separated into independent UI state; selected coin/section can no longer erase effective-rule change audit",
+    "Polymarket before-close timing preserved without changing order, worker or live account state",
+    "New native Qt integration tests for VELES/Polymarket review and headless structural invariant"
+  ],
+  "run16_release_status": "INTERNAL_NOT_RELEASE; native Windows Qt E2E not performed",
+  "run17_changes": [
+    "Effective policy review is now exhaustive for all persisted Polymarket fields and VELES settings",
+    "Inherited changes classified by timing mode/window/cutoff, impulse, ASK, stake, fees, disabled, filters, VELES risk, execution, DCA/orders, profit/stop, section state",
+    "Shadowed VELES section overrides no longer create false effective-change counts",
+    "86 new deterministic and randomized headless checks of constructor policy review",
+    "Worker stop/restart regression compares all economic fields strictly while permitting newer market-evidence observation timestamp"
+  ],
+  "run17_release_status": "INTERNAL_NOT_RELEASE; native Windows Qt E2E not performed",
+  "run18_changes": [
+    "Common structural and privacy guard for unfinished VELES/Polymarket draft save/reopen; preserves invalid trading values for user correction but never publishes them.",
+    "Cross-strategy and malformed draft rejection before Qt opening; never silently discard or overwrite corrupted draft.",
+    "Draft save uses atomic JSON and verifies lossless reload.",
+    "Edited bot confirmation now includes effective inherited VELES/Polymarket policy changes, including entry_seconds_before_close.",
+    "82 new headless tests of draft persistence, recovery, invalid input, and repository roundtrip."
+  ],
+  "run18_release_status": "INTERNAL ONLY: Windows Qt E2E not run; no user release",
+  "run18_headless_result": "1933 PASS, 1 FAIL (test_r611_qa_process_integrity.py::test_timeout_kills_descendant_process_group); isolated recheck 1 PASS; no full clean pass.",
+  "run18_targeted_result": "377 PASS, 0 FAIL; new draft tests 82 PASS",
+  "run18_windows_qt_e2e": "NOT_RUN: Windows/PySide6 unavailable",
+  "run22_changes": [
+    "Version-bound per-bot edit drafts for existing VELES and Polymarket bots in Modern Qt",
+    "CAS draft persistence and strict provenance guard; no worker/config writes until Supervisor.save_bot",
+    "No silent resume after config revision change; open-draft refuses edit workspaces",
+    "92 new randomized and deterministic non-trading edit/reload tests"
+  ],
+  "run23_changes": "Edit workspace provenance envelope for bot owner + source digest; shared draft CAS and atomic persistence; legacy explicit resume migration; 95 randomized VELES/Polymarket non-trading tests.",
+  "run24_changes": [
+    "Unified pure VELES/Polymarket section-transaction staging and all-coin inherited risk/signal validation before Qt acceptance",
+    "Modern Qt VELES range edit, group bulk edit, add, generate and remove use one side-effect-free validator before committing widget state",
+    "Atomic rejection keeps the existing editor data unchanged on invalid RSI, parent identity, per-coin DCA/risk or signals",
+    "Polymarket entry_seconds_before_close and market overrides unchanged; regression coverage for preservation"
+  ],
+  "run24_qa": "1248 unique headless tests PASS across constructor, Polymarket and VELES-core groups; monolithic full suite timed out; Qt/Windows E2E NOT_RUN",
+  "run25_changes": [
+    "Unified VELES/Polymarket side-effect-free full constructor transaction: settings, sections, symbols, durations, coin and market policy",
+    "Single validated publication boundary preserving inactive workspace rules and entry_seconds_before_close",
+    "Qt wizard commit now uses shared constructor publication contract",
+    "Independent randomized headless create/edit/draft tests and pending native Qt E2E tests"
+  ],
+  "run25_release_status": "INTERNAL_NOT_RELEASE; native Windows Qt E2E unavailable; no trading settings or orders changed",
+  "run26_changes": [
+    "Unified post-commit draft retention for Modern Qt Create/Edit",
+    "Digest-bound CAS migration of dormant coin, VELES section and Polymarket market policies without modifying executable bot settings",
+    "Pre-publication structural validation of inactive overrides and lossless timing values",
+    "Native Qt regression added but Windows E2E not executed"
+  ],
+  "run27_changes": [
+    "Unified Modern Qt postcommit retention for Create/Edit/Open Draft",
+    "Imported external JSON source never deleted",
+    "VELES/Polymarket dormant policies retained after publish; other strategies skip",
+    "entry_seconds_before_close preserved in version-bound edit drafts"
+  ],
+  "run29_changes": [
+    "Bounded OS-level non-blocking draft lock on Windows/POSIX with explicit contention timeout",
+    "Save/remove share the same sidecar lock and preserve draft on contention",
+    "Multiprocess tests verify concurrent Qt-style editors, release and crash recovery, with Polymarket before-close seconds retained"
+  ],
+  "run30_constructor_preflight": "Read-only multi-market/section effective-rule diagnostics in Modern Qt; explicit all-rules preflight; market-matrix validation status and entry_seconds_before_close checks; no worker or account mutation; Windows Qt E2E not run"
+}
