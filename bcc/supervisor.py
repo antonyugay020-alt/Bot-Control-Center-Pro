@@ -113,13 +113,14 @@ class Supervisor:
     def export_bots(self, folders, target, *, history=True):
         """Create an owner-consistent backup through the same control gate.
 
-        The snapshot of each bot must be ordered with STOP, delete, config
-        changes and PAPER commits. The transfer implementation intentionally
-        receives the admission contract instead of duplicating its logic.
+        All bot snapshots share one ordered admission boundary. Per-owner
+        admission would permit START/EDIT of an earlier bot while later
+        accounts were still being backed up, producing a non-atomic fleet
+        transfer. The transfer layer receives the canonical batch gate.
         """
         from .transfer import export_bots
         return export_bots(self.repo, folders, target, history=history,
-                           owner_gate=self._operator_mutation)
+                           source_owner_batch=self._operator_batch)
 
     def export_history_csv(self, folder, target, *, limit=1_000_000):
         """Publish an owner-consistent PAPER history as an atomic CSV file.
