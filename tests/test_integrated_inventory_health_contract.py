@@ -28,6 +28,12 @@ def test_ready_revoked_by_failed_inventory_even_with_successful_workers(tmp_path
             if self.n == 1: return True, True
             raise OSError('filesystem unavailable')
 
+    # The test must advance the scan clock deterministically. On Windows a
+    # second loop can execute in <10 microseconds and correctly defer the
+    # next scan, leaving the injected failure unobserved.
+    ticks = iter([0.0, 1.0])
+    monkeypatch.setattr(runtime_service.time, 'monotonic', lambda: next(ticks))
+
     class Stop:
         def __init__(self): self.n = 0
         def is_set(self): return self.n >= 2
