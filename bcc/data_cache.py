@@ -11,7 +11,16 @@ from pathlib import Path
 
 
 class CacheBusy(RuntimeError):
-    pass
+    """SQLite contention, shared rate budget, or a competing request lease."""
+
+
+class ProviderDenied(RuntimeError):
+    """A structured policy fence, distinct from retryable cache contention."""
+
+    def __init__(self, host, http_status):
+        self.host = host
+        self.http_status = int(http_status)
+        super().__init__(f"Источник отклонил публичный доступ: {host} (HTTP {http_status})")
 
 
 class PublicCache:
@@ -54,11 +63,28 @@ class PublicCache:
                     "CREATE TABLE IF NOT EXISTS lease(k TEXT PRIMARY KEY,owner TEXT NOT NULL,until REAL NOT NULL);"
                     "CREATE TABLE IF NOT EXISTS cooldown(host TEXT PRIMARY KEY,until REAL NOT NULL);"
                     "CREATE TABLE IF NOT EXISTS provider_denial("
-                    "host TEXT PRIMARY KEY,status INTEGER NOT NULL,until_mono REAL NOT NULL);"
+                    "host TEXT PRIMARY KEY,status INTEGER NOT NULL,until_mono REAL NOT NULL,"
+                    "recorded_mono REAL NOT NULL DEFAULT 0,until_utc REAL NOT NULL DEFAULT 0);"
                     "CREATE TABLE IF NOT EXISTS request_budget(host TEXT PRIMARY KEY,slot INTEGER NOT NULL,count INTEGER NOT NULL);"
                     "CREATE INDEX IF NOT EXISTS cache_until ON cache(until);"
                     "CREATE INDEX IF NOT EXISTS lease_until ON lease(until);"
                 )
+                # An existing shared cache can have the original three-column
+                # provider_denial table. Migrate in place, preserving active
+                # refusals across upgrades and independently running workers.
+                columns = {
+                    row[1] for row in db.execute("PRAGMA table_info(provider_denial)")
+                }
+                if "recorded_mono" not in columns:
+                    db.execute(
+                        "ALTER TABLE provider_denial ADD COLUMN "
+                        "recorded_mono REAL NOT NULL DEFAULT 0"
+                    )
+                if "until_utc" not in columns:
+                    db.execute(
+                        "ALTER TABLE provider_denial ADD COLUMN "
+                        "until_utc REAL NOT NULL DEFAULT 0"
+                    )
             self._ready = True
 
     @contextmanager
@@ -103,12 +129,22 @@ class PublicCache:
     @staticmethod
     def _denied(db, host):
         row = db.execute(
-            "SELECT status,until_mono FROM provider_denial WHERE host=?", (host,)
+            "SELECT status,until_mono,recorded_mono,until_utc "
+            "FROM provider_denial WHERE host=?", (host,)
         ).fetchone()
-        return int(row[0]) if row and time.monotonic() < row[1] else None
+        if row is None:
+            return None
+        now_mono = time.monotonic()
+        if row[2] and now_mono < row[2]:
+            # Monotonic time resets after an OS restart. An old uptime-based
+            # deadline cannot be compared with a new boot's uptime. For this
+            # case only, use the persisted UTC deadline rather than retaining
+            # a denial for the previous boot's entire uptime.
+            return int(row[0]) if time.time() < row[3] else None
+        return int(row[0]) if now_mono < row[1] else None
 
     def denied_status(self, host):
-        """Share policy refusals across processes; do not use wall-clock expiry."""
+        """Share policy refusals across workers, with restart-aware expiry."""
         self._ensure_schema()
         with self.db() as db:
             return self._denied(db, host)
@@ -118,8 +154,9 @@ class PublicCache:
         # A public response already cached inside its validated TTL does not
         # consume exchange request budget. A remote cooldown must prevent new
         # HTTP requests, not invalidate data that was fetched before it.
-        if PublicCache._denied(db, host) is not None:
-            raise CacheBusy("Источник отклонил публичный доступ: " + host)
+        status = PublicCache._denied(db, host)
+        if status is not None:
+            raise ProviderDenied(host, status)
         row = db.execute("SELECT value,until FROM cache WHERE k=?", (key,)).fetchone()
         if row and row[1] > now:
             return row[0]
@@ -137,8 +174,9 @@ class PublicCache:
         ).hexdigest()
         self._ensure_schema()
         with self.db() as db:
-            if self._denied(db, host) is not None:
-                raise CacheBusy("Источник отклонил публичный доступ: " + host)
+            status = self._denied(db, host)
+            if status is not None:
+                raise ProviderDenied(host, status)
             row = db.execute(
                 "SELECT value FROM cache WHERE k=? AND until>?",
                 (key, time.time()),
@@ -223,13 +261,26 @@ class PublicCache:
                         raise ValueError("Invalid public-provider denial")
                     # Atomic with lease release: another worker cannot read a
                     # cached response or reserve a request after the refusal.
+                    # Replace an expired policy row before extending a fresh
+                    # denial. This also prevents pre-reboot uptime values from
+                    # leaking into a newly established refusal.
+                    if self._denied(db, host) is None:
+                        db.execute("DELETE FROM provider_denial WHERE host=?", (host,))
+                    now_mono = time.monotonic()
+                    now_utc = time.time()
                     db.execute(
-                        "INSERT INTO provider_denial(host,status,until_mono) VALUES(?,?,?) "
+                        "INSERT INTO provider_denial("
+                        "host,status,until_mono,recorded_mono,until_utc"
+                        ") VALUES(?,?,?,?,?) "
                         "ON CONFLICT(host) DO UPDATE SET "
-                        "status=CASE WHEN excluded.until_mono>until_mono "
-                        "THEN excluded.status ELSE status END,"
-                        "until_mono=max(until_mono,excluded.until_mono)",
-                        (host, denial_status, time.monotonic() + cooldown),
+                        "status=CASE WHEN provider_denial.status=451 OR "
+                        "excluded.status=451 THEN 451 ELSE 403 END,"
+                        "recorded_mono=CASE WHEN excluded.until_mono>until_mono "
+                        "THEN excluded.recorded_mono ELSE recorded_mono END,"
+                        "until_mono=max(until_mono,excluded.until_mono),"
+                        "until_utc=max(until_utc,excluded.until_utc)",
+                        (host, denial_status, now_mono + cooldown,
+                         now_mono, now_utc + cooldown),
                     )
                 db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
                 if time.monotonic() >= self._next_cleanup:
