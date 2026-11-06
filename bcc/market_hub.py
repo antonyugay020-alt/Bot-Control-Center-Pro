@@ -227,7 +227,7 @@ class HubRegistry:
                 with self._connect() as db:
                     db.execute('UPDATE hub_subscriptions SET last_error=?, next_due=? '
                                'WHERE k=? AND params=?',
-                               ('Invalid persisted subscription params',
+                               ('Invalid persisted public subscription',
                                 time.time() + 60, key, raw_params))
                 continue
             valid.append((key, url, params, is_urgent) if include_priority else (key, url, params))

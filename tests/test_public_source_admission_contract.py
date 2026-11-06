@@ -3,6 +3,8 @@
 No live HTTP, account keys, PAPER writes or trading operations are performed.
 """
 
+import time
+
 import pytest
 
 from bcc.market import PublicData
@@ -101,12 +103,12 @@ def test_legacy_hub_row_with_private_url_is_quarantined_before_dispatch(tmp_path
         db.execute(
             "INSERT INTO hub_subscriptions(k,url,params,active_until,next_due) "
             "VALUES(?,?,?,?,0)",
-            (key, private_url, params, __import__("time").time() + 300),
+            (key, private_url, params, time.time() + 300),
         )
     assert registry.due() == []
     with registry._connect() as db:
         error, retry_at = db.execute(
             "SELECT last_error,next_due FROM hub_subscriptions WHERE k=?", (key,)
         ).fetchone()
-    assert error == "Invalid persisted subscription params"
-    assert retry_at > __import__("time").time() + 30
+    assert error == "Invalid persisted public subscription"
+    assert retry_at > time.time() + 30
