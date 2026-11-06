@@ -49,7 +49,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 90
     env:
-      QT_QPA_PLATFORM: offscreen
+      QT_QPA_PLATFORM: windows
       PYTHONUNBUFFERED: '1'
       PYTHONUTF8: '1'
     steps:
@@ -68,13 +68,15 @@ jobs:
         run: |
           python -m compileall -q app.py bcc tools tests
           python -c "import PySide6, requests, psutil; print('runtime imports PASS')"
-      - name: Run complete Windows pytest
+      - name: Complete native Windows Qt and PAPER evidence gate
         shell: pwsh
-        run: python -m pytest tests -ra --tb=short --timeout=180 --junitxml=pytest-windows.xml
-      - name: Publish test results, including failures
+        run: |
+          $evidence = Join-Path $env:RUNNER_TEMP 'bcc_windows_native_qa'
+          python -m tools.verify_windows --output "$evidence"
+      - name: Publish native Windows evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bcc-windows-test-results
-          path: pytest-windows.xml
+          name: bcc-windows-native-qa
+          path: ${{ runner.temp }}/bcc_windows_native_qa/
           if-no-files-found: ignore
