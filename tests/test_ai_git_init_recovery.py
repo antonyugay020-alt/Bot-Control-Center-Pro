@@ -53,7 +53,7 @@ def test_fresh_init_needs_no_personal_git_identity(clean_bcc):
     assert git(root, 'config', '--local', 'user.email').stdout.strip() == 'bcc-automation@localhost.invalid'
     assert git(root, 'status', '--porcelain').stdout.strip() == ''
     assert pipeline.repo_check() == result['head']
-    assert len(git(root, 'ls-files').stdout.splitlines()) == len(json.loads((root / 'SHA256_MANIFEST.json').read_text())['files']) + 1
+    assert len(git(root, 'ls-files').stdout.splitlines()) == len(json.loads((root / 'SHA256_MANIFEST.json').read_text(encoding='utf-8'))['files']) + 1
     assert not (root / 'MY_BOTS').exists()
 
 
@@ -90,7 +90,7 @@ def test_refuses_unexpected_staged_files_and_preserves_them(clean_bcc):
     git(root, 'add', '--', 'custom-user-note.txt')
     with pytest.raises(pipeline.Blocked, match='посторонние файлы'):
         pipeline.init_repo()
-    assert (root / 'custom-user-note.txt').read_text() == 'do not destroy'
+    assert (root / 'custom-user-note.txt').read_text(encoding='utf-8') == 'do not destroy'
     assert 'custom-user-note.txt' in git(root, 'ls-files').stdout
     assert git(root, 'rev-parse', '--verify', 'HEAD', check=False).returncode != 0
 

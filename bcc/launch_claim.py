@@ -7,11 +7,12 @@ worker liveness solely from a PID: PID reuse and Windows venv redirectors exist.
 
 import math
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import process_os as psutil
 
-from .storage import BotBusy, atomic_json, load_json
+from .storage import BotBusy, BotLock, atomic_json, load_json
 
 CLAIM_FILE = "launch.request"
 STARTUP_GRACE = 120.0
@@ -111,6 +112,39 @@ def verify_worker_token(folder, token):
     claim = read_claim(folder)
     if claim is None or claim["token"] != token:
         raise BotBusy("Этот запуск не принадлежит подтверждённому контроллеру")
+
+
+@contextmanager
+def worker_startup_lease(folder, token, *, timeout=30.0, poll=0.025):
+    """Wait for the issuing controller to hand off BotLock to its worker.
+
+    The controller MUST publish a token while holding the same OS lock, then
+    spawn and register the child before releasing it. A nonblocking child
+    acquisition can otherwise lose that legitimate race and exit BotBusy.
+    Only a matching, still-pending token authorizes waiting; a revoked launch
+    fails immediately. The worker never reads or mutates PAPER state until it
+    acquires the exclusive OS lease and verifies the token *again* under it.
+    """
+    if type(timeout) not in (int, float) or not 0 < timeout <= STARTUP_GRACE:
+        raise ValueError('Invalid worker startup handoff timeout')
+    deadline = time.monotonic() + timeout
+    while True:
+        lease = BotLock(folder)
+        try:
+            lease.__enter__()
+        except BotBusy as exc:
+            verify_worker_token(folder, token)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise BotBusy('Контроллер не передал worker блокировку запуска') from exc
+            time.sleep(min(poll, remaining))
+        else:
+            break
+    try:
+        verify_worker_token(folder, token)
+        yield
+    finally:
+        lease.__exit__(None, None, None)
 
 
 def complete_launch(folder, token):

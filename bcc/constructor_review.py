@@ -191,3 +191,72 @@ def constructor_change_review_text(original, draft):
     if info["samples"]:
         rows.append("Примеры: " + ", ".join(info["samples"]))
     return "\n".join(rows)
+
+
+def effective_risk_review_text(draft, *, sample_limit=8):
+    """Stable, bounded review of resolved VELES risk across selected combinations.
+
+    Unlike the interactive grid preview, this report is a pure function of the
+    publishable draft. It cannot change when the operator browses a different
+    coin or section. The limit bounds *display*, never the bot's capacity.
+    """
+    if draft.get("strategy") != "VELES":
+        raise ValueError("Эффективный риск секций доступен только для VELES")
+    if type(sample_limit) is not int or not 0 <= sample_limit <= 100:
+        raise ValueError("Неверный предел примеров риска")
+    symbols = sorted(set(draft["symbols"]))
+    sections = sorted(draft["sections"], key=lambda item: item["id"])
+    total = len(symbols) * len(sections)
+    lines = [f"Примеры эффективных параметров риска: до {sample_limit} из {total} диапазонов."]
+    shown = 0
+    for symbol in symbols:
+        for section in sections:
+            if shown >= sample_limit:
+                break
+            resolved = coin_section(draft, symbol, section)
+            settings = effective(draft, symbol, section)
+            margin = draft["capital"] * settings["allocation_pct"] / 100
+            notional = margin * settings["leverage"]
+            stop = settings["stop"]
+            stop_text = (f"{stop['pct']:g}%"
+                         if stop["mode"] in ("percent", "both")
+                         else stop["mode"])
+            admission = ("вход отключён" if not resolved["enabled"] or settings["disabled"]
+                         else "вход разрешён")
+            lines.append(
+                f"{symbol} / {resolved['label']}: {resolved['side']}, "
+                f"{settings['margin_mode']}, плечо {settings['leverage']:g}x; "
+                f"условная маржа {margin:g} USDT; номинал {notional:g} USDT; "
+                f"SL {stop_text}; {admission}."
+            )
+            shown += 1
+        if shown >= sample_limit:
+            break
+    if total > shown:
+        lines.append(f"Остальные {total - shown} диапазонов доступны в отдельных настройках.")
+    return "\n".join(lines)
+
+
+def constructor_review_text(original, draft, *, dropped_overrides=(),
+                            include_change_audit=False):
+    """Build a selector-independent review from persisted configuration only.
+
+    The interactive grid preview belongs to a separate widget. Mixing its
+    selected coin/section into this audit made review text depend on navigation
+    and could hide a different combination's risk.
+    """
+    rows = [
+        "Проверьте параметры и сохраните бота. Он появится в MY BOTS "
+        "и будет готов к отдельному запуску."
+    ]
+    if dropped_overrides:
+        excluded = ", ".join(dropped_overrides[:8])
+        if len(dropped_overrides) > 8:
+            excluded += f" (и ещё {len(dropped_overrides) - 8})"
+        rows.append("При сохранении будут исключены настройки удалённых "
+                    "монет, рынков и секций: " + excluded)
+    if include_change_audit and draft["strategy"] in ("VELES", "POLYMARKET"):
+        rows.append(constructor_change_review_text(original, draft))
+        if draft["strategy"] == "VELES":
+            rows.append(effective_risk_review_text(draft))
+    return "\n\n".join(rows)

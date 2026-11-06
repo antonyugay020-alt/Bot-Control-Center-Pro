@@ -120,7 +120,7 @@ else process.exit(42);
                               cwd=tmp_path, input_text='Проверка БCC с UTF-8')
     assert result.returncode == 0
     assert 'TASK:' in result.stdout and ':true' in result.stdout
-    assert 'node-direct' in (tmp_path / '.ai_work' / 'CODEX_PREFLIGHT_LAST.log').read_text()
+    assert 'node-direct' in (tmp_path / '.ai_work' / 'CODEX_PREFLIGHT_LAST.log').read_text(encoding='utf-8')
 
 
 def test_codex_failed_preflight_captures_actual_errors(monkeypatch, tmp_path):

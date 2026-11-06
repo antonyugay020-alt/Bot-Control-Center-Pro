@@ -84,6 +84,12 @@ def verify_source_snapshot():
 
 
 def main(argv=None):
+    # Python -I ignores PYTHONIOENCODING; a cp1252 Windows CI console cannot
+    # print a Cyrillic archive path by default.  Preserve the report and exit
+    # code even when the caller's console encoding is not Unicode-capable.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(errors='backslashreplace')
     parser = argparse.ArgumentParser()
     parser.add_argument("--automated-only", action="store_true")
     parser.add_argument(

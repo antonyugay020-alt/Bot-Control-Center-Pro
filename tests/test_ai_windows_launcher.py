@@ -80,6 +80,8 @@ def test_cycle_auto_initializes_git_and_blocks_if_windows_qa_fails(monkeypatch, 
 def test_non_windows_launcher_blocks_before_any_activity(monkeypatch, tmp_path):
     stages = []
     monkeypatch.setattr(launch, 'WORK', tmp_path / '.ai_work')
+    # Test the non-Windows branch on *both* CI platforms.
+    monkeypatch.setattr(launch, 'os', SimpleNamespace(name='posix', getenv=os.getenv))
     monkeypatch.setattr(launch, 'run_step', lambda *a, **kw: stages.append(a))
     assert launch.main(['cycle']) == 2
     assert stages == []

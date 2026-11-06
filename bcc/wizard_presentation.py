@@ -146,3 +146,55 @@ def market_preview_html(config, symbol=None, duration=None, *, light=False):
         + ";border-bottom:1px solid " + border + ";padding:7px 5px;text-align:right'>"
         + escape(str(value)) + "</td></tr>" for label,value in rows
     ) + "</table>"
+
+
+def grid_preview_data(config, symbol, section_id):
+    """Resolve one selected VELES grid without mutating the publishable draft.
+
+    The interactive selection is intentionally *not* part of the constructor
+    change audit.  The preview model is UI-free and uses the same effective
+    coin/section policy as execution.  None means that the selection is no
+    longer present in the current draft (for example after deleting a coin).
+    """
+    from .config import coin_section, effective
+    from .trading import percent_stop_price, plan
+
+    if symbol not in config["symbols"]:
+        return None
+    original = next(
+        (section for section in config["sections"] if section["id"] == section_id),
+        None,
+    )
+    if original is None:
+        return None
+
+    section = coin_section(config, symbol, original)
+    settings = effective(config, symbol, original)
+    planned = plan(settings["orders"], section["side"], 100)
+    margin = config["capital"] * settings["allocation_pct"] / 100
+    budget = margin * settings["leverage"]
+    rows = tuple(
+        (
+            str(i + 1),
+            f"{row['price']:.8g}",
+            f"{row['weight'] * 100:.5g}",
+            f"{budget * row['weight']:.4f}",
+        )
+        for i, row in enumerate(planned)
+    )
+    status = (
+        f"{symbol} · {section['label']} · {section['side']}\n"
+        f"Маржа из исходного депозита: {margin:g} USDT; "
+        f"номинал сетки с плечом: {budget:g} USDT."
+    )
+    if settings["stop"]["mode"] in ("percent", "both"):
+        if settings["orders"]["mode"] == "signal":
+            status += "\nSL рассчитывается после фактического последнего усреднения."
+        else:
+            stop = percent_stop_price(
+                {"settings": settings, "side": section["side"], "orders": planned}
+            )
+            status += f"\nУсловный SL: {stop:.8g} после исполнения сетки."
+    if not section["enabled"] or settings["disabled"]:
+        status += "\nНовые входы этой секции отключены."
+    return {"rows": rows, "status": status}

@@ -34,7 +34,9 @@ def test_two_independent_dashboards_only_spawn_one(tmp_path, monkeypatch):
     spawned = threading.Event()
 
     class FakeProcess:
-        pid = 1234
+        # Never reuse an arbitrary real Windows runner PID. The fake Popen
+        # does not own that OS process and must not impersonate its birth ID.
+        pid = 2_000_000_000
         def poll(self):
             return None
 

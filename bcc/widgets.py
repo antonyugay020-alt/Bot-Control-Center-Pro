@@ -991,6 +991,22 @@ class VelesSectionsEditor(QWidget):
                 return g
         return None
 
+    def _confirm_mutation(self, widget, title, staged, validator):
+        """Commit only a validated, complete hierarchy transaction.
+
+        The native dialog runs its validator before accepting.  External
+        dialog adapters may return Accepted without invoking the callback;
+        such a response must never publish an empty or partially validated
+        hierarchy.  Revalidate exactly once if no staged result exists.
+        """
+        if not confirm_dialog(widget, title, self, validator=validator):
+            return False
+        if not staged:
+            validator()
+        if 'sections' not in staged:
+            raise ValueError('Нет проверенного результата изменения секций')
+        return True
+
     def edit(self, *unused):
         selected = self._selection()
         if not selected:
@@ -1007,8 +1023,8 @@ class VelesSectionsEditor(QWidget):
             def check_range():
                 accepted["sections"] = self._checked_sections(
                     replace_range(self.sections, selected[1], editor.value_data()))
-            if confirm_dialog(editor, "Настройки диапазона RSI", self,
-                              validator=check_range):
+            if self._confirm_mutation(editor, "Настройки диапазона RSI",
+                                      accepted, check_range):
                 self.sections = accepted["sections"]
                 self.render(select=selected)
             return
@@ -1060,8 +1076,8 @@ class VelesSectionsEditor(QWidget):
                     section["overrides"] = deepcopy(inherited)
             accepted["sections"] = self._checked_sections(draft)
             accepted["gid"] = gid
-        if confirm_dialog(w, "Настройки секции", self,
-                          validator=validate_group_edit):
+        if self._confirm_mutation(w, "Настройки секции", accepted,
+                                  validate_group_edit):
             self.sections = accepted["sections"]
             self.render(select=("group", accepted["gid"]))
 
@@ -1095,7 +1111,7 @@ class VelesSectionsEditor(QWidget):
             section[PARENT_LABEL] = name.text().strip()
             accepted["sections"] = self._checked_sections(self.sections + [section])
             accepted["id"] = section["id"]
-        if confirm_dialog(w, "Новая секция с первым диапазоном", self, validator=check):
+        if self._confirm_mutation(w, "Новая секция с первым диапазоном", accepted, check):
             self.sections = accepted["sections"]
             self.render(select=("range", accepted["id"]))
 
@@ -1133,7 +1149,7 @@ class VelesSectionsEditor(QWidget):
                                      finish.value(), entry.currentData(), exit_.currentData())
             accepted["sections"] = self._checked_sections(draft)
             accepted["id"] = added["id"]
-        if confirm_dialog(w, "Диапазон внутри секции", self, validator=check):
+        if self._confirm_mutation(w, "Диапазон внутри секции", accepted, check):
             self.sections = accepted["sections"]
             self.render(select=("range", accepted["id"]))
 

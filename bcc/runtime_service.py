@@ -272,7 +272,8 @@ def _serve_loop(root, worker, stop, interval, batch_size, inventory_interval,
                 elif (any(getattr(item, 'action', 'error') not in ('error', 'orphan')
                           for item in [*results, *urgent_results])
                       or (inventory_verified and
-                          not worker.coordinator.has_registrations())):
+                          callable(getattr(worker.coordinator, 'has_registrations', None))
+                          and not worker.coordinator.has_registrations())):
                     # Only an observed successful reconciliation, or a truly
                     # empty durable registry, can establish readiness.  A
                     # drained Fleet queue is NOT proof that a bot succeeded.

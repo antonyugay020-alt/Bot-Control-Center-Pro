@@ -143,7 +143,7 @@ def test_cycle_success_keeps_code_in_separate_branch_and_never_releases(tmp_path
     monkeypatch.setattr(p, 'ROOT', root)
     monkeypatch.setattr(p, 'WORK', root / '.ai_work')
     monkeypatch.setattr(p, 'doctor', lambda *a, **kw: {'ready_for_ai_cycle': True})
-    monkeypatch.setattr(p, 'run_codex', lambda prompt, *, log, timeout: (root / 'src.py').write_text('old = False\n'))
+    monkeypatch.setattr(p, 'run_codex', lambda prompt, *, log, timeout: (root / 'src.py').write_text('old = False\n', encoding='utf-8'))
     monkeypatch.setattr(p, 'codex_write_probe', lambda *a, **kw: {'status': 'PASS'})
     monkeypatch.setattr(p, 'ollama_review', lambda **kw: {'blocking_findings': [], 'nonblocking_findings': [], 'review_complete': True})
     monkeypatch.setattr(p, 'seal_and_qa', lambda run_dir, qa, base=None: {'qa': 'NOT_RUN', 'release_ready': False})

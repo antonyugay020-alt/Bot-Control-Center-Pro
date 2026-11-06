@@ -17,10 +17,10 @@ from .config import effective, merge, poly_window_allows, resolve_poly_market, v
 from .control import arm_run, deal_closed
 from .market import DataUnavailable, PolymarketData, PublicData, estimate_buy, verified_paper_market
 from .market_clock import book_is_fresh, latest_now, market_now
-from .launch_claim import verify_worker_token, complete_launch
+from .launch_claim import worker_startup_lease, complete_launch
 from .shared_risk import allocation_reason
 from .position_journal import receipt, terms_digest
-from .storage import BotLock, Store, ControlRevoked, atomic_json
+from .storage import Store, ControlRevoked, atomic_json
 from .strategies import ENGINES, daily_ok
 from .trading import equity, event
 
@@ -359,8 +359,7 @@ def run(folder, token, *, once=False, control_revision=None):
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
     logging.info("INITIALIZE pid=%s parent=%s", os.getpid(), os.getppid())
-    with BotLock(folder):
-        verify_worker_token(folder, token)
+    with worker_startup_lease(folder, token):
         try:
             control = None
             key = None
