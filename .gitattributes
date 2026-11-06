@@ -1,0 +1,4 @@
+# The source manifest seals raw bytes, not Git-normalized text.
+# Windows Git often defaults to core.autocrlf=true. Preserve each file's
+# original LF/CRLF bytes identically on Windows and Linux checkouts.
+* -text
