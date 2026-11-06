@@ -63,7 +63,7 @@
     "bcc/constructor_transaction.py": "1cfd25a130450f820f5dc623f11568641820f6b84c9eb73c194eb5f4a87ad578",
     "bcc/control.py": "64a9d9fe889ec9e9f989f6793050ffa09f00fcfedaf6346d95ddfcda08ce3092",
     "bcc/coordination.py": "4372dbb71bf5d80b484642e8b857da1cc34af7c6bd845d879de3e8d8326a49c8",
-    "bcc/data_cache.py": "9432d7939bc0187b8cdfbaa118403cb68b9e1f665bf84c19ced4e43c467123cb",
+    "bcc/data_cache.py": "161e98024842b0b1085893331607b5b1f1622fafb90f1404560cdbcbda083324",
     "bcc/execution.py": "7ca97407a77e226f7d9c9ce3274d0074913d35264fbf4a29823acf607a71f50a",
     "bcc/fleet.py": "5c10de977f44f3c0041802b1434f5e7cb51abe0445a731fa1a2b8f0194fe9da4",
     "bcc/flow_layout.py": "1e5d9c4b48fbd8a31046030276a74a2c488a9ee90a3d8e89027b2714cd3b054a",
@@ -77,7 +77,7 @@
     "bcc/lifecycle.py": "a2a96045689576175bbbbe9797811ba533626a94464321e541ab3b69b15a950b",
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
-    "bcc/market.py": "b790a3a3f3f47bb1f9992c669b86b2166881e0765e6d806c2966f6577e28a69d",
+    "bcc/market.py": "c5b7a277930c16fed5fc79f6aebb68250c8cb5b23642c3f3524d25ce13b07dd7",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
     "bcc/market_hub.py": "828ec6e2b878013c3a65d5c50d30194a8f7461470736d73a959e6bb984a34b77",
@@ -363,6 +363,7 @@
     "tests/test_qt_snapshot_shutdown.py": "304e5a61ad3ccf684ce4e565e7f226bdcc33c2ee7538fc1968acc6349390398b",
     "tests/test_provider_access_boundaries.py": "1b2cbd17d51650f67efd36b9320a777b333bcd712a37ae7a18d873d91238aeda",
     "tests/test_provider_denial_admission.py": "5b29511c3ebc4f7022cd83f93a678c2bc883a86b47a3d74930e054b0c7f7b95f",
-    "tests/test_shared_provider_denial.py": "2c8477c492784ff43b3d3999b3cf34659df2ae84b8f9b02a9cebf6fbc1d95bf1"
+    "tests/test_shared_provider_denial.py": "2774bea15ce522763ef7c3d7828969f4647342f402660c862f4de5facba3db12",
+    "tests/test_fleet_policy_fence_recovery.py": "dfa749d7ad5adcb2e8ab96854990f9980d0e4e205a835c5b7e5c3952bebb3707"
   }
 }
