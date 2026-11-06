@@ -13,7 +13,6 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from urllib.parse import urlparse
 
 from .data_cache import PublicCache, CacheBusy
 
@@ -148,11 +147,7 @@ class HubRegistry:
         if type(priority) is not bool:
             raise ValueError('Hub priority flag must be boolean')
         from .market import PublicData
-        parsed = urlparse(url)
-        if (parsed.scheme != 'https' or parsed.hostname not in PublicData.HOSTS
-                or parsed.username is not None or parsed.password is not None
-                or parsed.fragment):
-            raise ValueError('Hub accepts only credential-free public HTTPS sources')
+        PublicData.validated_public_host(url)
         if not isinstance(params, (dict, type(None))):
             raise ValueError('Hub params must be a JSON object')
         key, encoded = self.identity(url, params)

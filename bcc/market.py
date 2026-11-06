@@ -139,6 +139,53 @@ class PublicData:
         "api.binance.com",
     }
 
+    # This is the sole URL admission contract for both direct worker reads
+    # and durable Hub subscriptions. A host allowlist alone is insufficient:
+    # it permits private GET routes, alternate ports and query credentials.
+    PUBLIC_PATHS = {
+        "api.bybit.com": None,  # restricted to /v5/market/ below
+        "gamma-api.polymarket.com": frozenset({"/markets"}),
+        "clob.polymarket.com": frozenset({"/book"}),
+        "data-api.polymarket.com": frozenset({"/v2/tokens"}),
+        "api.binance.com": frozenset({
+            "/api/v3/time", "/api/v3/klines", "/api/v3/ticker/price",
+        }),
+    }
+
+    @classmethod
+    def validated_public_host(cls, url):
+        """Reject private/ambiguous routes before any cache or Hub side effect.
+
+        Public query arguments must be supplied separately as `params`; the
+        complete URL is persisted by the Hub, so embedded query credentials
+        must never be admitted. The network authority is an exact HTTPS host
+        without userinfo or an alternate port, even when DNS matches.
+        """
+        if (type(url) is not str or url != url.strip()
+                or any(ord(ch) < 32 or ord(ch) == 127 for ch in url)):
+            raise ValueError("Непубличный источник или закрытые данные в URL")
+        try:
+            parsed = urlparse(url)
+            host = parsed.hostname
+        except ValueError as exc:
+            raise ValueError("Непубличный источник или закрытые данные в URL") from exc
+        path = parsed.path
+        if (parsed.scheme != "https" or host not in cls.HOSTS
+                or parsed.netloc != host or parsed.query or parsed.fragment
+                or parsed.params or not path or "%" in path or "\\" in path
+                or "//" in path or any(part in (".", "..") for part in path.split("/"))):
+            raise ValueError("Непубличный источник или закрытые данные в URL")
+        allowed = cls.PUBLIC_PATHS[host]
+        if host == "api.bybit.com":
+            valid_route = path.startswith("/v5/market/") and len(path) > len("/v5/market/")
+        elif host == "clob.polymarket.com" and path.startswith("/clob-markets/"):
+            valid_route = path.count("/") == 2 and len(path) > len("/clob-markets/")
+        else:
+            valid_route = path in allowed
+        if not valid_route:
+            raise ValueError("Маршрут не относится к разрешённым публичным GET")
+        return host
+
     def __init__(self):
         self._thread = threading.local()
         self._sessions = []
@@ -247,12 +294,7 @@ class PublicData:
 
         if self.stop_event.is_set():
             raise DataUnavailable("Получение данных остановлено")
-        parsed = urlparse(url)
-        host = parsed.hostname
-        if (host not in self.HOSTS or parsed.scheme != "https" or
-                parsed.username is not None or parsed.password is not None or
-                parsed.fragment):
-            raise ValueError("Непубличный источник или закрытые данные в URL")
+        host = self.validated_public_host(url)
         # A refusal is a fleet-wide admission fence, not a retryable cache miss.
         self._assert_provider_allowed(host)
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.
