@@ -85,6 +85,18 @@ class PublicCache:
                         "ALTER TABLE provider_denial ADD COLUMN "
                         "until_utc REAL NOT NULL DEFAULT 0"
                     )
+                # Old rows only had monotonic deadlines. Conservatively carry
+                # their remaining refusal into the new UTC fallback, bounded
+                # by the maximum supported 403/451 policy interval (3600s).
+                # Without this, a restart immediately after upgrading could
+                # discard a refusal or retain a previous boot's uptime forever.
+                if "recorded_mono" not in columns or "until_utc" not in columns:
+                    db.execute(
+                        "UPDATE provider_denial SET recorded_mono=?, "
+                        "until_utc=? + min(3600,max(0,until_mono-?)) "
+                        "WHERE recorded_mono=0 AND until_utc=0",
+                        (time.monotonic(), time.time(), time.monotonic()),
+                    )
             self._ready = True
 
     @contextmanager
