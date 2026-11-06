@@ -235,6 +235,20 @@ class RunningBotsWindow(QDialog):
         self.timer.stop()
         super().closeEvent(event)
 
+    def wait_for_snapshot_shutdown(self, timeout_ms=30000):
+        """Quiesce the independent SQLite snapshot reader before QA teardown.
+
+        Hiding the monitor invalidates GUI results but does not stop an in-flight
+        QThreadPool task. The native Windows acceptance process must join this
+        reader *before* deleting its isolated SQLite workspace. Ordinary user
+        close stays nonblocking and continues to invalidate stale results.
+        """
+        self._closed = True
+        self._generation += 1
+        self._refresh_pending = False
+        self.timer.stop()
+        return self._snapshot_pool.waitForDone(timeout_ms)
+
     def open_selected(self, *args):
         item = self.bots.item(self.bots.currentRow(), 0)
         if item is not None:
