@@ -35,6 +35,18 @@ def test_released_and_reclaimed_same_owner_cannot_acknowledge_old_work(tmp_path)
     assert _subscription(registry, key)[2] == "new"
 
 
+def test_legacy_unowned_completion_cannot_bypass_lease_fence(tmp_path):
+    registry = HubRegistry(tmp_path / "hub.sqlite")
+    key = registry.subscribe(URL, {"symbol": "BTCUSDT"})
+    try:
+        registry.finish(key, 600, "unowned")
+    except RuntimeError as exc:
+        assert "Unfenced" in str(exc)
+    else:
+        raise AssertionError("unowned hub completion was accepted")
+    assert _subscription(registry, key)[1:3] == (0, "")
+
+
 def test_expired_same_owner_mints_new_fencing_generation(tmp_path):
     registry = HubRegistry(tmp_path / "hub.sqlite")
     key = registry.subscribe(URL, {"symbol": "ETHUSDT"})
