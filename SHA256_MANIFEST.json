@@ -80,7 +80,7 @@
     "bcc/market.py": "b790a3a3f3f47bb1f9992c669b86b2166881e0765e6d806c2966f6577e28a69d",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
-    "bcc/market_hub.py": "828ec6e2b878013c3a65d5c50d30194a8f7461470736d73a959e6bb984a34b77",
+    "bcc/market_hub.py": "310db4673af951d9b712b088859df2e67e70b0af263cdf3d4ad90e8469245505",
     "bcc/market_selection.py": "92995ed897565f90f5ade52973cdef75375b2adc6b95e7ba98bdca0e34344c91",
     "bcc/monitoring.py": "156aec7d9383e9879bef48149fd93cc9ad2957a4d517a4149c7619628f426622",
     "bcc/poly_indicators.py": "becefd35bde14aa42e000c5293d1a7dd6e2d7f6a71c39dfc7d073fe292d11a2d",
@@ -103,11 +103,11 @@
     "bcc/strategies.py": "1a9ac7897d8b51aa7853b20e0a277f650d963827d1e23a9b7cd17416ae5d95c7",
     "bcc/strategy_dispatch.py": "97215ee81a5af63dec007097045244757d56cc226bfbf26767d9411d228e882b",
     "bcc/strategy_picker.py": "e35e1afb869c308fe63db5a4ab3c9e8f147675f4510eb967d29e617227120ca5",
-    "bcc/supervisor.py": "bb3773cd7ac5836e9e2d3c9217a6a77e0b362ab84d9360a05ca20381d13c5551",
+    "bcc/supervisor.py": "efcb26adac6a0247e0155a9d26b9d8b2aee4e4c1733f0e6b3eabf444e119e2ed",
     "bcc/support.py": "c64fd445dba89d569230c631de3b5fae8d51b87113b6b21fa18d19389f6643d5",
     "bcc/trade_fence.py": "2cf535c93460728650e332420b676cc935ec2d57b525d6b99d3f492f2b469931",
     "bcc/trading.py": "3f313e49cabcb7662d65933e7a247d043d3c5043784ca4cc77827c2e8f626415",
-    "bcc/transfer.py": "309b8eec954a75a3cc3e848c153a60691c09e25d85e3cd7897095e43564ac1c4",
+    "bcc/transfer.py": "24a29073cca9bf05fd04c50cdf4e9d168aeada641bf2b3f38f7b13029f920fdc",
     "bcc/ui.py": "20ecb51893cb26a53df04339cb7dbf41d07adb22b67b45171eafc7dcadd78061",
     "bcc/widgets.py": "1a3c7adeb1d803316dab25166019fee036e428e8743e2c66525ce166351aaac0",
     "bcc/wizard.py": "9d4accac33b355d067154e326e687e0770b4625bdc4dddaaed6115a2fe14a031",
@@ -195,7 +195,7 @@
     "tests/test_hub_idle_lifecycle.py": "40ac6d1385c41fef2961b1e372e243c018c872b970f886059455096c6b8df633",
     "tests/test_hub_leader_recovery.py": "b59c9f41a72a6d39650462ac5873dc90e160998aa6b76bb3b5d7e4f28af1a8fd",
     "tests/test_hub_multiprocess_delivery.py": "cc5e61bc3fbb3a2980c89624b6e14ea6a59d5e7004fdc70807b363e09850fb54",
-    "tests/test_hub_owned_finish.py": "7f9621cfeefc2ccb799eb06a177cdee7ce7fc3162d51c73c635e9d36020c345a",
+    "tests/test_hub_owned_finish.py": "8a4516e3b18094247ff5d1bff4dc662a25c9fc37a26486ca4912ccce9d5089a0",
     "tests/test_hub_supervisor_lifecycle.py": "9e421b4784e1978e84a9a8c612d8f69a4272316631553911e67df645f5915261",
     "tests/test_integrated_command_ownership_contract.py": "b0ca0f76ad0309bc498c9ac73a9c4efe429178aa608aac368ffa36d21b3b7ca5",
     "tests/test_integrated_inventory_health_contract.py": "3a3ec3773d3871165c74ffcd184e7eb874e088f5703673d71963f670e6d7f8df",
@@ -363,6 +363,8 @@
     "tests/test_qt_snapshot_shutdown.py": "304e5a61ad3ccf684ce4e565e7f226bdcc33c2ee7538fc1968acc6349390398b",
     "tests/test_provider_access_boundaries.py": "1b2cbd17d51650f67efd36b9320a777b333bcd712a37ae7a18d873d91238aeda",
     "tests/test_provider_denial_admission.py": "5b29511c3ebc4f7022cd83f93a678c2bc883a86b47a3d74930e054b0c7f7b95f",
-    "tests/test_shared_provider_denial.py": "2c8477c492784ff43b3d3999b3cf34659df2ae84b8f9b02a9cebf6fbc1d95bf1"
+    "tests/test_shared_provider_denial.py": "2c8477c492784ff43b3d3999b3cf34659df2ae84b8f9b02a9cebf6fbc1d95bf1",
+    "tests/test_hub_lease_fencing.py": "67194602a5d7f2b0156b31e2acc70468fb07f29e7a28cc041c0150992b9b9a72",
+    "tests/test_fleet_export_admission.py": "bee592006b17ed329f14a0c1b080d57e7ae96ed60ce63f0107d8cb893287e170"
   }
 }
