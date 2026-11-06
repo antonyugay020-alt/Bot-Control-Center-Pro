@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .data_cache import CacheBusy
+from .data_cache import CacheBusy, PublicCache
 from .market_clock import book_is_fresh, clock, market_now, observed_quote, utc_bounds
 
 
@@ -244,6 +244,16 @@ class PublicData:
                 if time.monotonic() < expires:
                     raise SourceAccessDenied(host, http_status)
                 del self._access_denials[host]
+        # A provider refusal is global to all consumers of this shared
+        # market cache, not just the worker that received HTTP 403/451.
+        # Test this fence before a Hub subscription OR any in-memory hit.
+        if isinstance(self.shared, PublicCache):
+            try:
+                status = self.shared.denied_status(host)
+            except CacheBusy as exc:
+                raise DataUnavailable("Общий запрет источника недоступен: " + host) from exc
+            if status is not None:
+                raise SourceAccessDenied(host, status)
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.
         # Registration is refreshed by actual demand, not by a synthetic scan.
         if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
@@ -354,7 +364,10 @@ class PublicData:
                         self.cooldowns.get(host, 0), time.time() + delay
                     )
                 if self.shared:
-                    self._finish_shared(shared_key, owner, host, cooldown=delay)
+                    self._finish_shared(
+                        shared_key, owner, host, cooldown=delay,
+                        denial_status=response.status_code,
+                    )
                 raise SourceAccessDenied(host, response.status_code)
             if response.status_code in (418, 429):
                 try:
