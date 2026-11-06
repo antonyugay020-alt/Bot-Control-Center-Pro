@@ -91,3 +91,22 @@ def test_ordinary_public_query_arguments_are_not_embedded_in_hub_url(tmp_path):
             "SELECT url,params FROM hub_subscriptions WHERE k=?", (key,)
         ).fetchone()
     assert row == (url, '{"token_id":"0xabc"}')
+
+
+def test_legacy_hub_row_with_private_url_is_quarantined_before_dispatch(tmp_path):
+    registry = HubRegistry(tmp_path / "hub.sqlite")
+    private_url = "https://api.bybit.com/v5/order/realtime"
+    key, params = registry.identity(private_url, {"symbol": "BTCUSDT"})
+    with registry._connect() as db:
+        db.execute(
+            "INSERT INTO hub_subscriptions(k,url,params,active_until,next_due) "
+            "VALUES(?,?,?,?,0)",
+            (key, private_url, params, __import__("time").time() + 300),
+        )
+    assert registry.due() == []
+    with registry._connect() as db:
+        error, retry_at = db.execute(
+            "SELECT last_error,next_due FROM hub_subscriptions WHERE k=?", (key,)
+        ).fetchone()
+    assert error == "Invalid persisted subscription params"
+    assert retry_at > __import__("time").time() + 30

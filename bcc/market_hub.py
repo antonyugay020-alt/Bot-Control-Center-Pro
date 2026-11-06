@@ -210,9 +210,14 @@ class HubRegistry:
                   ' ORDER BY next_due,k LIMIT ? OFFSET ?',
                   (now,now,now,*exclude,limit-len(rows),len(urgent))).fetchall()
                 rows.extend((row, True) for row in more)
+        # Older Hub databases can contain subscriptions admitted before the
+        # shared public-route policy existed. Revalidate at dequeue as well as
+        # at registration; invalid rows must not consume producer HTTP slots.
+        from .market import PublicData
         valid = []
         for (key, url, raw_params), is_urgent in rows:
             try:
+                PublicData.validated_public_host(url)
                 params = json.loads(raw_params, parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
                 if not isinstance(params, (dict, type(None))):
                     raise ValueError('Subscription params must be a JSON object')
