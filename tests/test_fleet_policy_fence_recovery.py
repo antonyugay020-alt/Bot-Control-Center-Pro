@@ -60,7 +60,12 @@ def test_existing_three_column_policy_table_migrates_without_losing_denial(tmp_p
         assert cache.denied_status(HOST) == 451
         with cache.db() as db:
             columns = {row[1] for row in db.execute("PRAGMA table_info(provider_denial)")}
+            recorded_mono, until_utc = db.execute(
+                "SELECT recorded_mono,until_utc FROM provider_denial WHERE host=?",
+                (HOST,),
+            ).fetchone()
         assert {"recorded_mono", "until_utc"} <= columns
+        assert recorded_mono > 0 and until_utc > time.time()
         with pytest.raises(ProviderDenied) as exc:
             cache.begin(URL, PARAMS, HOST)
         assert exc.value.http_status == 451
