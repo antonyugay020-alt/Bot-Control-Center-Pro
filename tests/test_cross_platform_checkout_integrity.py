@@ -43,6 +43,7 @@ def test_windows_autocrlf_cannot_rewrite_sealed_source_bytes(tmp_path):
     for name, payload in samples.items():
         assert (target / name).read_bytes() == payload, name
 
+
 def test_ci_requires_native_windows_qt_evidence_not_offscreen_pytest():
     workflow = (ROOT / '.github/workflows/bcc-ci.yml').read_text(encoding='utf-8')
     assert '  windows-native-qa:' in workflow
