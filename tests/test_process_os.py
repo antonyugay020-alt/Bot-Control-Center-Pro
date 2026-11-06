@@ -69,7 +69,11 @@ def test_real_signal_targets_the_owned_child_and_preserves_popen_exit_code(tmp_p
     launcher, identity, _ = launch_observed_probe(tmp_path, 'time.sleep(30)')
     try:
         identity.terminate()
-        if process_os._NAMESPACED:
+        # TerminateProcess on Windows is asynchronous. A python.exe/py.exe
+        # redirector can exit before the *observed* interpreter finishes;
+        # waiting only on Popen is not proof that the owned PID is gone.
+        # Linux namespace wait uses WNOWAIT so Popen still owns reaping.
+        if process_os._NAMESPACED or os.name == "nt":
             identity.wait(timeout=5)
         assert launcher.wait(timeout=5) != 0
         assert not identity.is_running() or identity.status() == process_os.STATUS_ZOMBIE
