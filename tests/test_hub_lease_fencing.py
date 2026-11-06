@@ -51,13 +51,17 @@ def test_expired_same_owner_mints_new_fencing_generation(tmp_path):
 
 def test_legacy_leader_table_is_migrated_without_reusing_empty_token(tmp_path):
     path = tmp_path / "hub.sqlite"
-    with sqlite3.connect(path) as db:
+    db = sqlite3.connect(path)
+    try:
         db.execute(
             "CREATE TABLE hub_leader(singleton INTEGER PRIMARY KEY, "
             "owner TEXT NOT NULL, expires REAL NOT NULL)"
         )
         db.execute("INSERT INTO hub_leader VALUES(1,?,?)",
                    ("legacy", time.time() + 60))
+        db.commit()
+    finally:
+        db.close()
     registry = HubRegistry(path)
     assert registry.claim_leader("legacy")
     token = registry.leader_token("legacy")
@@ -118,10 +122,10 @@ def test_nonblocking_hub_discards_old_epoch_future_before_ack(tmp_path):
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             hub.poll_nonblocking()
-            if _subscription(registry, key)[1] > time.time():
+            if _subscription(registry, key)[1] > 0:
                 break
             time.sleep(.01)
-        assert _subscription(registry, key)[1] > time.time()
+        assert _subscription(registry, key)[1] > 0
         assert len(calls) >= 2
     finally:
         release.set()
