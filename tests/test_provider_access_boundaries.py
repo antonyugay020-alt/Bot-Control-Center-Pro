@@ -130,3 +130,40 @@ def test_health_preserves_denial_metadata_and_keeps_release_gate_closed(monkeypa
         "RESTRICTED", "PASS", "PASS"
     ]
     assert "HTTP 403" in report["checks"][0]["error"]
+
+
+def test_denial_is_scoped_to_provider_not_other_independent_venues(isolated_source):
+    session = Session(Response(451), Response(200, {"ok": "polymarket"}))
+    isolated_source._thread.session = session
+    with pytest.raises(SourceAccessDenied):
+        isolated_source.get("https://api.binance.com/api/v3/time")
+    assert isolated_source.get("https://gamma-api.polymarket.com/markets") == {
+        "ok": "polymarket"
+    }
+    assert len(session.calls) == 2
+
+
+def test_clob_access_denial_is_not_swallowed_as_missing_liquidity(monkeypatch):
+    class CLOB:
+        def discover(self, *args):
+            return {"slug": "market", "start": 0, "end": 300,
+                    "tokens": {"UP": "token-up", "DOWN": "token-down"}}
+
+        def execution_terms(self, market):
+            return {}
+
+        def book(self, token):
+            raise SourceAccessDenied("clob.polymarket.com", 451)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(health, "PolymarketData", CLOB)
+    monkeypatch.setattr(health, "check_bybit", lambda: {"symbol": "BTCUSDT"})
+    monkeypatch.setattr(health, "check_signal_source", lambda: {"symbol": "BTCUSDT"})
+    report = health.check_sources()
+    assert report["all_available"] is False
+    assert report["source_restrictions"] == [
+        {"source": "Polymarket Gamma + CLOB",
+         "host": "clob.polymarket.com", "http_status": 451}
+    ]
