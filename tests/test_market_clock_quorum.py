@@ -72,7 +72,8 @@ def test_one_primary_unavailable_uses_two_independent_valid_clocks(clock_probe):
     assert clock.evidence["fallback_used"] is True
     assert set(called) == {"Bybit", "Binance", "OKX", "Bitget"}
     low, high = clock.bounds()
-    assert 1000.63 <= low <= high <= 1000.871
+    assert low == pytest.approx(1000.63)
+    assert high == pytest.approx(1000.871)
 
 
 def test_both_primary_unavailable_still_requires_two_alternates(clock_probe):
