@@ -33,7 +33,6 @@ from .config import (
     coin_section,
     defaults,
     difference,
-    effective,
     merge,
     normalize_config,
     resolve_poly_market,
@@ -41,7 +40,6 @@ from .config import (
     condition, group,
 )
 from .wizard_state import selected_configuration
-from .trading import percent_stop_price, plan
 from .wizard_presentation import summary_html, market_preview_html
 from .wizard_stepper import WizardStepDelegate
 from .widgets import (
@@ -984,6 +982,9 @@ class BotWizard(QDialog):
                 self.summary_status.setText("●  Есть ошибка в заполненных полях")
 
     def update_grid_preview(self, cfg):
+        """Render the selector-scoped preview; never rewrite the change audit."""
+        from .wizard_presentation import grid_preview_data
+
         def choices(selector, items):
             if items == [
                 (selector.itemText(i), selector.itemData(i))
@@ -1001,47 +1002,20 @@ class BotWizard(QDialog):
 
         choices(self.preview_coin, [(s, s) for s in cfg["symbols"]])
         choices(self.preview_section, [(s["label"], s["id"]) for s in cfg["sections"]])
-        symbol = self.preview_coin.currentData()
-        original = next(
-            (
-                s
-                for s in cfg["sections"]
-                if s["id"] == self.preview_section.currentData()
-            ),
-            None,
+        preview = grid_preview_data(
+            cfg, self.preview_coin.currentData(), self.preview_section.currentData()
         )
-        if not symbol or original is None:
+        if preview is None:
             self.preview.setRowCount(0)
-            self.preview_status.setText("Выберите монету и добавьте секцию для расчёта сетки")
+            self.preview_status.setText(
+                "Выберите монету и добавьте секцию для расчёта сетки"
+            )
             return
-        section = coin_section(cfg, symbol, original)
-        settings = effective(cfg, symbol, original)
-        rows = plan(settings["orders"], section["side"], 100)
-        margin = cfg["capital"] * settings["allocation_pct"] / 100
-        budget = margin * settings["leverage"]
-        self.preview.setRowCount(len(rows))
-        for i, row in enumerate(rows):
-            for j, value in enumerate(
-                (
-                    str(i + 1),
-                    f"{row['price']:.8g}",
-                    f"{row['weight'] * 100:.5g}",
-                    f"{budget * row['weight']:.4f}",
-                )
-            ):
+        self.preview.setRowCount(len(preview["rows"]))
+        for i, row in enumerate(preview["rows"]):
+            for j, value in enumerate(row):
                 self.preview.setItem(i, j, QTableWidgetItem(value))
-        text = f"{symbol} · {section['label']} · {section['side']}\nМаржа из исходного депозита: {margin:g} USDT; номинал сетки с плечом: {budget:g} USDT."
-        if settings["stop"]["mode"] in ("percent", "both"):
-            if settings["orders"]["mode"] == "signal":
-                text += "\nSL рассчитывается после фактического последнего усреднения."
-            else:
-                stop = percent_stop_price(
-                    {"settings": settings, "side": section["side"], "orders": rows}
-                )
-                text += f"\nУсловный SL: {stop:.8g} после исполнения сетки."
-        if not section["enabled"] or settings["disabled"]:
-            text += "\nНовые входы этой секции отключены."
-        self.preview_status.setText(text)
+        self.preview_status.setText(preview["status"])
 
     def edit_coin(self):
         symbols = [
