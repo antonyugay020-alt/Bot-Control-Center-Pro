@@ -48,21 +48,49 @@ class HubRegistry:
             if 'priority_until' not in columns:
                 db.execute('ALTER TABLE hub_subscriptions ADD COLUMN priority_until REAL NOT NULL DEFAULT 0')
             db.execute('CREATE INDEX IF NOT EXISTS hub_due ON hub_subscriptions(next_due,active_until)')
-            db.execute("CREATE TABLE IF NOT EXISTS hub_leader(singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL, expires REAL NOT NULL)")
+            db.execute("CREATE TABLE IF NOT EXISTS hub_leader(singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL, expires REAL NOT NULL, lease_token TEXT NOT NULL DEFAULT '')")
+            # Existing installations may have a live legacy leader row. The
+            # next admission mints a new token; no old producer can prove it.
+            leader_columns = {row[1] for row in db.execute('PRAGMA table_info(hub_leader)')}
+            if 'lease_token' not in leader_columns:
+                db.execute("ALTER TABLE hub_leader ADD COLUMN lease_token TEXT NOT NULL DEFAULT ''")
 
     def claim_leader(self, owner, *, lifetime=15):
         if not owner or not 1 <= lifetime <= 120:
             raise ValueError('Invalid hub lease')
         now = time.time()
+        candidate = uuid.uuid4().hex
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            db.execute("""INSERT INTO hub_leader(singleton,owner,expires) VALUES(1,?,?)
-              ON CONFLICT(singleton) DO UPDATE SET owner=excluded.owner,expires=excluded.expires
+            db.execute("""INSERT INTO hub_leader(singleton,owner,expires,lease_token)
+              VALUES(1,?,?,?)
+              ON CONFLICT(singleton) DO UPDATE SET
+                owner=excluded.owner,expires=excluded.expires,
+                lease_token=CASE WHEN hub_leader.owner=excluded.owner
+                    AND hub_leader.expires>=? AND hub_leader.lease_token<>''
+                    THEN hub_leader.lease_token ELSE excluded.lease_token END
               WHERE hub_leader.expires < ? OR hub_leader.owner = ?""",
-              (owner, now + lifetime, now, owner))
-            claimed = db.execute('SELECT owner FROM hub_leader WHERE singleton=1').fetchone()
+              (owner, now + lifetime, candidate, now, now, owner))
+            claimed = db.execute(
+                'SELECT owner,expires,lease_token FROM hub_leader WHERE singleton=1'
+            ).fetchone()
             db.commit()
-        return bool(claimed and claimed[0] == owner)
+        return bool(claimed and claimed[0] == owner
+                    and claimed[1] >= now and claimed[2])
+
+    def leader_token(self, owner):
+        """Opaque generation of the *current* unexpired lease, not just PID.
+
+        Releasing and reclaiming even with the same owner invalidates all
+        previous HTTP completions. Tokens are never exposed to subscribers.
+        """
+        with self._connect() as db:
+            row = db.execute(
+                'SELECT lease_token FROM hub_leader WHERE singleton=1 '
+                'AND owner=? AND expires>=? AND lease_token<>\'\'',
+                (owner, time.time()),
+            ).fetchone()
+        return row[0] if row else None
 
     def renew_leader(self, owner, *, lifetime=120):
         if not owner or not 1 <= lifetime <= 120:
@@ -76,18 +104,21 @@ class HubRegistry:
         with self._connect() as db:
             db.execute('DELETE FROM hub_leader WHERE singleton=1 AND owner=?', (owner,))
 
-    def finish_owned(self, key, delay, owner, error=''):
+    def finish_owned(self, key, delay, owner, error='', *, token):
         """Acknowledge only while this producer still holds an unexpired lease.
 
         The ownership check and subscription update share one SQLite writer
         transaction so a replacement producer cannot be raced by an old one.
         """
+        if not isinstance(token, str) or not token:
+            raise ValueError('Hub completion requires a lease fencing token')
         now = time.time()
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
             valid = db.execute(
-                'SELECT 1 FROM hub_leader WHERE singleton=1 AND owner=? AND expires>=?',
-                (owner, now),
+                'SELECT 1 FROM hub_leader WHERE singleton=1 AND owner=? '
+                'AND expires>=? AND lease_token=?',
+                (owner, now, token),
             ).fetchone()
             if not valid:
                 db.rollback()
@@ -129,7 +160,7 @@ class HubRegistry:
         with self._connect() as db:
             db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until)
               VALUES(?,?,?,?,0,?) ON CONFLICT(k) DO UPDATE SET
-              active_until=excluded.active_until,
+              active_until=max(hub_subscriptions.active_until,excluded.active_until),
               priority_until=max(hub_subscriptions.priority_until,excluded.priority_until),
               params=excluded.params,
               url=excluded.url,
@@ -203,9 +234,12 @@ class HubRegistry:
         return valid
 
     def finish(self, key, delay, error=''):
-        with self._connect() as db:
-            db.execute('UPDATE hub_subscriptions SET next_due=?,last_error=? WHERE k=?',
-                       (time.time() + delay, str(error)[:300], key))
+        """Legacy unfenced completion is deliberately unavailable.
+
+        Only finish_owned may mutate producer acknowledgements. Otherwise an
+        obsolete worker or producer could bypass the lease-generation barrier.
+        """
+        raise RuntimeError('Unfenced Market Data Hub completion is forbidden')
 
 
 class MarketDataHub:
@@ -226,6 +260,7 @@ class MarketDataHub:
         self._inflight = {}
         self._leader_check_due = 0.0
         self._leader_held = False
+        self._leader_token = None
         self.lease_renew_interval = 5.0
         self.source = source or PublicData()
         if self.source.shared is None:
@@ -235,6 +270,9 @@ class MarketDataHub:
         if self.max_workers > 1:
             return self._run_parallel(limit)
         if not self.registry.claim_leader(self.owner, lifetime=120):
+            return []
+        token = self.registry.leader_token(self.owner)
+        if not token:
             return []
         results = []
         for key, url, params in self.registry.due(limit):
@@ -273,11 +311,11 @@ class MarketDataHub:
             if lease_lost.is_set() or not self.registry.renew_leader(self.owner, lifetime=120):
                 break
             if error is None:
-                if not self.registry.finish_owned(key, delay, self.owner):
+                if not self.registry.finish_owned(key, delay, self.owner, token=token):
                     break
                 results.append((key, True))
             else:
-                if not self.registry.finish_owned(key, 2.0, self.owner, str(error)):
+                if not self.registry.finish_owned(key, 2.0, self.owner, str(error), token=token):
                     break
                 results.append((key, False))
         return results
@@ -291,6 +329,9 @@ class MarketDataHub:
         bounded independently of the much larger registered symbol count.
         """
         if not self.registry.claim_leader(self.owner, lifetime=120):
+            return []
+        token = self.registry.leader_token(self.owner)
+        if not token:
             return []
         due = self.registry.due(min(limit, self.max_workers),
                                 reserve_regular=1 if self.max_workers > 1 else 0)
@@ -331,7 +372,8 @@ class MarketDataHub:
                 if error is not None:
                     delay = 2.0
                 if not self.registry.finish_owned(key, delay, self.owner,
-                                                 str(error) if error is not None else ''):
+                                                 str(error) if error is not None else '',
+                                                 token=token):
                     lost.set()
                     break
                 results.append((key, error is None))
@@ -353,11 +395,13 @@ class MarketDataHub:
             return self.run_once()
         now = time.monotonic()
         if now >= self._leader_check_due:
-            self._leader_held = (
+            held = (
                 self.registry.renew_leader(self.owner, lifetime=120)
                 if self._leader_held
                 else self.registry.claim_leader(self.owner, lifetime=120)
             )
+            self._leader_token = self.registry.leader_token(self.owner) if held else None
+            self._leader_held = bool(self._leader_token)
             self._leader_check_due = now + 1.0
         if not self._leader_held:
             # Do not publish from a superseded producer. Running HTTP cannot
@@ -365,10 +409,15 @@ class MarketDataHub:
             return []
 
         results = []
-        for key, (future, url, is_urgent) in list(self._inflight.items()):
+        for key, (future, url, is_urgent, launched_token) in list(self._inflight.items()):
             if not future.done():
                 continue
             del self._inflight[key]
+            # A task launched under an earlier lease must not acknowledge
+            # subscriptions after the producer loses and regains leadership.
+            # Keep it accounted for until completion to bound HTTP concurrency.
+            if launched_token != self._leader_token:
+                continue
             try:
                 error = future.result()
             except Exception as exc:
@@ -376,7 +425,8 @@ class MarketDataHub:
             delay = (2.0 if error is not None else
                      120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0))
             if not self.registry.finish_owned(key, delay, self.owner,
-                                             str(error) if error is not None else ''):
+                                             str(error) if error is not None else '',
+                                             token=launched_token):
                 self._leader_held = False
                 return results
             results.append((key, error is None))
@@ -424,7 +474,7 @@ class MarketDataHub:
                 finally:
                     if context is not None:
                         context.position_mark = previous
-            self._inflight[key] = (self._pool.submit(fetch), url, is_urgent)
+            self._inflight[key] = (self._pool.submit(fetch), url, is_urgent, self._leader_token)
             urgent_inflight += bool(is_urgent)
             regular_inflight += not is_urgent
             free -= 1
