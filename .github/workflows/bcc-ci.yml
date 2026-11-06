@@ -1,0 +1,72 @@
+name: BCC source and cross-platform QA
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bcc-qa-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux-source-and-unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime and test dependencies
+        run: python -m pip install -r requirements-dev.txt pytest-timeout
+      - name: Verify sealed snapshot
+        run: python -m tools.verify_package
+      - name: Check Python compile and basic imports
+        run: |
+          python -m compileall -q app.py bcc tools tests
+          python -c "import PySide6, requests, psutil; print('runtime imports PASS')"
+      - name: Full Linux pytest (no omissions)
+        run: python -m pytest tests -ra --tb=short --timeout=180 --junitxml=pytest-linux.xml
+      - name: Publish test results, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bcc-linux-test-results
+          path: pytest-linux.xml
+          if-no-files-found: ignore
+  windows-native-qa:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUNBUFFERED: '1'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime and test dependencies
+        shell: pwsh
+        run: python -m pip install -r requirements-dev.txt pytest-timeout
+      - name: Verify sealed snapshot
+        shell: pwsh
+        run: python -m tools.verify_package
+      - name: Check source imports
+        shell: pwsh
+        run: |
+          python -m compileall -q app.py bcc tools tests
+          python -c "import PySide6, requests, psutil; print('runtime imports PASS')"
+      - name: Run complete Windows pytest
+        shell: pwsh
+        run: python -m pytest tests -ra --tb=short --timeout=180 --junitxml=pytest-windows.xml
+      - name: Publish test results, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bcc-windows-test-results
+          path: pytest-windows.xml
+          if-no-files-found: ignore
