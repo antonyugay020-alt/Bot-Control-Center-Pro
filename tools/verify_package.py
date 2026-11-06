@@ -18,7 +18,7 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 REQUIRED_FILES = (
     'tools/ai_dev_pipeline.py', 'tools/windows_ai_launcher.py', 'AI_SETUP_WINDOWS.bat',
     'AI_CYCLE_WINDOWS.bat', 'AI_USE_EXISTING_API_WINDOWS.bat', 'AI_DEVELOPMENT_RU.md', 'BCC_AI_MISSION_RU.md',
-    "app.py", "launch.pyw", "BUILD_INFO.json", "requirements.txt",
+    ".gitattributes", "app.py", "launch.pyw", "BUILD_INFO.json", "requirements.txt",
     "requirements-dev.txt", "START.bat", "START_DIAGNOSTIC.bat", "TEST_START.bat", "REPORT_NOW.bat", "INSTALL.bat",
     "VALIDATE_WINDOWS.bat", "CHECK_WINDOWS.bat",
     "tools/start_windows_check.ps1", "tools/windows_check.py",
