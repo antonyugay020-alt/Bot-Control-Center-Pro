@@ -1,9 +1,10 @@
 """Bounded public UTC reference. OS/process clocks are never modified.
 
-Bybit nanoseconds and Binance milliseconds provide independent intervals.
-All accepted intervals must intersect; decisions use the conservative lower
-bound and execution expiry uses the upper bound. Monotonic time ages the
-reference, so wall-clock adjustments cannot refresh an old snapshot.
+Bybit/Binance are primary independent references; OKX/Bitget are bounded
+fallback public time references, never replacement market-data transports.
+A unique quorum of at least two precise uncached sources is required. Decisions
+use the conservative lower bound and expiry uses the upper bound. Monotonic
+time ages the reference, so wall-clock adjustments cannot refresh old evidence.
 """
 
 import logging
