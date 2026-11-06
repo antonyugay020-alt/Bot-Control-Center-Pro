@@ -167,3 +167,50 @@ def test_clob_access_denial_is_not_swallowed_as_missing_liquidity(monkeypatch):
         {"source": "Polymarket Gamma + CLOB",
          "host": "clob.polymarket.com", "http_status": 451}
     ]
+
+
+def test_windows_evidence_names_external_denials_but_cannot_certify_release(tmp_path):
+    import json
+    from tools.verify_windows import (
+        source_access_blockers, validate_required_evidence,
+    )
+
+    path = tmp_path / "public_sources.json"
+    path.write_text(json.dumps({
+        "read_only": True,
+        "all_available": False,
+        "checks": [
+            {"source": "Bybit USDT Futures", "status": "RESTRICTED",
+             "restriction": {"host": "api.bybit.com", "http_status": 403}},
+            {"source": "Binance spot impulse", "status": "RESTRICTED",
+             "restriction": {"host": "api.binance.com", "http_status": 451}},
+            {"source": "Polymarket Gamma + CLOB", "status": "PASS",
+             "evidence": {"outcome": "UP"}},
+        ],
+    }), encoding="utf-8")
+    blockers = source_access_blockers(path)
+    assert {(b["host"], b["http_status"]) for b in blockers} == {
+        ("api.bybit.com", 403), ("api.binance.com", 451)
+    }
+    errors = validate_required_evidence(tmp_path)
+    assert any("публичные источники не подтверждены" in x for x in errors)
+    assert any("HTTP 403" in x and "Bybit" in x for x in errors)
+    assert any("HTTP 451" in x and "Binance" in x for x in errors)
+
+
+def test_windows_diagnostic_rejects_untrusted_denial_host_and_status(tmp_path):
+    import json
+    from tools.verify_windows import source_access_blockers
+
+    path = tmp_path / "public_sources.json"
+    path.write_text(json.dumps({
+        "checks": [
+            {"source": "Bybit USDT Futures", "status": "RESTRICTED",
+             "restriction": {"host": "private.example", "http_status": 451}},
+            {"source": "Binance spot impulse", "status": "PASS",
+             "restriction": {"host": "api.binance.com", "http_status": 451}},
+            {"source": "Polymarket Gamma + CLOB", "status": "RESTRICTED",
+             "restriction": {"host": "clob.polymarket.com", "http_status": True}},
+        ]
+    }), encoding="utf-8")
+    assert source_access_blockers(path) == []
