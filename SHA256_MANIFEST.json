@@ -365,6 +365,7 @@
     "tests/test_provider_denial_admission.py": "5b29511c3ebc4f7022cd83f93a678c2bc883a86b47a3d74930e054b0c7f7b95f",
     "tests/test_shared_provider_denial.py": "2c8477c492784ff43b3d3999b3cf34659df2ae84b8f9b02a9cebf6fbc1d95bf1",
     "tests/test_hub_lease_fencing.py": "67194602a5d7f2b0156b31e2acc70468fb07f29e7a28cc041c0150992b9b9a72",
-    "tests/test_fleet_export_admission.py": "bee592006b17ed329f14a0c1b080d57e7ae96ed60ce63f0107d8cb893287e170"
+    "tests/test_fleet_export_admission.py": "bee592006b17ed329f14a0c1b080d57e7ae96ed60ce63f0107d8cb893287e170",
+    "tests/test_cross_workflow_architecture.py": "9252595001d094d94c02e653408931725a649d332f9ff92178370697a89d22f1"
   }
 }
