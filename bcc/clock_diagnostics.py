@@ -10,6 +10,8 @@ import requests
 URLS = {
     "Bybit": "https://api.bybit.com/v5/market/time",
     "Binance": "https://api.binance.com/api/v3/time",
+    "OKX": "https://www.okx.com/api/v5/public/time",
+    "Bitget": "https://api.bitget.com/api/v2/public/time",
     "Polymarket": "https://clob.polymarket.com/time",
 }
 
@@ -21,12 +23,34 @@ def parse_time(provider, data):
         stamp, precision = int(data["result"]["timeNano"]) / 1e9, 1e-6
     elif provider == "Binance":
         stamp, precision = int(data["serverTime"]) / 1000, 0.001
-    else:
+    elif provider == "OKX":
+        if not isinstance(data, dict) or data.get("code") != "0":
+            raise ValueError("OKX public time response was not successful")
+        rows = data.get("data")
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise ValueError("Expected one OKX server-time record")
+        raw = rows[0].get("ts")
+        if type(raw) not in (str, int) or not str(raw).isdecimal():
+            raise ValueError("Expected OKX Unix milliseconds")
+        stamp, precision = int(raw) / 1000, 0.001
+    elif provider == "Bitget":
+        if not isinstance(data, dict) or data.get("code") != "00000":
+            raise ValueError("Bitget public time response was not successful")
+        row = data.get("data")
+        if not isinstance(row, dict):
+            raise ValueError("Expected Bitget server-time record")
+        raw = row.get("serverTime")
+        if type(raw) not in (str, int) or not str(raw).isdecimal():
+            raise ValueError("Expected Bitget Unix milliseconds")
+        stamp, precision = int(raw) / 1000, 0.001
+    elif provider == "Polymarket":
         if isinstance(data, dict):
             data = data.get("time", data.get("timestamp"))
         if isinstance(data, bool) or not str(data).isdigit():
             raise ValueError("Expected Polymarket time in whole Unix seconds")
         stamp, precision = int(data), 1.0
+    else:
+        raise ValueError("Unknown public clock provider")
     if not math.isfinite(stamp) or stamp <= 0:
         raise ValueError("Invalid server timestamp")
     return stamp, precision
