@@ -1,7 +1,8 @@
 {
   "checkpoint": "BCC_CLOUD_SOURCE_PREP_20261106_INTERNAL_NOT_RELEASE",
   "files": {
-    ".github/workflows/bcc-ci.yml": "ed2ce339d18b901dbed2533dcb4ff548ba928042c1ca73909976c986f81be6aa",
+    ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
+    ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
     ".gitignore": "6a2468f793feb183c2cba194369da612fa93b2881bb84b62d78788d0dd30e108",
     "ACCEPTANCE_WINDOWS_RU.md": "be3c80aa6fd83af9a28b6a6bb98f1562d61f78215901addc0faf0806596c9796",
     "AI_API_LOGIN_WINDOWS.bat": "76197685ecfcac5961a3d281b4027dcf9db05e6e553f9b4f6ed68ee2f8e71b04",
@@ -170,6 +171,7 @@
     "tests/test_coordinated_deletion_system.py": "eb4ac7ad3d0d02e6a0d378a1d96f35acce447dde1889d91e0104e80f3ef6e93b",
     "tests/test_coordination_architecture.py": "770bc09400c3af0192028d2eb34e6b74be82be513dabce6136b57347c48c20a3",
     "tests/test_core.py": "de9765788bbb35b79ed9cd4910af658171fdcf2f7a12f34e779e2dbb281e7a7f",
+    "tests/test_cross_platform_checkout_integrity.py": "80f49045281512117336acb09d7bbd7ebdf4e766c1a59b46123b383bbe791df1",
     "tests/test_delete_with_open_paper.py": "622fda0ca8a3fb281b2938ae63f4f9cdd01f249fa7879ed825eafe2e283b7128",
     "tests/test_deposit_adjustment.py": "8fede31904eb2201735cf817c5a4de609af4ff0270ec08f1f91fb00ee868185a",
     "tests/test_desktop_launcher_contract.py": "2e367636abb21d0fa8f96d45f22786c95b4a1e08f1fb2b599e643ad3fa23475d",
@@ -296,6 +298,7 @@
     "tests/test_shared_risk_command_boundary.py": "8ff1855dbb6040d9ecac444e8348e7c24a01b46550cf33def242e3c283198144",
     "tests/test_shared_singleflight_15_bots.py": "5acf6654f42c20215c99722319fe1156f20231bc5fae3a65721efea5d1056a6c",
     "tests/test_shared_singleflight_multiprocess.py": "362aff2e00d5fb0db696edf3b41e40e204e6425bf2cb806020d17a9dfd4ad797",
+    "tests/test_source_executable_inventory.py": "2dc6672593b2518239f73e9c0c82abc4f85e08b5359f6b260e0c2a91865576dc",
     "tests/test_source_stage_integrity.py": "9211db67d762487b7aa079c9142553db1343c2204c428200399c1c892f2c7f52",
     "tests/test_startup_revocation_system.py": "d4433572b940e053592374795a04e72ed4ccb5f0f6487b7125d0849598439c02",
     "tests/test_storage_publication_interlocks.py": "dcac9a558595dfddec5b05f38c6e6858471d393dacf65a226eaf22c601661de1",
@@ -348,7 +351,7 @@
     "tools/run_partitioned_tests.py": "40d51a87862396da68d34ac0c90589f1df560bcdfeb7caf49f1acc4bcbf6be36",
     "tools/seal_source.py": "41da1a0b320b6aaf2ffa0140e976249720407fea6f1df51138e225a74d3f2b8c",
     "tools/start_windows_check.ps1": "a774ae6d90b784461811b0ab810af9c04547108c38ab749d7c11a700f4278a66",
-    "tools/verify_package.py": "27b1426a189a2804ffea70d6f470387777341dccf924ec9f0f670e10d07e9d95",
+    "tools/verify_package.py": "47a8badcb14833b5dc96d41d1a8c346c3d4085dda763693df31b49cd2e5fc67f",
     "tools/verify_windows.py": "8baff5a6e5b038fcee183239c7574952f55ac950207aa2648935e8763d625f92",
     "tools/windows_ai_launcher.py": "89bb4ef92af88230b9471e35248c2db12a3df1b0d9a61924cb8508f7e6e94f70",
     "tools/windows_check.py": "407a93e5e9a86d50428a9105d6d7449457e354225c8d0864daa0ee76175911c8"
