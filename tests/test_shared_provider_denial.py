@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from bcc.data_cache import CacheBusy, PublicCache
+from bcc.data_cache import ProviderDenied, PublicCache
 from bcc.market import PublicData, SourceAccessDenied
 
 
@@ -24,9 +24,9 @@ def test_provider_denial_is_durable_across_independent_cache_clients(tmp_path, s
         assert owner and cached is None
         producer.finish(key, owner, HOST, cooldown=3600, denial_status=status)
         assert consumer.denied_status(HOST) == status
-        with pytest.raises(CacheBusy, match="отклонил публичный доступ"):
+        with pytest.raises(ProviderDenied, match="отклонил публичный доступ"):
             consumer.read_fresh(URL, PARAMS, HOST)
-        with pytest.raises(CacheBusy, match="отклонил публичный доступ"):
+        with pytest.raises(ProviderDenied, match="отклонил публичный доступ"):
             consumer.begin(URL, PARAMS, HOST)
         # Other independent providers must remain accessible.
         assert consumer.denied_status("gamma-api.polymarket.com") is None
@@ -99,7 +99,7 @@ def test_real_http_policy_refusal_is_published_to_other_worker(tmp_path, monkeyp
         with pytest.raises(SourceAccessDenied):
             transport.get(URL, PARAMS)
         assert reader.denied_status(HOST) == status
-        with pytest.raises(CacheBusy, match="отклонил публичный доступ"):
+        with pytest.raises(ProviderDenied, match="отклонил публичный доступ"):
             reader.begin(URL, PARAMS, HOST)
     finally:
         transport.close()
