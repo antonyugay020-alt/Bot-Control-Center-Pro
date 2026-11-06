@@ -25,9 +25,9 @@ def test_windows_autocrlf_cannot_rewrite_sealed_source_bytes(tmp_path):
     subprocess.run(['git', 'init', '-q'], cwd=repo, check=True)
     shutil.copyfile(ROOT / '.gitattributes', repo / '.gitattributes')
     samples = {
-        'bcc/worker.py': b'print("worker")\\n',
-        'START.bat': b'@echo off\\r\\necho start\\r\\n',
-        '.github/workflows/ci.yml': b'name: QA\\non: push\\n',
+        'bcc/worker.py': b'print("worker")\n',
+        'START.bat': b'@echo off\r\necho start\r\n',
+        '.github/workflows/ci.yml': b'name: QA\non: push\n',
     }
     for name, payload in samples.items():
         path = repo / name
