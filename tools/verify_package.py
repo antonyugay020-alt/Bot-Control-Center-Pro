@@ -77,15 +77,25 @@ def verify(root=ROOT):
         if actual != digest:
             raise SourceIntegrityError("Не совпадает SHA-256: " + key)
         checked.add(key)
-    # Every executable Python source is part of the sealed snapshot. Log files,
-    # generated check workspaces and dependencies are intentionally excluded.
-    for folder in ("bcc", "tests", "tools"):
-        for path in (root / folder).rglob("*.py"):
-            if any(part.startswith(".") or part in {"__pycache__", "check_workspaces"}
-                   for part in path.relative_to(root).parts):
-                continue
-            if path.relative_to(root).as_posix() not in checked:
-                raise SourceIntegrityError("Незарегистрированный модуль: " + str(path.relative_to(root)))
+    # Seal all executable entrypoints and automation definitions, not just
+    # previously known names. A new launcher, PowerShell script, Python module
+    # or CI workflow must never bypass the manifest through an unlisted path.
+    # Generated paths are excluded; no application code should live there.
+    executable_suffixes = {".py", ".pyw", ".bat", ".cmd", ".ps1"}
+    automation_dirs = {".github/workflows"}
+    excluded_dirs = {".git", ".ai_work", ".venv", "venv", "__pycache__",
+                     ".pytest_cache", "check_workspaces", "node_modules"}
+    for path in root.rglob("*"):
+        if not path.is_file() and not path.is_symlink():
+            continue
+        relative = path.relative_to(root)
+        if any(part in excluded_dirs for part in relative.parts):
+            continue
+        rel = relative.as_posix()
+        is_automation = any(rel.startswith(folder + "/") for folder in automation_dirs)
+        if path.suffix.lower() in executable_suffixes or (is_automation and path.suffix.lower() in {".yml", ".yaml"}):
+            if rel not in checked:
+                raise SourceIntegrityError("Незарегистрированный исполняемый файл: " + rel)
     for required in REQUIRED_FILES:
         if required not in checked:
             raise SourceIntegrityError("Неучтён обязательный файл: " + required)
