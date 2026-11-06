@@ -334,13 +334,15 @@ def source_access_blockers(path):
     expected = {"Bybit USDT Futures", "Polymarket Gamma + CLOB", "Binance spot impulse"}
     blockers = []
     for row in payload["checks"]:
-        if not isinstance(row, dict) or row.get("source") not in expected:
+        if (not isinstance(row, dict) or type(row.get("source")) is not str
+                or row["source"] not in expected):
             continue
         if row.get("status") != "RESTRICTED":
             continue
         details = row.get("restriction")
         if (not isinstance(details, dict)
-                or details.get("host") not in PublicData.HOSTS
+                or type(details.get("host")) is not str
+                or details["host"] not in PublicData.HOSTS
                 or type(details.get("http_status")) is not int
                 or details["http_status"] not in (403, 451)):
             continue
