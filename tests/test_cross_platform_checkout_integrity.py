@@ -42,3 +42,13 @@ def test_windows_autocrlf_cannot_rewrite_sealed_source_bytes(tmp_path):
     ], cwd=repo, check=True)
     for name, payload in samples.items():
         assert (target / name).read_bytes() == payload, name
+
+def test_ci_requires_native_windows_qt_evidence_not_offscreen_pytest():
+    workflow = (ROOT / '.github/workflows/bcc-ci.yml').read_text(encoding='utf-8')
+    assert '  windows-native-qa:' in workflow
+    linux, windows = workflow.split('  windows-native-qa:', 1)
+    assert 'libegl1' in linux and 'libxkbcommon-x11-0' in linux
+    assert 'QT_QPA_PLATFORM: windows' in windows
+    assert 'python -m tools.verify_windows --output' in windows
+    assert 'bcc-windows-native-qa' in windows
+    assert 'python -m pytest tests' not in windows
