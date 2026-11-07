@@ -100,6 +100,9 @@ def test_both_schema_migrations_hold_one_sqlite_writer_transaction(tmp_path, mon
             assert {"recorded_mono", "until_utc", "boot_epoch"} <= {
                 row[1] for row in db.execute("PRAGMA table_info(provider_denial)")
             }
+            assert {"lease_token", "boot_epoch"} <= {
+                row[1] for row in db.execute("PRAGMA table_info(hub_leader)")
+            }
     finally:
         cache.close()
 
