@@ -45,9 +45,9 @@ def test_sealed_snapshot_includes_new_entrypoints_and_ci_workflows(tmp_path):
         shutil.copyfile(path, destination)
 
     extras = {
-        'launch_extra.pyw': "print('new launcher')\\n",
-        'tools/fleet_operator.ps1': "Write-Output 'operator'\\n",
-        '.github/workflows/fleet-qa.yml': "name: Fleet QA\\non: workflow_dispatch\\njobs: {}\\n",
+        'launch_extra.pyw': "print('new launcher')\n",
+        'tools/fleet_operator.ps1': "Write-Output 'operator'\n",
+        '.github/workflows/fleet-qa.yml': "name: Fleet QA\non: workflow_dispatch\njobs: {}\n",
     }
     for name, content in extras.items():
         destination = source / name

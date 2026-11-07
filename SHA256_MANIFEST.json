@@ -131,7 +131,7 @@
     "tests/test_architecture_control_ledger_commit_fence.py": "da019ef3ebd4c5f6aaeae89c1014021b7914f9418f7a888b7f90535b4641e931",
     "tests/test_architecture_full_operator_cycle.py": "86cabc20981e4dfb2ee1a1c19a7227611f2bbe09caada768f82365d863791346",
     "tests/test_architecture_operator_inventory.py": "1ebbcf28722fc530e30c98fea95e3453307976f8ff7d2253e409d7f91b075de4",
-    "tests/test_architecture_source_sealing.py": "f1149bd68537de2a6a061f92ab12917f3e3349ed4889552c8a725b9c64b8667a",
+    "tests/test_architecture_source_sealing.py": "53ff90c1d8641ce2e52d907b9821caa89de7fb61b8a0c54608fd1c42e64228f5",
     "tests/test_atomic_operator_command_plane.py": "67d4e917daac268aa560af684bb9314f783d8afb5dde14751cf52882fe7f3ed7",
     "tests/test_audit_regressions.py": "d9f7c03896655acbc244b0e7ed78e9a68c2136b90362b778af3e674ee64815eb",
     "tests/test_cached_read_during_cooldown.py": "ed97d1e4b103cb96d2af86ea36cf7f50039525db2a76559ba8a9328865953e04",
