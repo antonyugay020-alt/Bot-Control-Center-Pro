@@ -520,7 +520,20 @@ class PublicData:
             if owner is None:
                 return received(cached, "shared_cache")
         try:
-            response = self.session.get(url, params=params, timeout=(3, 8))
+            # The URL/route admission fence applies to the *entire* HTTP
+            # exchange, not only the first request. requests follows 3xx by
+            # default, potentially reaching an unapproved host/private route
+            # before this method sees the final status. No redirect is safe to
+            # follow automatically, including a redirect within the same host.
+            response = self.session.get(
+                url, params=params, timeout=(3, 8), allow_redirects=False
+            )
+            if 300 <= response.status_code < 400:
+                # 3xx is not an HTTPError in requests; accepting a JSON body
+                # here would publish unverified market data to all workers.
+                # Raise ValueError so the common failure path releases the
+                # cross-process request lease without caching a response.
+                raise ValueError("Публичный источник вернул перенаправление; переход запрещён")
             if response.status_code in (403, 451):
                 # Never evade a provider's geographic/policy restrictions with
                 # mirrors, other venues, cached prices, or silent retries.

@@ -8,7 +8,7 @@ import pytest
 import requests
 
 from bcc import health
-from bcc.market import PublicData, SourceAccessDenied
+from bcc.market import DataUnavailable, PublicData, SourceAccessDenied
 
 
 class Response:
@@ -214,3 +214,53 @@ def test_windows_diagnostic_rejects_untrusted_denial_host_and_status(tmp_path):
         ]
     }), encoding="utf-8")
     assert source_access_blockers(path) == []
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+def test_public_transport_never_follows_redirect_or_caches_redirect_json(
+    isolated_source, status
+):
+    # requests.Session.get normally follows a Location to an arbitrary host.
+    # The fake response deliberately contains plausible JSON; 3xx must still
+    # be rejected rather than admitted as a fresh market snapshot.
+    session = Session(Response(status, {"price": "100"}), Response(200))
+    isolated_source._thread.session = session
+    with pytest.raises(DataUnavailable, match="перенаправление"):
+        isolated_source.get("https://api.binance.com/api/v3/time", ttl=300)
+    assert len(session.calls) == 1
+    assert session.calls[0][1]["allow_redirects"] is False
+    assert isolated_source.cache == {}
+
+
+def test_redirect_releases_shared_owner_lease_without_publishing_market_data(
+    isolated_source
+):
+    class SharedLease:
+        def __init__(self):
+            self.finishes = []
+
+        def begin(self, url, params, host, priority=False):
+            return "key", "owner", None
+
+        def finish(self, *args, **kwargs):
+            self.finishes.append((args, kwargs))
+
+        def close(self):
+            pass
+
+    shared = SharedLease()
+    isolated_source.shared = shared
+    session = Session(Response(302, {"fake_book": True}))
+    isolated_source._thread.session = session
+    with pytest.raises(DataUnavailable, match="перенаправление"):
+        isolated_source.get(
+            "https://api.bybit.com/v5/market/tickers",
+            {"category": "linear", "symbol": "BTCUSDT"},
+        )
+    assert len(session.calls) == 1
+    assert session.calls[0][1]["allow_redirects"] is False
+    assert len(shared.finishes) == 1
+    args, kwargs = shared.finishes[0]
+    assert args == ("key", "owner", "api.bybit.com")
+    assert kwargs["cooldown"] >= 10
+    assert "data" not in kwargs
