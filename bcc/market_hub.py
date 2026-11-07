@@ -60,7 +60,14 @@ class HubRegistry:
             "SELECT tbl_name FROM sqlite_master WHERE type='index' AND name=?",
             (name,),
         ).fetchone()
-        return bool(row and row[0] == 'hub_subscriptions' and
+        # Same columns do not make a UNIQUE or partial index equivalent:
+        # uniqueness rejects unrelated subscriptions sharing a deadline;
+        # a predicate can omit the very expired rows maintenance must prune.
+        shape = next((item for item in db.execute(
+            "PRAGMA index_list(hub_subscriptions)"
+        ) if item[1] == name), None)
+        return bool(row and row[0] == 'hub_subscriptions' and shape
+                    and not shape[2] and not shape[4] and
                     tuple(item[0] for item in db.execute(
                         'SELECT name FROM pragma_index_info(?) ORDER BY seqno',
                         (name,),
@@ -92,13 +99,14 @@ class HubRegistry:
         if not {
             'k', 'url', 'params', 'active_until', 'next_due',
             'last_error', 'priority_until', 'subscription_token'
-        } <= subscriptions:
+        } <= subscriptions.keys():
             return False
-        if not {'singleton', 'owner', 'expires', 'lease_token', 'boot_epoch'} <= leaders:
+        if not {'singleton', 'owner', 'expires', 'lease_token', 'boot_epoch'} <= leaders.keys():
             return False
         # Columns without their primary-key contract can appear valid while
         # ON CONFLICT updates silently fail or admit duplicate leaders.
-        if subscriptions['k'][5] != 1 or leaders['singleton'][5] != 1:
+        if ({name: row[5] for name, row in subscriptions.items() if row[5]} != {'k': 1}
+                or {name: row[5] for name, row in leaders.items() if row[5]} != {'singleton': 1}):
             return False
         for name in ('url', 'params', 'active_until', 'next_due',
                      'last_error', 'priority_until', 'subscription_token'):

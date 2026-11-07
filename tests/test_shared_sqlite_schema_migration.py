@@ -259,3 +259,60 @@ def test_hub_rejects_foreign_index_name_without_touching_it(tmp_path):
         assert db.execute(
             "SELECT tbl_name FROM sqlite_master WHERE type='index' AND name='hub_due'"
         ).fetchone() == ("other_component",)
+
+
+@pytest.mark.parametrize('table', ['hub_subscriptions', 'hub_leader'])
+def test_composite_identity_is_rejected_and_migration_rolls_back(tmp_path, table):
+    """PK ordinal 1 alone cannot authorize ON CONFLICT(k/singleton)."""
+    path = tmp_path / 'market.sqlite'
+    HubRegistry(path)
+    with sqlite3.connect(path) as db:
+        db.execute('DROP TABLE ' + table)
+        if table == 'hub_subscriptions':
+            db.execute("CREATE TABLE hub_subscriptions("
+                       "k TEXT, url TEXT NOT NULL, params TEXT NOT NULL,"
+                       "active_until REAL NOT NULL, next_due REAL NOT NULL DEFAULT 0,"
+                       "last_error TEXT NOT NULL DEFAULT '', PRIMARY KEY(k,url))")
+        else:
+            db.execute("CREATE TABLE hub_leader(singleton INTEGER, owner TEXT NOT NULL,"
+                       "expires REAL NOT NULL, PRIMARY KEY(singleton,owner))")
+        before = db.execute('SELECT type,name,sql FROM sqlite_master ORDER BY name').fetchall()
+    with pytest.raises(sqlite3.DatabaseError, match='schema integrity check failed'):
+        HubRegistry(path)
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT type,name,sql FROM sqlite_master ORDER BY name').fetchall() == before
+
+
+@pytest.mark.parametrize('index,columns', [
+    ('hub_due', 'next_due,active_until'), ('hub_expiry', 'active_until')])
+@pytest.mark.parametrize('unique,partial', [(True, False), (False, True), (True, True)])
+def test_queue_index_semantics_repaired_without_losing_live_generations(
+        tmp_path, monkeypatch, index, columns, unique, partial):
+    """Repair must preserve leaders/subscribers and admit equal deadlines."""
+    path = tmp_path / 'market.sqlite'
+    hub = HubRegistry(path)
+    key = hub.subscribe(URL, PARAMS)
+    assert hub.claim_leader('producer')
+    lease = hub.leader_token('producer')
+    with hub._connect() as db:
+        generation, expiry = db.execute(
+            'SELECT subscription_token,active_until FROM hub_subscriptions WHERE k=?', (key,)
+        ).fetchone()
+        db.execute('DROP INDEX ' + index)
+        db.execute('CREATE ' + ('UNIQUE ' if unique else '') + 'INDEX ' + index +
+                   ' ON hub_subscriptions(' + columns + ')' +
+                   (' WHERE active_until>0' if partial else ''))
+    repaired = HubRegistry(path)
+    assert repaired.leader_token('producer') == lease
+    with repaired._connect() as db:
+        assert db.execute('SELECT subscription_token,active_until FROM hub_subscriptions WHERE k=?',
+                          (key,)).fetchone() == (generation, expiry)
+        shape = next(row for row in db.execute('PRAGMA index_list(hub_subscriptions)')
+                     if row[1] == index)
+        assert shape[2] == 0 and shape[4] == 0
+    # Two markets may renew at the exact same time; neither is a duplicate.
+    now = time.time()
+    monkeypatch.setattr('bcc.market_hub.time.time', lambda: now)
+    for symbol in ('ETHUSDT', 'SOLUSDT'):
+        repaired.subscribe(URL, {**PARAMS, 'symbol': symbol})
+    assert len(repaired.due()) == 3
