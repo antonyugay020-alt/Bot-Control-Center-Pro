@@ -122,7 +122,10 @@ def test_lock_after_http_does_not_crash_or_mask_transport_error(tmp_path, http_e
                 source.get(URL, {"symbol": "ETHUSDT"})
             assert source.cooldowns[HOST] > time.time()
         else:
-            assert source.get(URL, {"symbol": "ETHUSDT"}) == {"payload": "new"}
+            # A successful HTTP response must not escape a failed SQLite
+            # publication. Previously this silently returned uncommitted data.
+            with pytest.raises(DataUnavailable, match="не подтверждён транзакцией"):
+                source.get(URL, {"symbol": "ETHUSDT"})
         blocker.rollback()
         # Lease ownership and rate reservation were committed before HTTP.
         with source.shared.db() as db:
@@ -330,3 +333,76 @@ def test_worker_loop_recovers_cache_lock_and_manages_existing_position(tmp_path)
     finally:
         blocker.close()
         source.close()
+
+
+@pytest.mark.parametrize("hub_producer", [False, True])
+def test_superseded_http_lease_cannot_return_or_ack_success(tmp_path, monkeypatch, hub_producer):
+    """Direct workers and the independent Hub share the same commit fence."""
+    monkeypatch.delenv("BCC_MARKET_HUB_MODE", raising=False)
+    from bcc.market_hub import MarketDataHub
+
+    path = tmp_path / "public.sqlite"
+    source = PublicData()
+    source.shared = PublicCache(path)
+    observer = PublicCache(path)
+    params = {"symbol": "ETHUSDT"}
+    hub = MarketDataHub(path, source=source, max_workers=1) if hub_producer else None
+    subscription = hub.registry.subscribe(URL, params) if hub is not None else None
+
+    class Response:
+        status_code = 200
+        headers = {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"uncommitted": True}
+
+    class Session:
+        def get(self, url, params, timeout, *, allow_redirects):
+            assert allow_redirects is False
+            with observer.db() as db:
+                db.execute("BEGIN IMMEDIATE")
+                lease = db.execute("SELECT k,owner FROM lease LIMIT 1").fetchone()
+                assert lease is not None
+                db.execute("UPDATE lease SET owner=?,until=? WHERE k=?",
+                           ("replacement-worker", time.time() + 20, lease[0]))
+                db.commit()
+            return Response()
+
+        def close(self):
+            pass
+
+    source._thread.session = Session()
+    try:
+        if hub is not None:
+            assert hub.run_once() == [(subscription, False)]
+            with hub.registry._connect() as db:
+                row = db.execute(
+                    "SELECT last_error FROM hub_subscriptions WHERE k=?", (subscription,)
+                ).fetchone()
+            assert row and "не подтверждён транзакцией" in row[0]
+        else:
+            with pytest.raises(DataUnavailable, match="не подтверждён транзакцией"):
+                source.get(URL, params)
+        with observer.db() as db:
+            assert db.execute("SELECT COUNT(*) FROM cache").fetchone()[0] == 0
+            assert db.execute("SELECT owner FROM lease").fetchone() == ("replacement-worker",)
+    finally:
+        if hub is not None:
+            hub.close()
+        else:
+            source.close()
+        observer.close()
+
+
+def test_cache_finish_reports_only_authorized_published_data(tmp_path):
+    cache = PublicCache(tmp_path / "public.sqlite")
+    try:
+        key, owner, _ = cache.begin(URL, {"symbol": "SOLUSDT"}, HOST)
+        assert cache.finish(key, "obsolete-owner", HOST, {"bad": True}, ttl=30) is False
+        assert cache.finish(key, owner, HOST, {"good": True}, ttl=30) is True
+        assert cache.read_fresh(URL, {"symbol": "SOLUSDT"}, HOST) == {"good": True}
+    finally:
+        cache.close()
