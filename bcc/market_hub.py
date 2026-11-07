@@ -82,10 +82,12 @@ class HubRegistry:
     def claim_leader(self, owner, *, lifetime=15):
         if not owner or not 1 <= lifetime <= 120:
             raise ValueError('Invalid hub lease')
-        now = time.time()
         candidate = uuid.uuid4().hex
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
+            # Sample the clock only AFTER acquiring SQLite's writer lock.
+            # A queued contender must not reclaim using a stale lease time.
+            now = time.time()
             db.execute("""INSERT INTO hub_leader(singleton,owner,expires,lease_token)
               VALUES(1,?,?,?)
               ON CONFLICT(singleton) DO UPDATE SET
@@ -123,8 +125,11 @@ class HubRegistry:
         if (not owner or not isinstance(token, str) or not token
                 or not 1 <= lifetime <= 120):
             raise ValueError('Invalid hub lease')
-        now = time.time()
         with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            # An old heartbeat may wait for another writer past its expiry.
+            # It must not resurrect a lease with its pre-wait timestamp.
+            now = time.time()
             cursor = db.execute(
                 "UPDATE hub_leader SET expires=? WHERE singleton=1 "
                 "AND owner=? AND expires>=? AND lease_token=?",
@@ -154,9 +159,11 @@ class HubRegistry:
         if (not isinstance(token, str) or not token
                 or not isinstance(subscription_token, str) or not subscription_token):
             raise ValueError('Hub completion requires leader and subscription fencing tokens')
-        now = time.time()
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
+            # Both leader and subscription expiry are checked against the
+            # instant the SQLite writer lock is held, not queue-entry time.
+            now = time.time()
             valid = db.execute(
                 'SELECT 1 FROM hub_leader WHERE singleton=1 AND owner=? '
                 'AND expires>=? AND lease_token=?',
@@ -197,9 +204,12 @@ class HubRegistry:
         from .market import PublicData
         PublicData.validated_public_request(url, params)
         key, encoded = self.identity(url, params)
-        now = time.time()
         generation = uuid.uuid4().hex
         with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            # A subscription may expire while waiting on a fleet-wide writer.
+            # Refresh its incarnation and TTL from transaction admission.
+            now = time.time()
             db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until,subscription_token)
               VALUES(?,?,?,?,0,?,?) ON CONFLICT(k) DO UPDATE SET
               active_until=max(hub_subscriptions.active_until,excluded.active_until),
@@ -238,8 +248,9 @@ class HubRegistry:
                 or not 60 <= retention <= 86400
                 or type(batch) is not int or not 1 <= batch <= 1024):
             raise ValueError('Invalid Hub retention or cleanup batch')
-        cutoff = time.time() - retention
         with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            cutoff = time.time() - retention
             cursor = db.execute(
                 'DELETE FROM hub_subscriptions WHERE k IN ('
                 'SELECT k FROM hub_subscriptions WHERE active_until<? '
@@ -255,9 +266,10 @@ class HubRegistry:
         longer renew, so the hub may retire after their leases expire.
         """
         with self._connect() as db:
+            now = time.time()
             return db.execute(
                 'SELECT 1 FROM hub_subscriptions WHERE active_until>? LIMIT 1',
-                (time.time(),),
+                (now,),
             ).fetchone() is not None
 
     def due(self, limit=32, *, reserve_regular=0, exclude=(), include_priority=False,
@@ -278,8 +290,8 @@ class HubRegistry:
         if any(type(key) is not str for key in exclude) or len(exclude) > 64:
             raise ValueError('Invalid in-flight Hub exclusion keys')
         skip_sql = (' AND k NOT IN (' + ','.join('?' for _ in exclude) + ')') if exclude else ''
-        now = time.time()
         with self._connect() as db:
+            now = time.time()
             urgent = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
               ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, limit-reserve_regular)).fetchall()
