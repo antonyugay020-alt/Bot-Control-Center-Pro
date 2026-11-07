@@ -9,7 +9,7 @@ def test_stale_owner_cannot_acknowledge_after_handover(tmp_path):
     assert registry.claim_leader("old")
     old_token = registry.leader_token("old")
     assert registry.finish_owned(key, 1, "old", token=old_token)
-    registry.release_leader("old")
+    registry.release_leader("old", token=old_token)
     assert registry.claim_leader("new")
     new_token = registry.leader_token("new")
     assert not registry.finish_owned(key, 500, "old", "stale", token=old_token)

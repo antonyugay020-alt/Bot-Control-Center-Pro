@@ -73,7 +73,7 @@ def test_concurrent_producer_does_not_ack_after_leader_is_revoked(tmp_path):
         worker = threading.Thread(target=lambda: results.extend(hub.run_once(limit=4)))
         worker.start()
         assert entered.wait(3)
-        registry.release_leader(hub.owner)
+        registry.release_leader(hub.owner, token=registry.leader_token(hub.owner))
         assert registry.claim_leader('new-owner', lifetime=120)
         gate.set()
         worker.join(5)

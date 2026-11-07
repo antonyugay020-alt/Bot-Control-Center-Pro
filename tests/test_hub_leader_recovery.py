@@ -11,9 +11,9 @@ def test_single_owner_and_release(tmp_path):
     assert a.claim_leader('one')
     assert not b.claim_leader('two')
     assert a.claim_leader('one')
-    a.release_leader('one')
+    a.release_leader('one', token=a.leader_token('one'))
     assert b.claim_leader('two')
-    b.release_leader('two')
+    b.release_leader('two', token=b.leader_token('two'))
 
 
 def test_producers_do_not_double_fetch(tmp_path):
@@ -64,10 +64,11 @@ def test_concurrent_processes_single_leader(tmp_path):
 def test_lost_lease_cannot_renew(tmp_path):
     registry = HubRegistry(tmp_path / 'hub.sqlite')
     assert registry.claim_leader('old')
-    assert registry.renew_leader('old')
-    registry.release_leader('old')
+    old_token = registry.leader_token('old')
+    assert registry.renew_leader('old', token=old_token)
+    registry.release_leader('old', token=old_token)
     assert registry.claim_leader('new')
-    assert not registry.renew_leader('old')
+    assert not registry.renew_leader('old', token=old_token)
 
 def test_hub_stops_after_lease_transfer(tmp_path):
     path = tmp_path / 'hub.sqlite'
@@ -79,7 +80,7 @@ def test_hub_stops_after_lease_transfer(tmp_path):
         shared=object()
         def get(self,url,params=None):
             calls.append(params['symbol'])
-            registry.release_leader(hub.owner)
+            registry.release_leader(hub.owner, token=registry.leader_token(hub.owner))
             assert registry.claim_leader('new')
         def close(self): pass
     hub=MarketDataHub(path,Source())

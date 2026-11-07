@@ -364,8 +364,11 @@ class PublicCache:
         published = False
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT owner FROM lease WHERE k=?", (key,)).fetchone()
-            if row and row[0] == owner:
+            row = db.execute("SELECT owner,until FROM lease WHERE k=?", (key,)).fetchone()
+            # A matching owner is insufficient after its 20-second HTTP lease
+            # expires. A stalled response must not acquire a fresh cache TTL
+            # just because no replacement worker has claimed the key yet.
+            if row and row[0] == owner and row[1] > time.time():
                 # A second in-flight GET may complete after another request
                 # from the same host was rejected. Never publish that older
                 # response into the shared cache while the policy fence holds.

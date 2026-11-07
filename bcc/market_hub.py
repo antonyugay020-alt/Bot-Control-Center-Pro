@@ -91,17 +91,34 @@ class HubRegistry:
             ).fetchone()
         return row[0] if row else None
 
-    def renew_leader(self, owner, *, lifetime=120):
-        if not owner or not 1 <= lifetime <= 120:
+    def renew_leader(self, owner, *, token, lifetime=120):
+        # Renewal and release are mutations of the same generation as the
+        # subscription acknowledgement. Owner names alone are not fences:
+        # an old heartbeat can otherwise extend a reclaimed same-owner lease.
+        if (not owner or not isinstance(token, str) or not token
+                or not 1 <= lifetime <= 120):
             raise ValueError('Invalid hub lease')
         now = time.time()
         with self._connect() as db:
-            cursor = db.execute("UPDATE hub_leader SET expires=? WHERE singleton=1 AND owner=? AND expires>=?", (now+lifetime,owner,now))
+            cursor = db.execute(
+                "UPDATE hub_leader SET expires=? WHERE singleton=1 "
+                "AND owner=? AND expires>=? AND lease_token=?",
+                (now + lifetime, owner, now, token),
+            )
             return cursor.rowcount == 1
 
-    def release_leader(self, owner):
+    def release_leader(self, owner, *, token):
+        # A delayed shutdown from an earlier epoch must not revoke the lease
+        # now held by a successor with the same logical producer identity.
+        if not owner or not isinstance(token, str) or not token:
+            raise ValueError('Invalid hub lease')
         with self._connect() as db:
-            db.execute('DELETE FROM hub_leader WHERE singleton=1 AND owner=?', (owner,))
+            cursor = db.execute(
+                'DELETE FROM hub_leader WHERE singleton=1 '
+                'AND owner=? AND lease_token=?',
+                (owner, token),
+            )
+            return cursor.rowcount == 1
 
     def finish_owned(self, key, delay, owner, error='', *, token):
         """Acknowledge only while this producer still holds an unexpired lease.
@@ -270,9 +287,11 @@ class MarketDataHub:
         token = self.registry.leader_token(self.owner)
         if not token:
             return []
+        self._leader_token = token
+        self._leader_held = True
         results = []
         for key, url, params in self.registry.due(limit):
-            if not self.registry.renew_leader(self.owner, lifetime=120):
+            if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
             delay = 120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0)
             stop_renewal = threading.Event()
@@ -283,7 +302,7 @@ class MarketDataHub:
                 # Another hub must not take ownership just because HTTP is slow.
                 while not stop_renewal.wait(self.lease_renew_interval):
                     try:
-                        if not self.registry.renew_leader(self.owner, lifetime=120):
+                        if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                             lease_lost.set()
                             return
                     except sqlite3.Error:
@@ -304,7 +323,7 @@ class MarketDataHub:
             # A stale producer must not publish subscription completion after
             # ownership transfer. Cache writes inside source.get are protected
             # separately by PublicCache's per-request ownership lease.
-            if lease_lost.is_set() or not self.registry.renew_leader(self.owner, lifetime=120):
+            if lease_lost.is_set() or not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
             if error is None:
                 if not self.registry.finish_owned(key, delay, self.owner, token=token):
@@ -329,6 +348,8 @@ class MarketDataHub:
         token = self.registry.leader_token(self.owner)
         if not token:
             return []
+        self._leader_token = token
+        self._leader_held = True
         due = self.registry.due(min(limit, self.max_workers),
                                 reserve_regular=1 if self.max_workers > 1 else 0)
         if not due:
@@ -339,7 +360,7 @@ class MarketDataHub:
         def keep_leader():
             while not stop.wait(self.lease_renew_interval):
                 try:
-                    if not self.registry.renew_leader(self.owner, lifetime=120):
+                    if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                         lost.set()
                         return
                 except sqlite3.Error:
@@ -361,7 +382,7 @@ class MarketDataHub:
             futures = [self._pool.submit(fetch, request) for request in due]
             for future in as_completed(futures):
                 key, url, error = future.result()
-                if lost.is_set() or not self.registry.renew_leader(self.owner, lifetime=120):
+                if lost.is_set() or not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                     lost.set()
                     break
                 delay = 120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0)
@@ -392,7 +413,7 @@ class MarketDataHub:
         now = time.monotonic()
         if now >= self._leader_check_due:
             held = (
-                self.registry.renew_leader(self.owner, lifetime=120)
+                self.registry.renew_leader(self.owner, token=self._leader_token, lifetime=120)
                 if self._leader_held
                 else self.registry.claim_leader(self.owner, lifetime=120)
             )
@@ -479,5 +500,8 @@ class MarketDataHub:
     def close(self):
         if self._pool is not None:
             self._pool.shutdown(wait=True, cancel_futures=True)
-        self.registry.release_leader(self.owner)
+        if self._leader_token:
+            self.registry.release_leader(self.owner, token=self._leader_token)
+            self._leader_token = None
+            self._leader_held = False
         self.source.close()

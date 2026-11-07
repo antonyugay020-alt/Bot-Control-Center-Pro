@@ -25,7 +25,7 @@ def test_released_and_reclaimed_same_owner_cannot_acknowledge_old_work(tmp_path)
     assert first
     assert registry.claim_leader("producer")  # ordinary renewal is same epoch
     assert registry.leader_token("producer") == first
-    registry.release_leader("producer")
+    registry.release_leader("producer", token=first)
     assert registry.claim_leader("producer")
     second = registry.leader_token("producer")
     assert second and second != first
@@ -119,7 +119,7 @@ def test_nonblocking_hub_discards_old_epoch_future_before_ack(tmp_path):
         assert entered.wait(5), "first HTTP task was not scheduled"
         first = registry.leader_token(hub.owner)
         assert first
-        registry.release_leader(hub.owner)
+        registry.release_leader(hub.owner, token=first)
         assert registry.claim_leader(hub.owner)
         assert registry.leader_token(hub.owner) != first
         release.set()
@@ -142,3 +142,51 @@ def test_nonblocking_hub_discards_old_epoch_future_before_ack(tmp_path):
     finally:
         release.set()
         hub.close()
+
+
+def test_old_generation_cannot_renew_or_revoke_reclaimed_same_owner(tmp_path):
+    """Fencing applies to heartbeats and shutdown, not only to HTTP acks."""
+    registry = HubRegistry(tmp_path / "hub.sqlite")
+    assert registry.claim_leader("producer")
+    first = registry.leader_token("producer")
+    assert registry.release_leader("producer", token=first)
+    assert registry.claim_leader("producer")
+    second = registry.leader_token("producer")
+    assert second != first
+    with registry._connect() as db:
+        expires_before = db.execute(
+            "SELECT expires FROM hub_leader WHERE singleton=1"
+        ).fetchone()[0]
+    assert not registry.renew_leader("producer", token=first)
+    assert not registry.release_leader("producer", token=first)
+    with registry._connect() as db:
+        assert db.execute(
+            "SELECT expires,lease_token FROM hub_leader WHERE singleton=1"
+        ).fetchone() == (expires_before, second)
+    assert registry.renew_leader("producer", token=second)
+    assert registry.release_leader("producer", token=second)
+
+
+def test_hub_close_releases_only_the_acquired_generation(tmp_path):
+    path = tmp_path / "hub.sqlite"
+    registry = HubRegistry(path)
+    registry.subscribe(URL, {"symbol": "BTCUSDT"})
+
+    class Source:
+        shared = object()
+        def get(self, url, params=None):
+            return {"ok": True}
+        def close(self):
+            pass
+
+    hub = MarketDataHub(path, Source())
+    assert hub.run_once()
+    old = registry.leader_token(hub.owner)
+    assert old
+    assert registry.release_leader(hub.owner, token=old)
+    assert registry.claim_leader(hub.owner)
+    new = registry.leader_token(hub.owner)
+    assert new != old
+    hub.close()
+    assert registry.leader_token(hub.owner) == new
+    assert registry.release_leader(hub.owner, token=new)
