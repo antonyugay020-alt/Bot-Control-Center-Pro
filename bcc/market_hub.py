@@ -375,6 +375,24 @@ class MarketDataHub:
             self.registry.prune_expired()
             self._prune_due = now + 30.0
 
+    def _fetch_public(self, url, params, *, urgent):
+        """Preserve subscriber priority across ALL Hub producer modes.
+
+        PublicData checks its thread-local position_mark before reserving the
+        shared Bybit request budget. A priority queue alone cannot protect
+        open PAPER positions if the producer drops that mark at the HTTP
+        boundary. Always restore the worker-thread context, including errors.
+        """
+        context = getattr(self.source, '_thread', None)
+        previous = getattr(context, 'position_mark', False) if context is not None else False
+        if context is not None:
+            context.position_mark = bool(urgent)
+        try:
+            return self.source.get(url, params=params)
+        finally:
+            if context is not None:
+                context.position_mark = previous
+
     def run_once(self, limit=32):
         if self.max_workers > 1:
             return self._run_parallel(limit)
@@ -383,7 +401,8 @@ class MarketDataHub:
             return []
         self._maintain_registry()
         results = []
-        for key, url, params, generation in self.registry.due(limit, include_generation=True):
+        for key, url, params, urgent, generation in self.registry.due(
+                limit, include_priority=True, include_generation=True):
             if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
             delay = 120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0)
@@ -407,7 +426,7 @@ class MarketDataHub:
             heartbeat.start()
             error = None
             try:
-                self.source.get(url, params=params)
+                self._fetch_public(url, params, urgent=urgent)
             except Exception as exc:
                 error = exc
             finally:
@@ -447,7 +466,7 @@ class MarketDataHub:
         # scheduler's reservation strictly below the actual batch size.
         due = self.registry.due(batch,
                                 reserve_regular=1 if batch > 1 else 0,
-                                include_generation=True)
+                                include_priority=True, include_generation=True)
         if not due:
             return []
         stop = threading.Event()
@@ -464,9 +483,9 @@ class MarketDataHub:
                     return
 
         def fetch(request):
-            key, url, params, generation = request
+            key, url, params, urgent, generation = request
             try:
-                self.source.get(url, params=params)
+                self._fetch_public(url, params, urgent=urgent)
                 return key, url, generation, None
             except Exception as exc:
                 return key, url, generation, exc
@@ -576,21 +595,11 @@ class MarketDataHub:
             if not is_urgent and regular_inflight >= self.max_workers - 1:
                 continue
             def fetch(request_url=url, request_params=params, urgent=is_urgent):
-                # The producer, not the consumer, reserves the exchange GET
-                # budget. Carry the trusted subscription urgency across this
-                # boundary, on the producer's own thread-local context only.
-                context = getattr(self.source, '_thread', None)
-                previous = getattr(context, 'position_mark', False) if context is not None else False
-                if context is not None:
-                    context.position_mark = bool(urgent)
                 try:
-                    self.source.get(request_url, params=request_params)
+                    self._fetch_public(request_url, request_params, urgent=urgent)
                     return None
                 except Exception as exc:
                     return exc
-                finally:
-                    if context is not None:
-                        context.position_mark = previous
             self._inflight[key] = (self._pool.submit(fetch), url, is_urgent,
                                    self._leader_token, generation)
             urgent_inflight += bool(is_urgent)
