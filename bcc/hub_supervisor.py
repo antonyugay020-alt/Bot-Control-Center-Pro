@@ -181,10 +181,7 @@ def ensure_hub(repo_root, *, timeout=8):
             # silently hand a worker a dead/hung hub endpoint.
             try:
                 registry = HubRegistry(cache)
-                with registry._connect() as db:
-                    leader = db.execute(
-                        'SELECT owner, expires, lease_token FROM hub_leader WHERE singleton=1'
-                    ).fetchone()
+                leader = registry.live_leader()
                 expected_owner = record.get('leader_owner')
                 owner_matches = (leader and type(leader[0]) is str and (
                     leader[0] == expected_owner if type(expected_owner) is str
@@ -218,13 +215,11 @@ def ensure_hub(repo_root, *, timeout=8):
         # that process: its creation time and command must also be proven.
         # A dead verified predecessor's lease was revoked above.
         registry = HubRegistry(cache)
-        with registry._connect() as db:
-            leader = db.execute(
-                'SELECT owner, expires FROM hub_leader WHERE singleton=1'
-            ).fetchone()
-        if (leader and isinstance(leader[0], str)
-                and type(leader[1]) in (int, float)
-                and math.isfinite(leader[1]) and leader[1] > time.time()):
+        # A future expiry written before an OS reboot is not a live Hub.
+        # Use the same boot-aware lease admission as producer renewals and
+        # readiness, rather than treating wall-clock TTL as process identity.
+        leader = registry.live_leader()
+        if leader and isinstance(leader[0], str):
             raise HubUnavailable(
                 'Market Data Hub has an active leader but its process identity '
                 'cannot be verified; refusing to replace it'
@@ -287,11 +282,7 @@ def ensure_hub(repo_root, *, timeout=8):
                             if not owner.startswith(str(service_pid) + ':'):
                                 time.sleep(.1)
                                 continue
-                            with registry._connect() as db:
-                                lease = db.execute(
-                                    'SELECT owner,expires,lease_token FROM hub_leader '
-                                    'WHERE singleton=1'
-                                ).fetchone()
+                            lease = registry.live_leader()
                             if not (lease and lease[0] == owner
                                     and type(lease[1]) in (int, float)
                                     and math.isfinite(lease[1])
