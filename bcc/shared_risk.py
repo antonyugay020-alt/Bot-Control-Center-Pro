@@ -13,7 +13,7 @@ from pathlib import Path
 import sqlite3
 
 from .config import number
-from .storage import BotBusy, BotLock, Store, atomic_json, load_json
+from .storage import BotBusy, BotLock, Store, atomic_json, load_json, iter_paper_accounts
 from .margin import (
     MODEL,
     MarginUnavailable,
@@ -95,14 +95,10 @@ def allocation_reason(state, committed, slots=1):
 
 def portfolio_snapshot(root, exclude=None, *, require_prices=False):
     slots, committed = 0, 0.0
-    for path in sorted((Path(root) / "MY_BOTS").glob("*/*/paper.sqlite")):
-        if exclude is not None and path == exclude:
+    for folder in iter_paper_accounts(root):
+        if exclude is not None and folder / 'paper.sqlite' == exclude:
             continue
-        if path.is_symlink() or any(
-            p.is_symlink() for p in (path.parent, path.parent.parent)
-        ):
-            raise ValueError("Ссылка вместо PAPER-счёта")
-        account = Store(path.parent).read(include_charts=False)
+        account = Store(folder).read(include_charts=False)
         if require_prices and account.get("margin_model") == MODEL:
             error = margin_status(account)
             if error:

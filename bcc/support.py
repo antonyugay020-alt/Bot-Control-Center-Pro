@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import VERSION
 from .lifecycle import Lifecycle
-from .storage import Repository, Store, atomic_json, load_json
+from .storage import Repository, Store, atomic_json, load_json, paper_account_present
 
 
 def execution_freshness(events):
@@ -126,7 +126,7 @@ def collect(root, output, *, stop_workers=False, life=None):
                         report["errors"].append(
                             {"bot": folder.name, "worker_error": message}
                         )
-            if (folder / "paper.sqlite").exists():
+            if paper_account_present(folder):
                 with tempfile.TemporaryDirectory(prefix="bcc-report-") as temp:
                     snapshot_path = Path(temp)
                     Store(folder).backup(snapshot_path / "paper.sqlite")

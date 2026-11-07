@@ -145,17 +145,13 @@ class Store:
         self.path = self.folder / "paper.sqlite"
         self.marker = self.folder / self.MARKER
         if capital is not None:
-            if self.path.exists():
+            if paper_account_present(self.folder):
                 # Existing databases must have a valid ledger. Never repair an
                 # empty/corrupt database by inserting a fresh initial state.
                 self.audit()
                 if not math.isclose(self.effective_capital(), capital, rel_tol=1e-10, abs_tol=1e-7):
                     raise AccountingError("Депозит не совпадает с PAPER-счётом")
             else:
-                if self.marker.exists() or (self.folder / "process.json").exists():
-                    raise AccountingError(
-                        "Существующий PAPER-счёт исчез. Восстановите paper.sqlite из резервной копии"
-                    )
                 with self.connect(create=True) as db:
                     db.executescript(
                         "CREATE TABLE state(id INTEGER PRIMARY KEY CHECK(id=1), document TEXT NOT NULL); "
@@ -773,17 +769,39 @@ def recover_deposit_change(folder):
     intent_path.unlink()
 
 
-def guard_paper_recovery(folder):
-    """Refuse modifications/exports if an initialized account lost its ledger."""
+def paper_account_present(folder):
+    """Distinguish never-started owners from missing initialized accounts.
+
+    All read-only consumers must honor the same durable account witness as
+    worker startup. File absence cannot turn unknown holdings into zero risk
+    or a fresh dashboard balance. This check never creates or repairs a DB.
+    """
     folder = Path(folder)
-    has_db = (folder / "paper.sqlite").is_file()
+    database = folder / 'paper.sqlite'
+    if any(path.is_symlink() for path in (
+            folder, database, folder / Store.MARKER, folder / 'process.json')):
+        raise AccountingError('Ссылка вместо PAPER-счёта')
+    has_db = database.is_file()
     known = ((folder / Store.MARKER).exists() or
              (folder / "process.json").exists())
-    if known and not has_db:
+    if not has_db and (known or database.exists()):
         raise AccountingError(
-            "PAPER-счёт ранее был создан, но paper.sqlite отсутствует. "
+            "Существующий PAPER-счёт недоступен: paper.sqlite отсутствует. "
             "Восстановите базу из резервной копии"
         )
+    return has_db
+
+
+def read_paper_state(folder, *, include_charts=False):
+    """Return None only for a genuinely uninitialized owner, never lost state."""
+    if not paper_account_present(folder):
+        return None
+    return Store(folder).read(include_charts=include_charts)
+
+
+def guard_paper_recovery(folder):
+    """Refuse modifications/exports if an initialized account lost its ledger."""
+    has_db = paper_account_present(folder)
     if has_db:
         Store(folder).audit()
     return has_db
@@ -807,6 +825,40 @@ def import_committed(folder, committed=None):
         return (folder.parent.parent / ".import-commits" / batch).is_file()
     except (OSError, UnicodeError):
         return False
+
+
+def iter_paper_accounts(root):
+    """Stream published accounts at one import visibility boundary.
+
+    Include orphaned account folders even if config.json was lost; they still
+    represent financial exposure. Never count private staging, retired or
+    uncommitted import rows as holdings in the published portfolio.
+    """
+    bots = Path(root) / 'MY_BOTS'
+    if bots.is_symlink():
+        raise AccountingError('Ссылка вместо MY_BOTS')
+    if not bots.exists():
+        return
+    commits_dir = bots / '.import-commits'
+    if commits_dir.is_symlink():
+        raise AccountingError('Ссылка вместо границы импорта')
+    commits = frozenset(path.name for path in commits_dir.iterdir() if path.is_file()) if commits_dir.is_dir() else frozenset()
+    for strategy in bots.iterdir():
+        if strategy.name.startswith('.'):
+            continue
+        if strategy.is_symlink():
+            raise AccountingError('Ссылка вместо папки стратегии')
+        if not strategy.is_dir():
+            continue
+        for folder in strategy.iterdir():
+            if folder.name.startswith(('.creating-', '.deleted-', '.quarantined-')):
+                continue
+            if folder.is_symlink():
+                raise AccountingError('Ссылка вместо PAPER-счёта')
+            if not folder.is_dir() or not import_committed(folder, commits):
+                continue
+            if paper_account_present(folder):
+                yield folder
 
 
 class Repository:

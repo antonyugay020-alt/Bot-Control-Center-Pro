@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "baseline": "b316457d5205cb886aeb530672414a61108d0781",
+  "platform": "Linux/Python 3.12.14/Qt 6.12.0 offscreen",
+  "release_accepted": false,
+  "native_windows": "BLOCKED: executor is Linux",
+  "cycles": [
+    {
+      "name": "portfolio-red",
+      "tests": 20,
+      "failures": [
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[VELES-VELES]",
+          "message": "AssertionError: assert (not {'BTCUSDT:LONG_30_40': {'position_id': 'e3c2dd218ecb4db9831a4be6682ed8bf', 'symbol': 'BTCUSDT', 'side': 'LONG', 'section': 'LONG_30_40', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[VELES-GRID]",
+          "message": "AssertionError: assert (not {'BTCUSDT:LONG_30_40': {'position_id': '7b969f4dbf6344b8832d8cedab1abc20', 'symbol': 'BTCUSDT', 'side': 'LONG', 'section': 'LONG_30_40', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[VELES-PUMP_DUMP]",
+          "message": "AssertionError: assert (not {'BTCUSDT:LONG_30_40': {'position_id': '8c81f6d7e4154e299b65a00e32a4063e', 'symbol': 'BTCUSDT', 'side': 'LONG', 'section': 'LONG_30_40', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[VELES-POLYMARKET]",
+          "message": "AssertionError: assert (not {'BTCUSDT:LONG_30_40': {'position_id': 'b0b7bedf6b3f4ea888b6edbd6b4aa7b5', 'symbol': 'BTCUSDT', 'side': 'LONG', 'section': 'LONG_30_40', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[GRID-VELES]",
+          "message": "AssertionError: assert (not {'BTCUSDT:grid_0': {'position_id': '7dd643b8efc145b99739bf48d21898a0', 'symbol': 'BTCUSDT', 'side': 'LONG', 'section': 'grid_0', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[GRID-GRID]",
+          "message": "AssertionError: assert (not {'BTCUSDT:grid_0': {'position_id': '6c6a2eb269e144468a9a606ee5c09247', 'symbol': 'BTCUSDT', 'side': 'LONG', 'section': 'grid_0', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[GRID-PUMP_DUMP]",
+          "message": "AssertionError: assert (not {'BTCUSDT:grid_0': {'position_id': '0f5b025ef5fc47b699db9ec5f2eadd71', 'symbol': 'BTCUSDT', 'side': 'LONG', 'section': 'grid_0', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[GRID-POLYMARKET]",
+          "message": "AssertionError: assert (not {'BTCUSDT:grid_0': {'position_id': 'c12c32cf837348e5b51f498720da891a', 'symbol': 'BTCUSDT', 'side': 'LONG', 'section': 'grid_0', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[PUMP_DUMP-VELES]",
+          "message": "AssertionError: assert (not {'BTCUSDT:fast': {'position_id': '9b4921009cda420b9e2f0a2ef9802bf0', 'symbol': 'BTCUSDT', 'side': 'SHORT', 'section': 'fast', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[PUMP_DUMP-GRID]",
+          "message": "AssertionError: assert (not {'BTCUSDT:fast': {'position_id': 'cde4f37880ea4926bae625e734b013b6', 'symbol': 'BTCUSDT', 'side': 'SHORT', 'section': 'fast', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[PUMP_DUMP-PUMP_DUMP]",
+          "message": "AssertionError: assert (not {'BTCUSDT:fast': {'position_id': '4516ac4bfb9d4f78a2709942b35f1147', 'symbol': 'BTCUSDT', 'side': 'SHORT', 'section': 'fast', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[PUMP_DUMP-POLYMARKET]",
+          "message": "AssertionError: assert (not {'BTCUSDT:fast': {'position_id': 'eec291aea261495aaea7abd1dd208fdf', 'symbol': 'BTCUSDT', 'side': 'SHORT', 'section': 'fast', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[POLYMARKET-VELES]",
+          "message": "AssertionError: assert (not {'one-market': {'position_id': '61bbf675c96f42aa8ee69908b33ac3e2', 'kind': 'POLYMARKET', 'symbol': 'BTC', 'section': 'BTC:300', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[POLYMARKET-GRID]",
+          "message": "AssertionError: assert (not {'one-market': {'position_id': 'a7986cf4a550443fa282c26d448f219d', 'kind': 'POLYMARKET', 'symbol': 'BTC', 'section': 'BTC:300', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[POLYMARKET-PUMP_DUMP]",
+          "message": "AssertionError: assert (not {'one-market': {'position_id': 'ddc691c43cf34f35965a73add7839a0a', 'kind': 'POLYMARKET', 'symbol': 'BTC', 'section': 'BTC:300', ...}})"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[POLYMARKET-POLYMARKET]",
+          "message": "AssertionError: assert (not {'one-market': {'position_id': '518e988b98704b72b425042061231720', 'kind': 'POLYMARKET', 'symbol': 'BTC', 'section': 'BTC:300', ...}})"
+        }
+      ],
+      "skipped": 0,
+      "junit_sha256": "52b12e4bda73b2d57c267055d602626ca213ebdce05ece8653718b1f7211063f"
+    },
+    {
+      "name": "portfolio-green1",
+      "tests": 134,
+      "failures": [
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[VELES-VELES]",
+          "message": "assert False\n +  where False = any(<generator object test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly.<locals>.<genexpr> at 0x7f0a93384660>)"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[VELES-GRID]",
+          "message": "assert False\n +  where False = any(<generator object test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly.<locals>.<genexpr> at 0x7f0a93415000>)"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[VELES-PUMP_DUMP]",
+          "message": "assert False\n +  where False = any(<generator object test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly.<locals>.<genexpr> at 0x7f0a93415ee0>)"
+        },
+        {
+          "case": "tests.test_portfolio_recovery_integration::test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly[VELES-POLYMARKET]",
+          "message": "assert False\n +  where False = any(<generator object test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly.<locals>.<genexpr> at 0x7f0a934167a0>)"
+        }
+      ],
+      "skipped": 0,
+      "junit_sha256": "801ed9d16d035cd67fc3cd30af59534445e3240e2146f408c5332bb421cfc4e4"
+    },
+    {
+      "name": "portfolio-green2",
+      "tests": 20,
+      "failures": [],
+      "skipped": 0,
+      "junit_sha256": "22f951f1d4523897ca9ab1a29ce5667ef887095278608800fa6488978a7b5719"
+    },
+    {
+      "name": "portfolio-integration",
+      "tests": 59,
+      "failures": [],
+      "skipped": 0,
+      "junit_sha256": "4e611d6489395d2a7c838768e341be87798e07980bcc911ba02d8e8833d7c92a"
+    },
+    {
+      "name": "portfolio-target-final",
+      "tests": 103,
+      "failures": [],
+      "skipped": 0,
+      "junit_sha256": "54d2c9ecd77b960d5730809d96e1971a5526de3c40168eab61ada3166948e136"
+    },
+    {
+      "name": "portfolio-full1",
+      "tests": 3394,
+      "failures": [
+        {
+          "case": "tests.test_paper_transfer_recovery::test_legacy_started_bot_without_new_marker_cannot_reset",
+          "message": "AssertionError: Regex pattern did not match.\n  Expected regex: 'Существующий'\n  Actual message: 'PAPER-счёт ранее был создан, но paper.sqlite отсутствует. Восстановите базу из резервной копии'"
+        }
+      ],
+      "skipped": 0,
+      "junit_sha256": "3bedaee8a4427faee6bd0a3ad254b6d513a698a5055110d18d21c50b13a8a654"
+    },
+    {
+      "name": "market-fleet-red",
+      "tests": 4,
+      "failures": [
+        {
+          "case": "tests.test_market_fleet_recovery_e2e::test_hub_restart_preserves_strategy_risk_monitor_and_closed_ledger[VELES]",
+          "message": "AssertionError: {'BTCUSDT': [{'section': 'LONG_30_40 / выход', 'reason': 'Ожидание условий выхода', 'conditions': [{'comparison': '>', 'indicator': 'PRICE', 'timeframe': 1, 'trigger': 'bar_close', ...}]}]}\nassert not {'BTCUSDT:LONG_30_40': {'position_id': 'db7b71d39e4047bcaebef403b7702bfa', 'symbol': 'BTCUSDT', 'side': 'LONG', 'section': 'LONG_30_40', ...}}"
+        },
+        {
+          "case": "tests.test_market_fleet_recovery_e2e::test_hub_restart_preserves_strategy_risk_monitor_and_closed_ledger[PUMP_DUMP]",
+          "message": "AssertionError: {'BTCUSDT': [{'section': 'PUMP&DUMP', 'reason': 'Импульс 9.09%; объём 100.00×; отскок 0.00%'}]}\nassert {}"
+        }
+      ],
+      "skipped": 0,
+      "junit_sha256": "31ee1679332829384d8f61bb1290d942f3079c980054e9a1d8f6caea0db49952"
+    },
+    {
+      "name": "market-fleet-green",
+      "tests": 4,
+      "failures": [],
+      "skipped": 0,
+      "junit_sha256": "0d0c31e49e40f246f7df0f74fe4b7ecbb1e210e5fc6e50520175e52f1e8371b7"
+    }
+  ],
+  "tested_code": {
+    "bcc/monitoring.py": "09cfd12432294500d65fe4ccd955477a2ab19d64f393600aa5c7f8103e42e64b",
+    "bcc/shared_risk.py": "f8173dfeb9b009940826d89eb796ee9e54f0605dc19d1009193aa9071ea300a4",
+    "bcc/storage.py": "113d0f3f4542a6fb630d2e63a7f68a290a13a037e5870b50c37f8c56a63ba26f",
+    "bcc/support.py": "27b2403897d259ac5bd828e7e3e81361c60f01a09bb7318555c0270bc6416c7b",
+    "bcc/ui.py": "092b0eafaf66950c68e8d3374e8df2f37cf2fb261aaceb690368e6f595fcf24e",
+    "tests/test_market_fleet_recovery_e2e.py": "0928e041491444594659492fd1a02f3c937eeb5365ff38aa88876b915145a4f4",
+    "tests/test_portfolio_recovery_integration.py": "15ea58c256d01f7876898418414f92844c3f5817e4c70a5948dedf955da172cf",
+    "tests/test_portfolio_recovery_qt.py": "8ac1dd417347b311a1d47696daa2efd834e236432aa84f64f49586b03fe261b8"
+  },
+  "native_preflight": {
+    "app_version": "17.0.9-INTEGRATED-ARCH-WIP",
+    "at": "2026-11-07T16:26:28.197931+00:00",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "source_sha256": null,
+    "steps": [],
+    "release_ready": false,
+    "manual_acceptance": "PENDING: follow ACCEPTANCE_WINDOWS_RU.md; automated tests do not replace it",
+    "status": "BLOCKED",
+    "error": "Требуется настоящий Windows Qt; offscreen не считается нативной проверкой"
+  }
+}
