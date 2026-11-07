@@ -11,17 +11,22 @@ from bcc.market import PublicData
 from bcc.market_hub import HubRegistry
 
 
-PUBLIC_URLS = [
-    "https://api.bybit.com/v5/market/tickers",
-    "https://api.bybit.com/v5/market/orderbook",
-    "https://api.bybit.com/v5/market/funding/history",
-    "https://gamma-api.polymarket.com/markets",
-    "https://clob.polymarket.com/book",
-    "https://clob.polymarket.com/clob-markets/0x1234",
-    "https://data-api.polymarket.com/v2/tokens",
-    "https://api.binance.com/api/v3/time",
-    "https://api.binance.com/api/v3/klines",
-    "https://api.binance.com/api/v3/ticker/price",
+PUBLIC_REQUESTS = [
+    ("https://api.bybit.com/v5/market/tickers",
+     {"category": "linear", "symbol": "BTCUSDT"}),
+    ("https://api.bybit.com/v5/market/orderbook",
+     {"category": "linear", "symbol": "BTCUSDT"}),
+    ("https://api.bybit.com/v5/market/funding/history",
+     {"category": "linear", "symbol": "BTCUSDT", "limit": 50}),
+    ("https://gamma-api.polymarket.com/markets",
+     {"slug": "btc-updown-5m-123"}),
+    ("https://clob.polymarket.com/book", {"token_id": "0xabc"}),
+    ("https://clob.polymarket.com/clob-markets/0x1234", None),
+    ("https://data-api.polymarket.com/v2/tokens", {"token_id": "0xabc"}),
+    ("https://api.binance.com/api/v3/time", None),
+    ("https://api.binance.com/api/v3/klines",
+     {"symbol": "BTCUSDT", "interval": "1m", "limit": 1}),
+    ("https://api.binance.com/api/v3/ticker/price", {"symbol": "BTCUSDT"}),
 ]
 
 UNTRUSTED_URLS = [
@@ -44,12 +49,12 @@ UNTRUSTED_URLS = [
 ]
 
 
-@pytest.mark.parametrize("url", PUBLIC_URLS)
-def test_allowed_public_routes_have_same_host_in_both_paths(tmp_path, url):
+@pytest.mark.parametrize("url,params", PUBLIC_REQUESTS)
+def test_allowed_public_routes_have_same_host_in_both_paths(tmp_path, url, params):
     host = PublicData.validated_public_host(url)
     assert host in PublicData.HOSTS
     registry = HubRegistry(tmp_path / "hub.sqlite")
-    key = registry.subscribe(url, {"symbol": "BTCUSDT"})
+    key = registry.subscribe(url, params)
     assert isinstance(key, str) and len(key) == 64
     with registry._connect() as db:
         assert db.execute(

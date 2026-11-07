@@ -294,7 +294,7 @@ def test_worker_loop_recovers_cache_lock_and_manages_existing_position(tmp_path)
             return []
 
         def orderbook(self, symbol):
-            return self.get(URL, {"symbol": symbol, "live": 1})
+            return self.get(URL, {"category": "linear", "symbol": symbol})
 
     source = Source()
     source.shared = seeded(tmp_path / "public.sqlite")

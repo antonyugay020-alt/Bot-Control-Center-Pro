@@ -157,6 +157,49 @@ class PublicData:
         }),
     }
 
+
+    # Exact route-bound public query schemas. Host and path checks alone do
+    # not prevent a caller from persisting an API key under an arbitrary
+    # innocuous-looking query name in the shared Hub subscription database.
+    # Keep this mapping aligned with the concrete read-only adapters below.
+    PUBLIC_QUERY_FIELDS = {
+        "api.bybit.com": {
+            "/v5/market/tickers": frozenset({"category", "symbol"}),
+            "/v5/market/orderbook": frozenset({"category", "symbol", "limit"}),
+            "/v5/market/instruments-info": frozenset({"category", "symbol", "limit", "cursor"}),
+            "/v5/market/risk-limit": frozenset({"category", "symbol", "cursor"}),
+            "/v5/market/kline": frozenset({"category", "symbol", "interval", "start", "end", "limit"}),
+            "/v5/market/mark-price-kline": frozenset({"category", "symbol", "interval", "start", "end", "limit"}),
+            "/v5/market/funding/history": frozenset({"category", "symbol", "startTime", "endTime", "limit"}),
+        },
+        "gamma-api.polymarket.com": {
+            "/markets": frozenset({
+                "slug", "active", "closed", "limit", "offset",
+                "end_date_min", "end_date_max",
+            }),
+        },
+        "clob.polymarket.com": {"/book": frozenset({"token_id"})},
+        "data-api.polymarket.com": {"/v2/tokens": frozenset({"token_id"})},
+        "api.binance.com": {
+            "/api/v3/time": frozenset(),
+            "/api/v3/klines": frozenset({"symbol", "interval", "startTime", "endTime", "limit"}),
+            "/api/v3/ticker/price": frozenset({"symbol"}),
+        },
+    }
+    _INTEGER_QUERY_NAMES = frozenset({
+        "limit", "offset", "start", "end", "startTime", "endTime",
+    })
+    _TEXT_QUERY_PATTERNS = {
+        "category": r"linear",
+        "symbol": r"[A-Z0-9_]{1,40}",
+        "interval": r"[A-Za-z0-9]{1,8}",
+        "cursor": r"[A-Za-z0-9_+./=:%-]{1,1024}",
+        "slug": r"[a-z0-9-]{1,256}",
+        "token_id": r"[A-Za-z0-9_-]{1,256}",
+        "active": r"(?:true|false)",
+        "closed": r"(?:true|false)",
+    }
+
     @classmethod
     def validated_public_host(cls, url):
         """Reject private/ambiguous routes before any cache or Hub side effect.
@@ -182,7 +225,7 @@ class PublicData:
             raise ValueError("Непубличный источник или закрытые данные в URL")
         allowed = cls.PUBLIC_PATHS[host]
         if host == "clob.polymarket.com" and path.startswith("/clob-markets/"):
-            valid_route = path.count("/") == 2 and len(path) > len("/clob-markets/")
+            valid_route = re.fullmatch(r"/clob-markets/[A-Za-z0-9_-]{1,128}", path) is not None
         else:
             valid_route = path in allowed
         if not valid_route:
@@ -201,36 +244,49 @@ class PublicData:
 
     @classmethod
     def validated_public_request(cls, url, params):
-        """One admission for HTTP, Hub enqueue and legacy Hub dequeue.
+        """One route-specific admission before HTTP, Hub enqueue and dequeue.
 
-        The URL is checked independently from query arguments, and the
-        arguments are bounded, flat public scalars. Error messages never
-        interpolate potentially sensitive values or keys.
+        Only public query keys actually used by the read-only adapters may
+        enter the durable subscription registry. Values have bounded,
+        type-specific shapes; no caller-provided query names or arbitrary
+        strings are logged on rejection.
         """
         host = cls.validated_public_host(url)
+        path = urlparse(url).path
+        allowed = cls.PUBLIC_QUERY_FIELDS[host].get(path)
+        if allowed is None:
+            # Only the validated, single-segment public CLOB metadata route
+            # is dynamic. It never accepts query parameters.
+            if host == "clob.polymarket.com" and path.startswith("/clob-markets/"):
+                allowed = frozenset()
+            else:
+                raise ValueError("Неизвестная схема публичного GET")
         if params is None:
             return host
-        if type(params) is not dict or len(params) > 32:
+        if type(params) is not dict or len(params) > len(allowed):
             raise ValueError("Недопустимые параметры публичного GET")
         for name, value in params.items():
-            if (type(name) is not str
-                    or re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", name) is None
-                    or name.lower().replace("_", "") in cls._PRIVATE_QUERY_NAMES):
+            if type(name) is not str or name not in allowed:
                 raise ValueError("Непубличный параметр GET")
-            if type(value) is str:
-                if len(value) > 4096 or any(
-                        ord(ch) < 32 or ord(ch) == 127 for ch in value):
+            if name in cls._INTEGER_QUERY_NAMES:
+                if (type(value) is not int or value < (0 if name == "offset" else 1)
+                        or value > (1000000 if name == "offset" else
+                                    1000 if name == "limit" else 2 ** 63 - 1)):
                     raise ValueError("Недопустимое значение публичного GET")
-            elif type(value) is int:
-                if abs(value) > 2 ** 63:
+            elif name in ("end_date_min", "end_date_max"):
+                if type(value) is not str or len(value) > 40:
                     raise ValueError("Недопустимое значение публичного GET")
-            elif type(value) is float:
-                if not math.isfinite(value):
+                try:
+                    stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                except ValueError as exc:
+                    raise ValueError("Недопустимое значение публичного GET") from exc
+                if stamp.tzinfo is None:
                     raise ValueError("Недопустимое значение публичного GET")
-            elif value is None or type(value) is bool:
-                pass
             else:
-                raise ValueError("Недопустимое значение публичного GET")
+                pattern = cls._TEXT_QUERY_PATTERNS.get(name)
+                if (type(value) is not str or pattern is None
+                        or re.fullmatch(pattern, value) is None):
+                    raise ValueError("Недопустимое значение публичного GET")
         return host
 
     def __init__(self):
