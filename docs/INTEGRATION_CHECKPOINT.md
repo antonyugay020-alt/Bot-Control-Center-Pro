@@ -5,9 +5,46 @@ Status: **DEVELOPMENT / NOT RELEASE**. This file records an integration mileston
 ## Source of truth
 
 - Branch: `codex/architecture-consolidation-20261107`, Draft PR #11.
-- Baseline verified before this milestone: `18e06c58defc27f24cdbb0255d7c3b44f4b18031` (boot-aware Hub leadership).
+- Baseline verified before this milestone: `0c40f3a9089358e91be6166242be0368db916388` (writer-free ready-schema admission).
 - Result: the current PR #11 HEAD after this checkpoint and manifest-sealing commits; **always reread HEAD** on next run.
 - Protocol: `docs/CONTROLLED_INTEGRATION.md`. No alternate architecture branch, no user archive.
+
+## Integrated milestone — authoritative SQLite schema contract (2026-11-07)
+
+The read-only startup admission now verifies the actual ordered columns and
+owning table of `hub_due` and `hub_expiry`, not only their names. It also
+verifies the two identity primary keys and required NOT NULL constraints.
+Under the existing atomic writer-locked migration, malformed same-table
+indexes are rebuilt together while preserving subscriptions; a foreign-owned
+index name or incompatible table identity/constraint fails closed and rolls
+back rather than advertising a ready producer. This protects both fleet
+query performance and transactional lease uniqueness.
+
+Regression cases added in `tests/test_shared_sqlite_schema_migration.py`:
+wrong-column queue/expiry indexes repaired without losing subscriptions;
+a subscription table missing its primary key rejected with no partial DDL;
+a foreign table's colliding index preserved with an explicit startup error.
+Existing legacy migration, independent-process convergence and ready-schema
+reader-under-writer tests remain in the same suite.
+
+Verification: isolated Linux Python/SQLite transaction reproduction for
+wrong-column index detection and rebuilding **PASS**; this was a standalone
+SQLite reproduction, **not** repository pytest. The GitHub connector permits
+source read/write but does not execute Python; the private repository remains
+unavailable to the isolated checkout. Exact repo pytest command pending:
+`python -m pytest -q tests/test_shared_sqlite_schema_migration.py
+tests/test_hub_boot_epoch_recovery.py tests/test_hub_exact_generation_recovery.py
+tests/test_hub_supervisor_lifecycle.py`. Full regression, native Windows
+Modern Qt E2E and independent all-source digest audit remain **NOT RUN**.
+No paid CI rerun, no user archive, no real orders or credentials.
+
+Defect inventory: **H5** (index-name-only and column-name-only schema
+admission) addressed in source with atomic repair/fail-closed boundary;
+repository regression **pending**. H1–H4 remain unaccepted end-to-end.
+Next milestone: execute these linked SQLite/Hub lifecycle regressions in an
+executable checkout, then native Windows Qt multi-worker Stop/Restart and
+transactional recovery. The source manifest must match the exact resulting
+HEAD; successful commits are not release acceptance.
 
 ## Integrated milestone — writer-free ready-schema admission
 
