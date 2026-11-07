@@ -205,11 +205,12 @@ class HubRegistry:
             # Both leader and subscription expiry are checked against the
             # instant the SQLite writer lock is held, not queue-entry time.
             now = time.time()
+            boot = self._boot_epoch()
             valid = db.execute(
                 'SELECT 1 FROM hub_leader WHERE singleton=1 AND owner=? '
                 'AND expires>=? AND lease_token=? '
                 'AND (boot_epoch=0 OR ?=0 OR abs(boot_epoch-?)<=60)',
-                (owner, now, token, self._boot_epoch(), self._boot_epoch()),
+                (owner, now, token, boot, boot),
             ).fetchone()
             if not valid:
                 db.rollback()
