@@ -28,5 +28,5 @@ class LocalCooldownCacheTests(unittest.TestCase):
             source.session.get = Mock(side_effect=AssertionError('unexpected network'))
             self.assertEqual(source.get(URL, {}, ttl=0), {'ok': 2})
             with self.assertRaises(DataUnavailable):
-                source.get(URL, {'other': 1}, ttl=0)
+                source.get(URL, {'symbol': 'ETHUSDT'}, ttl=0)
             source.close()

@@ -45,7 +45,7 @@ def test_hub_pid_without_live_leader_lease_never_passes_as_ready(tmp_path, monke
     from bcc.market_hub import HubRegistry
     registry = HubRegistry(tmp_path / 'market_cache.sqlite')
     with registry._connect() as db:
-        db.execute('INSERT INTO hub_leader VALUES (1,?,?)',
+        db.execute('INSERT INTO hub_leader(singleton,owner,expires) VALUES (1,?,?)',
                    (f'{os.getpid()}:stale', time.time() - 100))
     with pytest.raises(HubUnavailable, match='no valid leadership lease'):
         ensure_hub(tmp_path, timeout=.5)

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 from tools import ai_dev_pipeline as pipeline
-from tools.verify_package import verify
+from tools.verify_package import SourceIntegrityError, verify
 
 
 def git(root, *args, check=True):
@@ -88,7 +88,7 @@ def test_refuses_unexpected_staged_files_and_preserves_them(clean_bcc):
     git(root, 'init', '-q')
     (root / 'custom-user-note.txt').write_text('do not destroy', encoding='utf-8')
     git(root, 'add', '--', 'custom-user-note.txt')
-    with pytest.raises(pipeline.Blocked, match='посторонние файлы'):
+    with pytest.raises(SourceIntegrityError, match='Незарегистрированный файл исходников: custom-user-note.txt'):
         pipeline.init_repo()
     assert (root / 'custom-user-note.txt').read_text(encoding='utf-8') == 'do not destroy'
     assert 'custom-user-note.txt' in git(root, 'ls-files').stdout
@@ -100,7 +100,7 @@ def test_refuses_unexpected_untracked_files_without_deleting(clean_bcc):
     git(root, 'init', '-q')
     extra = root / 'untracked-unknown-file.txt'
     extra.write_text('private material', encoding='utf-8')
-    with pytest.raises(pipeline.Blocked, match='неучтённые файлы'):
+    with pytest.raises(SourceIntegrityError, match='Незарегистрированный файл исходников: untracked-unknown-file.txt'):
         pipeline.init_repo()
     assert extra.read_text(encoding='utf-8') == 'private material'
 

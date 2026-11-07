@@ -31,6 +31,7 @@ class LeaseCache:
             assert owner == "owner"
             self.value = value
             self.owner = False
+            return value is not None and ttl > 0
 
     def close(self):
         pass
@@ -51,7 +52,8 @@ def test_fifteen_concurrent_clients_reuse_singleflight_data(monkeypatch):
     calls = []
 
     class FakeSession:
-        def get(self, url, params=None, timeout=None):
+        def get(self, url, params=None, timeout=None, *, allow_redirects):
+            assert allow_redirects is False
             calls.append((url, params))
             time.sleep(.18)
             return FakeResponse()
@@ -98,7 +100,8 @@ def test_sqlite_cache_fifteen_clients_share_public_response(tmp_path):
     barrier = threading.Barrier(15)
 
     class SlowSession:
-        def get(self, url, params=None, timeout=None):
+        def get(self, url, params=None, timeout=None, *, allow_redirects):
+            assert allow_redirects is False
             nonlocal count
             with count_lock:
                 count += 1

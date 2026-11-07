@@ -11,31 +11,39 @@ from bcc.hub_supervisor import ensure_hub
 from tools import run_partitioned_tests
 
 
-def test_real_service_receipt_reaches_parent_without_wal_probe(tmp_path, monkeypatch):
-    """Parent validates child receipt even if SQLite readiness reads are denied."""
+@pytest.mark.parametrize('permanent', [False, True])
+def test_real_service_receipt_requires_live_lease_after_wal_contention(tmp_path, monkeypatch, permanent):
+    """Retry transient probes; a receipt alone cannot certify readiness."""
     import bcc.hub_supervisor as supervisor
     from bcc.market_hub import HubRegistry
     original = HubRegistry._connect
-    real_read = json.loads
-    # Registry initialization is allowed, but the parent's post-spawn probe
-    # deliberately fails. A valid child proof must be sufficient for startup.
+    probes = []
     def no_parent_probe(self):
-        if supervisor.os.getpid() == parent_pid and spawned[0]:
-            raise OSError('simulated WAL probe contention')
+        if supervisor.os.getpid() == parent_pid and spawned:
+            probes.append(1)
+            if permanent or len(probes) <= 3:
+                raise OSError('simulated WAL probe contention')
         return original(self)
     parent_pid = supervisor.os.getpid()
-    spawned = [False]
+    spawned = []
     spawn = supervisor._spawn_hub
     def mark_spawn(*args, **kwargs):
         child = spawn(*args, **kwargs)
-        spawned[0] = True
+        spawned.append(child)
         return child
     monkeypatch.setattr(supervisor, '_spawn_hub', mark_spawn)
     monkeypatch.setattr(HubRegistry, '_connect', no_parent_probe)
     pid = None
     try:
-        pid = ensure_hub(tmp_path, timeout=5)
-        assert isinstance(pid, int) and pid > 0
+        if permanent:
+            with pytest.raises(supervisor.HubUnavailable, match='did not become ready'):
+                ensure_hub(tmp_path, timeout=1)
+            assert spawned[0].poll() is not None
+            assert not (tmp_path / 'market_hub_process.json').exists()
+        else:
+            pid = ensure_hub(tmp_path, timeout=5)
+            assert isinstance(pid, int) and pid > 0
+            assert len(probes) >= 4
         assert not list(tmp_path.glob('.market_hub_ready_*.json'))
     finally:
         if pid:

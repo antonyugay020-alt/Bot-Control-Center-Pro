@@ -125,6 +125,8 @@ def test_hub_service_continues_after_transient_sqlite_lock(monkeypatch, tmp_path
         registry = Registry()
         owner = 'unit-test-leader'
         def __init__(self, *_args, **_kw): pass
+        def acquire_leadership(self, **kwargs):
+            return self.registry.claim_leader(self.owner, **kwargs)
         def poll_nonblocking(self):
             attempts.append(1)
             if len(attempts) == 1:
@@ -155,6 +157,8 @@ def test_hub_service_survives_sqlite_contention_at_start_or_liveness(monkeypatch
         registry = Registry()
         owner = 'test-owner'
         def __init__(self, *_args, **_kw): pass
+        def acquire_leadership(self, **kwargs):
+            return self.registry.claim_leader(self.owner, **kwargs)
         def poll_nonblocking(self):
             attempts['fetch'] += 1
         def close(self): pass

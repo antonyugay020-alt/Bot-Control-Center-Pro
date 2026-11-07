@@ -48,6 +48,8 @@ def test_independent_hub_fleet_transfer_and_access_denial(tmp_path, monkeypatch)
     assert registry.claim_leader("integration-producer")
     token = registry.leader_token("integration-producer")
     assert token
+    generation = next(row[-1] for row in registry.due(include_generation=True)
+                      if row[0] == subscription)
 
     producer = PublicCache(shared_path)
     client = PublicData()
@@ -76,7 +78,8 @@ def test_independent_hub_fleet_transfer_and_access_denial(tmp_path, monkeypatch)
 
         # Subscription ownership is distinct from the public-cache denial.
         assert registry.finish_owned(
-            subscription, 1, "integration-producer", token=token
+            subscription, 1, "integration-producer", token=token,
+            subscription_token=generation
         )
     finally:
         client.close()

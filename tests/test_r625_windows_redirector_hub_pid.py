@@ -95,3 +95,61 @@ def test_redirected_hub_rejects_wrong_token_or_incorrect_paths(tmp_path):
     finally:
         proc.terminate()
         proc.wait(timeout=5)
+
+
+def test_redirected_child_is_reaped_when_lease_readiness_cannot_be_verified(tmp_path, monkeypatch):
+    """OS ownership permits cleanup, but does not replace SQLite admission."""
+    import sqlite3
+    import pytest
+    import bcc.hub_supervisor as supervisor
+    from bcc.market_hub import HubRegistry
+
+    children, launchers, authenticated = [], [], []
+    original_verify = supervisor._verified_redirected_hub_pid
+    original_leader = HubRegistry.live_leader
+
+    def redirector(args, **kwargs):
+        children.append(subprocess.Popen(args, **kwargs))
+        launchers.append(subprocess.Popen([sys.executable, '-c', 'pass'], **kwargs))
+        return launchers[-1]
+
+    def verify(*args):
+        created = original_verify(*args)
+        if created is not None:
+            authenticated.append((args[0], created))
+        return created
+
+    def unavailable(self):
+        if children:
+            raise sqlite3.OperationalError('simulated parent WAL contention')
+        return original_leader(self)
+
+    monkeypatch.setattr(supervisor, '_spawn_hub', redirector)
+    monkeypatch.setattr(supervisor, '_verified_redirected_hub_pid', verify)
+    monkeypatch.setattr(HubRegistry, 'live_leader', unavailable)
+    try:
+        with pytest.raises(supervisor.HubUnavailable, match='did not become ready'):
+            ensure_hub(tmp_path, timeout=1)
+        assert authenticated, 'The real child receipt was never authenticated'
+        pid, created = authenticated[-1]
+        try:
+            child = psutil.Process(pid)
+            assert child.create_time() != created or child.status() == psutil.STATUS_ZOMBIE
+        except psutil.NoSuchProcess:
+            pass
+        assert not (tmp_path / 'market_hub_process.json').exists()
+        assert not list(tmp_path.glob('.market_hub_ready_*.json'))
+    finally:
+        # This test owns these launches even when testing a broken supervisor.
+        for pid, created in set(authenticated):
+            try:
+                child = psutil.Process(pid)
+                if child.create_time() == created and child.status() != psutil.STATUS_ZOMBIE:
+                    child.terminate()
+                    child.wait(timeout=5)
+            except psutil.NoSuchProcess:
+                pass
+        for child in children + launchers:
+            if child.poll() is None:
+                child.terminate()
+            child.wait(timeout=5)

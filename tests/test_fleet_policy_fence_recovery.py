@@ -389,7 +389,7 @@ def test_cross_boot_denials_merge_remaining_utc_not_previous_uptime(
             patch.setattr(cache_module.time, "monotonic", lambda: 500.0)
             patch.setattr(cache_module.time, "time", lambda: expiry_utc - 1800)
             # The second HTTP request was already in flight before refusal.
-            cache.finish(second, second_owner, HOST, cooldown=90, denial_status=403)
+            cache.record_http_denial(second, second_owner, HOST, cooldown=90, denial_status=403)
             with cache.db() as db:
                 status, until_mono, until_utc = db.execute(
                     "SELECT status,until_mono,until_utc FROM provider_denial "

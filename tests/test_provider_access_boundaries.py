@@ -75,7 +75,7 @@ def test_403_denial_releases_hub_lease_and_denies_repeated_requests(isolated_sou
             self.begin_count += 1
             return ("subscription", "lease", None)
 
-        def finish(self, *args, **kwargs):
+        def record_http_denial(self, *args, **kwargs):
             self.finished.append((args, kwargs))
 
         def close(self):
@@ -89,7 +89,7 @@ def test_403_denial_releases_hub_lease_and_denies_repeated_requests(isolated_sou
     assert exc.value.http_status == 403
     assert shared.begin_count == 1
     assert len(shared.finished) == 1
-    assert shared.finished[0][1]["cooldown"] == 120
+    assert shared.finished[0][1] == {"cooldown": 120, "denial_status": 403}
     with pytest.raises(SourceAccessDenied):
         isolated_source.get(url, {"category": "linear", "symbol": "ETHUSDT"})
     assert shared.begin_count == 1

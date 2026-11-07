@@ -282,6 +282,11 @@ def ensure_hub(repo_root, *, timeout=8):
                             if not owner.startswith(str(service_pid) + ':'):
                                 time.sleep(.1)
                                 continue
+                            # OS identity and the unique launch challenge
+                            # already prove this is our child. Track it for
+                            # cleanup even if SQLite remains unavailable and
+                            # readiness is never authorized (Windows redirector).
+                            verified_child = (service_pid, service_created)
                             lease = registry.live_leader()
                             if not (lease and lease[0] == owner
                                     and type(lease[1]) in (int, float)
