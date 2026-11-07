@@ -24,6 +24,18 @@ class HubRegistry:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init()
 
+    @staticmethod
+    def _boot_epoch():
+        # Use the same independent OS-boot witness as the provider-denial
+        # fence. If unavailable, do not speculate that a lease is stale.
+        return PublicCache._boot_epoch()
+
+    @staticmethod
+    def _same_boot(recorded, current):
+        # A missing witness (legacy row or unavailable psutil) cannot prove a
+        # reboot. Retain the ordinary bounded wall-clock lease in that case.
+        return not (recorded and current and abs(recorded - current) > 60)
+
     @contextmanager
     def _connect(self):
         """Bounded ownership of each SQLite handle, including native Windows.
@@ -77,68 +89,92 @@ class HubRegistry:
             # Reclaimed subscription rows must not grow without bound as the
             # registered fleet and its requested markets change over time.
             db.execute('CREATE INDEX IF NOT EXISTS hub_expiry ON hub_subscriptions(active_until)')
-            db.execute("CREATE TABLE IF NOT EXISTS hub_leader(singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL, expires REAL NOT NULL, lease_token TEXT NOT NULL DEFAULT '')")
+            db.execute("CREATE TABLE IF NOT EXISTS hub_leader(singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL, expires REAL NOT NULL, lease_token TEXT NOT NULL DEFAULT '', boot_epoch REAL NOT NULL DEFAULT 0)")
             # Existing installations may have a live legacy leader row. The
             # next admission mints a new token; no old producer can prove it.
             leader_columns = {row[1] for row in db.execute('PRAGMA table_info(hub_leader)')}
             if 'lease_token' not in leader_columns:
                 db.execute("ALTER TABLE hub_leader ADD COLUMN lease_token TEXT NOT NULL DEFAULT ''")
+            if 'boot_epoch' not in leader_columns:
+                db.execute("ALTER TABLE hub_leader ADD COLUMN boot_epoch REAL NOT NULL DEFAULT 0")
 
     def claim_leader(self, owner, *, lifetime=15):
         if not owner or not 1 <= lifetime <= 120:
             raise ValueError('Invalid hub lease')
         candidate = uuid.uuid4().hex
+        boot = self._boot_epoch()
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
             # Sample the clock only AFTER acquiring SQLite's writer lock.
             # A queued contender must not reclaim using a stale lease time.
             now = time.time()
-            db.execute("""INSERT INTO hub_leader(singleton,owner,expires,lease_token)
-              VALUES(1,?,?,?)
+            db.execute("""INSERT INTO hub_leader(singleton,owner,expires,lease_token,boot_epoch)
+              VALUES(1,?,?,?,?)
               ON CONFLICT(singleton) DO UPDATE SET
                 owner=excluded.owner,expires=excluded.expires,
                 lease_token=CASE WHEN hub_leader.owner=excluded.owner
                     AND hub_leader.expires>=? AND hub_leader.lease_token<>''
-                    THEN hub_leader.lease_token ELSE excluded.lease_token END
-              WHERE hub_leader.expires < ? OR hub_leader.owner = ?""",
-              (owner, now + lifetime, candidate, now, now, owner))
+                    AND (hub_leader.boot_epoch=0 OR ?=0
+                         OR abs(hub_leader.boot_epoch-?)<=60)
+                    THEN hub_leader.lease_token ELSE excluded.lease_token END,
+                boot_epoch=CASE WHEN excluded.boot_epoch>0
+                    THEN excluded.boot_epoch ELSE hub_leader.boot_epoch END
+              WHERE hub_leader.expires < ? OR hub_leader.owner = ?
+                 OR (hub_leader.boot_epoch>0 AND ?>0
+                     AND abs(hub_leader.boot_epoch-?)>60)""",
+              (owner, now + lifetime, candidate, boot,
+               now, boot, boot, now, owner, boot, boot))
             claimed = db.execute(
-                'SELECT owner,expires,lease_token FROM hub_leader WHERE singleton=1'
+                'SELECT owner,expires,lease_token,boot_epoch FROM hub_leader WHERE singleton=1'
             ).fetchone()
             db.commit()
         return bool(claimed and claimed[0] == owner
-                    and claimed[1] >= now and claimed[2])
+                    and claimed[1] >= now and claimed[2]
+                    and self._same_boot(claimed[3], boot))
 
-    def leader_token(self, owner):
-        """Opaque generation of the *current* unexpired lease, not just PID.
+    def live_leader(self):
+        """Only an unexpired leader from this OS boot can certify readiness.
 
-        Releasing and reclaiming even with the same owner invalidates all
-        previous HTTP completions. Tokens are never exposed to subscribers.
+        A SQLite file survives reboot while its owner process does not. A
+        future wall-clock expiry from the previous boot must not prevent a
+        new producer from starting, nor authenticate a stale readiness file.
         """
         with self._connect() as db:
             row = db.execute(
-                'SELECT lease_token FROM hub_leader WHERE singleton=1 '
+                'SELECT owner,expires,lease_token,boot_epoch FROM hub_leader '
+                'WHERE singleton=1'
+            ).fetchone()
+        if (row and type(row[1]) in (int, float) and math.isfinite(row[1])
+                and row[1] > time.time() and row[2]
+                and self._same_boot(row[3], self._boot_epoch())):
+            return row
+        return None
+
+    def leader_token(self, owner):
+        """Opaque generation of the current unexpired same-boot lease."""
+        with self._connect() as db:
+            row = db.execute(
+                'SELECT lease_token,boot_epoch FROM hub_leader WHERE singleton=1 '
                 'AND owner=? AND expires>=? AND lease_token<>\'\'',
                 (owner, time.time()),
             ).fetchone()
-        return row[0] if row else None
+        return row[0] if row and self._same_boot(row[1], self._boot_epoch()) else None
 
     def renew_leader(self, owner, *, token, lifetime=120):
-        # Renewal and release are mutations of the same generation as the
-        # subscription acknowledgement. Owner names alone are not fences:
-        # an old heartbeat can otherwise extend a reclaimed same-owner lease.
+        # A stale process cannot renew an expired or previous-boot generation,
+        # even if the wall clock makes its old expiry appear to be in the future.
         if (not owner or not isinstance(token, str) or not token
                 or not 1 <= lifetime <= 120):
             raise ValueError('Invalid hub lease')
+        boot = self._boot_epoch()
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            # An old heartbeat may wait for another writer past its expiry.
-            # It must not resurrect a lease with its pre-wait timestamp.
             now = time.time()
             cursor = db.execute(
                 "UPDATE hub_leader SET expires=? WHERE singleton=1 "
-                "AND owner=? AND expires>=? AND lease_token=?",
-                (now + lifetime, owner, now, token),
+                "AND owner=? AND expires>=? AND lease_token=? "
+                "AND (boot_epoch=0 OR ?=0 OR abs(boot_epoch-?)<=60)",
+                (now + lifetime, owner, now, token, boot, boot),
             )
             return cursor.rowcount == 1
 
@@ -171,8 +207,9 @@ class HubRegistry:
             now = time.time()
             valid = db.execute(
                 'SELECT 1 FROM hub_leader WHERE singleton=1 AND owner=? '
-                'AND expires>=? AND lease_token=?',
-                (owner, now, token),
+                'AND expires>=? AND lease_token=? '
+                'AND (boot_epoch=0 OR ?=0 OR abs(boot_epoch-?)<=60)',
+                (owner, now, token, self._boot_epoch(), self._boot_epoch()),
             ).fetchone()
             if not valid:
                 db.rollback()
