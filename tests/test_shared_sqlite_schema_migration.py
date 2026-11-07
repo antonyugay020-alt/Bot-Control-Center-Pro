@@ -8,6 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 from contextlib import contextmanager
 import sqlite3
 import time
+import multiprocessing
 
 import pytest
 
@@ -134,7 +135,7 @@ def test_legacy_schema_converges_across_independent_processes(tmp_path):
     key = _legacy_database(path)
     # Each process has its own Python locks and SQLite connection; a
     # single-process thread test cannot reproduce this startup race.
-    with ProcessPoolExecutor(max_workers=4) as pool:
+    with ProcessPoolExecutor(max_workers=4, mp_context=multiprocessing.get_context('spawn')) as pool:
         results = list(pool.map(_worker_bootstrap, [str(path)] * 8))
     assert all(results)
     with sqlite3.connect(path) as db:

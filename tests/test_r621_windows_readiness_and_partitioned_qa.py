@@ -39,7 +39,14 @@ def test_real_service_receipt_requires_live_lease_after_wal_contention(tmp_path,
             with pytest.raises(supervisor.HubUnavailable, match='did not become ready'):
                 ensure_hub(tmp_path, timeout=1)
             assert spawned[0].poll() is not None
-            assert not (tmp_path / 'market_hub_process.json').exists()
+            record = json.loads((tmp_path / 'market_hub_process.json').read_text(encoding='utf-8'))
+            assert record['leader_owner'].startswith(str(record['pid']) + ':')
+            # SQLite is unavailable to parent cleanup too. Keep the exact
+            # owner witness until a later start can revoke it safely.
+            monkeypatch.setattr(HubRegistry, '_connect', original)
+            pid = ensure_hub(tmp_path, timeout=5)
+            recovered = json.loads((tmp_path / 'market_hub_process.json').read_text(encoding='utf-8'))
+            assert recovered['leader_owner'] != record['leader_owner']
         else:
             pid = ensure_hub(tmp_path, timeout=5)
             assert isinstance(pid, int) and pid > 0

@@ -5,6 +5,7 @@ is deliberately independent of the GUI lifetime and is recovered at next start.
 """
 import errno
 import json
+import logging
 import math
 import os
 import sqlite3
@@ -159,6 +160,22 @@ def _revoke_dead_owner(registry, record):
         return cursor.rowcount == 1
 
 
+def _recorded_process_dead(record):
+    """Only OS evidence of death/reuse authorizes exact-owner revocation."""
+    pid, created = record.get('pid'), record.get('created')
+    if (type(pid) is not int or pid <= 0
+            or type(created) not in (int, float) or not math.isfinite(created)):
+        return False
+    try:
+        process = psutil.Process(pid)
+        return (process.status() == psutil.STATUS_ZOMBIE
+                or abs(process.create_time() - created) >= .05)
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
+        return True
+    except (OSError, psutil.Error, ValueError):
+        return False
+
+
 def ensure_hub(repo_root, *, timeout=8):
     root = Path(repo_root).resolve()
     cache = root / 'market_cache.sqlite'
@@ -176,6 +193,8 @@ def ensure_hub(repo_root, *, timeout=8):
         if not isinstance(record, dict):
             record = {}
         if _matches(record, cache):
+            if record.get('startup_failed'):
+                raise HubUnavailable('Market Data Hub previous startup failed; process exit is unconfirmed')
             # A matching PID only proves process identity, not that the
             # producer still owns a fresh leader lease or serves data. Never
             # silently hand a worker a dead/hung hub endpoint.
@@ -199,14 +218,7 @@ def ensure_hub(repo_root, *, timeout=8):
         # only if its recorded PID and creation time no longer identify a live
         # producer. Never revoke a live but slow Hub's lease.
         if record.get('pid') and not _matches(record, cache):
-            try:
-                old = psutil.Process(record['pid'])
-                dead = old.status() == psutil.STATUS_ZOMBIE or abs(old.create_time() - record['created']) >= .05
-            except (psutil.NoSuchProcess, psutil.ZombieProcess):
-                dead = True
-            except (psutil.AccessDenied, KeyError, TypeError, ValueError):
-                dead = False
-            if dead:
+            if _recorded_process_dead(record):
                 registry = HubRegistry(cache)
                 _revoke_dead_owner(registry, record)
         # If the PID file was lost/corrupted while an old producer still
@@ -246,6 +258,7 @@ def ensure_hub(repo_root, *, timeout=8):
                                     creationflags=flags,
                                     start_new_session=os.name != 'nt')
         verified_child = None
+        verified_owner = None
         try:
             created = psutil.Process(proc.pid).create_time()
             atomic_json(record_path, {'pid': proc.pid, 'created': created})
@@ -287,6 +300,7 @@ def ensure_hub(repo_root, *, timeout=8):
                             # cleanup even if SQLite remains unavailable and
                             # readiness is never authorized (Windows redirector).
                             verified_child = (service_pid, service_created)
+                            verified_owner = owner
                             lease = registry.live_leader()
                             if not (lease and lease[0] == owner
                                     and type(lease[1]) in (int, float)
@@ -295,7 +309,6 @@ def ensure_hub(repo_root, *, timeout=8):
                                     and type(lease[2]) is str and bool(lease[2])):
                                 time.sleep(.1)
                                 continue
-                            verified_child = (service_pid, service_created)
                             atomic_json(record_path, {
                                 'pid': service_pid, 'created': service_created,
                                 'leader_owner': owner,
@@ -325,6 +338,7 @@ def ensure_hub(repo_root, *, timeout=8):
                     try:
                         if abs(owned.create_time() - verified_child[1]) < .05:
                             owned.kill()
+                            owned.wait(timeout=3)
                     except psutil.Error:
                         pass
                 except (OSError, psutil.Error):
@@ -338,7 +352,32 @@ def ensure_hub(repo_root, *, timeout=8):
                     proc.wait(timeout=3)
                 except ProcessLookupError:
                     pass
-            record_path.unlink(missing_ok=True)
+            retain_record = False
+            if verified_child is not None and verified_owner is not None:
+                recovery = {
+                    'pid': verified_child[0], 'created': verified_child[1],
+                    'leader_owner': verified_owner, 'startup_failed': True,
+                }
+                retain_record = True
+                if _recorded_process_dead(recovery):
+                    try:
+                        # TerminateProcess/SIGKILL bypasses Hub.close(). The
+                        # startup challenge and OS death prove which exact
+                        # owner may be revoked; never delete by PID prefix.
+                        _revoke_dead_owner(registry, recovery)
+                        retain_record = False
+                    except (OSError, ValueError, sqlite3.Error):
+                        # Parent SQLite may still be locked. The next start
+                        # must retain this witness instead of waiting for an
+                        # orphaned 120-second lease with no known owner.
+                        pass
+                if retain_record:
+                    try:
+                        atomic_json(record_path, recovery)
+                    except OSError as exc:
+                        logging.warning('Hub recovery record write failed: %s', type(exc).__name__)
+            if not retain_record:
+                record_path.unlink(missing_ok=True)
             raise
         finally:
             # Receipt is an ephemeral, non-secret handshake artifact; never

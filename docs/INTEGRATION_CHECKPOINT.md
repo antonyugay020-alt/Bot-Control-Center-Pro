@@ -1,42 +1,39 @@
-# Controlled integration checkpoint — 2026-11-07
+# Bot Control Center Pro — controlled integration checkpoint
 
-DEVELOPMENT / NOT RELEASE. Branch `codex/architecture-consolidation-20261107`, draft PR #11.
+**DEVELOPMENT / NOT RELEASE.** Same branch `codex/architecture-consolidation-20261107`, draft PR #11; no merge, release, paid CI or real orders.
 
-Baseline: `ccaedaaa00fa36b7ad9aa6a63f5bdd04dd0cc75c`. This milestone is identified by the Git commit containing this checkpoint; reread remote HEAD before resuming. No merge, releases, Actions dispatch or real orders.
+## Source / resume
 
-Executable checkout is now available (the former DNS/clone blocker is resolved).
-Linux, Python 3.12.14, PySide6 6.12.0, pytest 9.2.0, SQLite via Python.
-Dependencies installed in `/workspace/work/venv`, outside immutable source.
+Session baseline: `ccaedaaa00fa36b7ad9aa6a63f5bdd04dd0cc75c`.
+Verified/pushed milestones: `8007e25` (Hub schema admission), `c1faa10` (contract convergence / unready-child cleanup). The commit containing this checkpoint completes exact-owner startup-failure recovery; reread remote HEAD before continuing. Preserve concurrent user work.
 
-## Implemented and verified
+Executable private checkout is available; the previous cloning/DNS blocker is resolved. Linux/Python 3.12.14, SQLite 3.53.1, PySide6 6.12.0, pytest 9.2.0. Virtualenv and transient evidence: `/workspace/work/`, outside the immutable checkout.
 
-Hub schema admission previously raised TypeError for set <= dict, preventing fresh and migrated registries from opening. Compare required columns with dictionary keys. Verify the entire primary key, rejecting composite identities before claiming readiness; verify queue/expiry indexes are nonunique and unconditional. Repair malformed owned indexes atomically while preserving live leader/subscription generations. Reject incompatible identities with complete migration rollback.
+## Integrated fixes / independent defect inventory
 
-`QT_QPA_PLATFORM=offscreen /workspace/work/venv/bin/python -m pytest -q tests/test_shared_sqlite_schema_migration.py tests/test_hub_boot_epoch_recovery.py tests/test_hub_exact_generation_recovery.py tests/test_hub_supervisor_lifecycle.py --timeout=180 --junitxml=/workspace/work/schema-cycle2.xml`: **23 passed**. Includes independent-process migrations, writer-held read-only admission, real concurrent Hub start/crash recovery and eight new schema-contract cases. Initial exact-baseline linked suite: **15 failed** with the shared TypeError; after the column-key correction: **15 passed**.
+- H1–H3: existing Hub boot/generation/readiness boundaries now executed in the full checkout. Native Windows acceptance still pending.
+- H4–H6: restored fresh/legacy Hub startup (required-column set comparisons incorrectly used dictionaries); preserve writer-free WAL reader admission; validate exact single-column primary keys and nonunique/unconditional queue/expiry indexes. Repair owned indexes atomically without changing live subscription/leader tokens. Incompatible identities and foreign-owned index collisions roll back.
+- H7: authenticate and retain the real OS child behind a Windows venv redirector before SQLite readiness checks. Failed readiness cannot orphan that child.
+- H8: abrupt startup termination bypasses Hub.close(), leaving a 120-second lease. Cleanup now revokes only a proven-dead exact owner. If SQLite is still unavailable, retain pid/creation-time/exact-owner recovery metadata for next start. A live failed-startup witness cannot advertise readiness; AccessDenied cannot authorize revocation. Immediate retry and successor reuse are verified with real OS processes, including SIGKILL modeling Windows TerminateProcess. No PID-prefix deletion.
+- H9: consolidated old tests had diverged from production token, no-redirect, observed-denial, publication and duplicate-export contracts. Reconciled test adapters/fixtures and preserved strict production checks. Repeated-origin import concurrency now uses a valid archive, while duplicate export selections remain rejected. Synthetic API-login tests use only private temporary storage.
+- H10: baseline source manifest omitted AGENTS.md and docs/CONTROLLED_INTEGRATION.md. Complete inventory now sealed; all baseline content digests otherwise matched. Explicit spawn exercises independent-process migrations without Linux fork-from-Qt-thread hazards.
 
-The baseline manifest omitted AGENTS.md and docs/CONTROLLED_INTEGRATION.md. All other baseline file digests matched. The manifest is regenerated from the complete inventory for this commit; no archive or release is produced.
+## Executed verification
 
-## Full regression and defect inventory
+All commands run from the complete checkout using `/workspace/work/venv/bin/python`. `QT_QPA_PLATFORM=offscreen` for Qt/pytest; all workspaces are disposable PAPER data. No live market orders, model API calls or user ledgers.
 
-After only the TypeError fix and manifest correction:
-`QT_QPA_PLATFORM=offscreen /workspace/work/venv/bin/python -m pytest tests -q --timeout=180 --junitxml=/workspace/work/full-cycle1.xml`: **3333 passed, 17 failed, 0 skipped**, 246.72s. This is the full checkout, including offscreen real Qt and OS processes, not Windows E2E. Baseline exploratory full run was interrupted after 142 passed/4 failed once the shared startup defect was established; never count it as a complete run.
+1. Baseline linked Hub migration/boot/owner/lifecycle suite: **15 failed**, common TypeError. After required-column fix: **15 passed**. Expanded schema/Hub suite: **23 passed**.
+2. Full cycle1: `python -m pytest tests -q --timeout=180 --junitxml=/workspace/work/full-cycle1.xml`: **3333 passed, 17 failed**, no skipped cases (246.72s). Initial exploratory baseline full run was interrupted after 142 passed/4 failed; it is not complete evidence.
+3. Affected-contract trial: 90 passed/2 new-test failures (empty list check), corrected; linked readiness/redirector group **8 passed**. Full cycle2: same full-suite command with `full-cycle2.xml`: **3360 passed, 0 skipped** (224.57s), four fork deprecation warnings subsequently addressed with explicit spawn.
+4. New abrupt-stop / retained-owner recovery cases reproduced **2 failures / 7 passes** before the production fix. A first patch invocation exposed an indentation error during collection; corrected before verification. Expanded linked schema/boot/owner/readiness/real-process recovery suite: **34 passed** (6.71s), no warnings.
+5. Final complete checkout: `python -m pytest tests -q --timeout=180 --junitxml=/workspace/work/full-cycle3.xml`: **3363 passed, 0 failed/errors/skipped/warnings**, 228.61s. No remaining Hub/runtime service processes after teardown.
 
-Open groups: stale Hub completion/service doubles; outdated public HTTP redirect/publication/observed-denial doubles; boot-change test using an expired successful-publication lease; conflicting duplicate export expectations; readiness test incorrectly accepting proof without a live SQLite generation; API-login test writing outside its private workspace; source verification now rejecting unknown files earlier than Git admission. Preserve strict production boundaries while reconciling tests. Exact failures retained in the next durable regression inventory.
+Additional executable GUI check: `python -m bcc.gui_check --offscreen --output /workspace/work/gui-cycle2`: **PASS**. Eight actual Qt wizard create/edit/reopen and PAPER deposit-adjustment workflows; four core strategy copy/transfer/CSV/command-revoke/delete-isolation cycles; 20-row background global monitor; coin catalog and theme contrast. A bounded diagnostic invocation also exited 0. GUI command checks here are intent-only; actual worker Stop/Restart and synthetic strategy fills are independently covered by pytest. Linux offscreen is not Windows E2E.
 
-## Next milestone / release gates
+Full raw JUnit/logs remain in `/workspace/work/`; durable counts, failed identities, environment, tested source fingerprint and GUI result are in `docs/REGRESSION_20261107.json`. Its tested source map refers to the pre-documentation evidence snapshot, not to subsequently edited evidence itself. Final documentation and manifest are verified separately. Compileall and git diff --check pass. No release archive was generated outside isolated tests.
 
-Resolve all 17 regressions by common contract, rerun affected groups, then the complete checkout. Add integrated fault/restart checks where failures expose missing behavior. Keep source manifest synchronized and push checkpoint commits with `[skip ci]` to avoid automatic paid Actions. Windows clean-unpack Modern Qt E2E, independent review and live market availability remain NOT RUN / NOT CERTIFIED. This Linux environment cannot certify native Windows. No merge or release until those gates pass.
+## Outstanding acceptance / precise next step
 
-## Executed milestone after 8007e25 — full checkout convergence
+No known failing Linux regression remains. Independent review and clean-unpack native Windows Modern Qt E2E remain **NOT RUN / NOT CERTIFIED**; live provider availability remains unverified. The attached executor is Linux and cannot certify native Windows behavior. Do not merge or release, enable real trading, or rerun paid Actions.
 
-`QT_QPA_PLATFORM=offscreen /workspace/work/venv/bin/python -m pytest tests -q --timeout=180 --junitxml=/workspace/work/full-cycle2.xml`: **3360 passed, 0 failed/errors/skipped**, 224.57s. Four Python fork-from-thread DeprecationWarnings remain in the legacy migration test; use explicit spawn context in the next cycle to exercise Windows-compatible process startup and eliminate that test isolation hazard.
-
-Resolved the full-cycle1 failures by updating obsolete test contracts, preserving production fail-closed behavior: observed HTTP denial uses record_http_denial independent of expired success leases; all HTTP doubles enforce allow_redirects=False; shared publication doubles return actual success; Hub completion carries subscriber incarnation; service doubles implement acquire_leadership; malformed public queries no longer masquerade as cooldown misses; schema fixtures use explicit columns. Export continues rejecting duplicate selections; concurrent import tests now construct a valid archive containing repeated origins instead of depending on an export behavior explicitly forbidden by fleet admission. Source/Git and synthetic API-login tests preserve unknown files and remain inside temporary storage.
-
-Production supervisor fix: retain the authenticated OS child before checking SQLite readiness, so a failed probe can still reap a Windows venv redirected child. Added real-process transient/permanent probe and redirected-child cleanup regressions: **8 passed** in the linked readiness group. Earlier affected-contract run: 90 passed / 2 failed from a new test's empty-list check; corrected, and both cases passed in the linked group and full cycle2. No intermediate failing run is represented as PASS.
-
-`/workspace/work/venv/bin/python -m bcc.gui_check --offscreen --output /workspace/work/gui-cycle2`: **PASS** (Linux/offscreen). Eight actual Qt wizard strategy cycles create/edit/reopen and ledger deposit adjustment; four core strategy copy/transfer/CSV/command-revoke/delete-isolation cycles; 20-row background fleet monitor, coin catalog and theme contrast. Command checks are intent-only here, while real worker Stop/Restart is covered by the full pytest suite. A bounded diagnostic run of the same GUI check also exited 0. No Windows acceptance claim.
-
-Durable machine-readable evidence: `docs/REGRESSION_20261107.json`, including tested pre-documentation manifest and every tested source digest. Documentation/evidence additions are resealed and verified separately. No release archive was created outside isolated test workspaces.
-
-Next linked implementation: after an authenticated Hub is abruptly killed during failed readiness, revoke only its proven-dead exact owner lease; if SQLite is still blocked, retain that exact recovery record for the next start instead of discarding ownership. Test immediate retry in the same workspace. Native Windows clean-unpack Qt E2E and independent review still block merge/release.
+Next: on a native Windows clean source snapshot of this exact branch HEAD, verify all source hashes, then run `python -m tools.verify_windows --output <external-evidence-directory>`. Inspect complete collected/merged test inventory, GUI screenshots, real PAPER multi-worker Stop/Restart, abrupt Hub startup/recovery, global monitoring and ledger audits. Classify environment/provider denial separately from code failure; fix common causes and repeat affected plus complete acceptance. Keep PR #11 draft until all project-specific gates and independent review pass.

@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+import pytest
 
 from bcc import process_os as psutil
 
@@ -97,7 +98,8 @@ def test_redirected_hub_rejects_wrong_token_or_incorrect_paths(tmp_path):
         proc.wait(timeout=5)
 
 
-def test_redirected_child_is_reaped_when_lease_readiness_cannot_be_verified(tmp_path, monkeypatch):
+@pytest.mark.parametrize('abrupt', [False, True])
+def test_redirected_child_is_reaped_when_lease_readiness_cannot_be_verified(tmp_path, monkeypatch, abrupt):
     """OS ownership permits cleanup, but does not replace SQLite admission."""
     import sqlite3
     import pytest
@@ -107,6 +109,15 @@ def test_redirected_child_is_reaped_when_lease_readiness_cannot_be_verified(tmp_
     children, launchers, authenticated = [], [], []
     original_verify = supervisor._verified_redirected_hub_pid
     original_leader = HubRegistry.live_leader
+    process_type = type(psutil.Process(__import__('os').getpid()))
+    original_terminate = process_type.terminate
+
+    def terminate(process):
+        # Model Windows TerminateProcess on Linux: no Python finally blocks
+        # run, so the old producer cannot release its own SQLite lease.
+        if abrupt and any(pid == process.pid for pid, _ in authenticated):
+            return process.kill()
+        return original_terminate(process)
 
     def redirector(args, **kwargs):
         children.append(subprocess.Popen(args, **kwargs))
@@ -127,6 +138,7 @@ def test_redirected_child_is_reaped_when_lease_readiness_cannot_be_verified(tmp_
     monkeypatch.setattr(supervisor, '_spawn_hub', redirector)
     monkeypatch.setattr(supervisor, '_verified_redirected_hub_pid', verify)
     monkeypatch.setattr(HubRegistry, 'live_leader', unavailable)
+    monkeypatch.setattr(process_type, 'terminate', terminate)
     try:
         with pytest.raises(supervisor.HubUnavailable, match='did not become ready'):
             ensure_hub(tmp_path, timeout=1)
@@ -139,6 +151,15 @@ def test_redirected_child_is_reaped_when_lease_readiness_cannot_be_verified(tmp_
             pass
         assert not (tmp_path / 'market_hub_process.json').exists()
         assert not list(tmp_path.glob('.market_hub_ready_*.json'))
+        monkeypatch.setattr(HubRegistry, 'live_leader', original_leader)
+        # Recovery must work immediately, without waiting 120 seconds for
+        # the dead startup's persisted lease to expire.
+        recovered = ensure_hub(tmp_path, timeout=3)
+        record = json.loads((tmp_path / 'market_hub_process.json').read_text(encoding='utf-8'))
+        assert (recovered, record['created']) != (pid, created)
+        assert record['pid'] == recovered
+        assert _matches(record, tmp_path / 'market_cache.sqlite')
+        assert ensure_hub(tmp_path, timeout=3) == recovered
     finally:
         # This test owns these launches even when testing a broken supervisor.
         for pid, created in set(authenticated):
