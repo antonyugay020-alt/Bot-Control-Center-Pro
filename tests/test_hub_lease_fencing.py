@@ -9,6 +9,13 @@ from bcc.market_hub import HubRegistry, MarketDataHub
 URL = "https://api.bybit.com/v5/market/orderbook"
 
 
+def _generation(registry, key):
+    with registry._connect() as db:
+        return db.execute(
+            "SELECT subscription_token FROM hub_subscriptions WHERE k=?", (key,)
+        ).fetchone()[0]
+
+
 def _subscription(registry, key):
     with registry._connect() as db:
         return db.execute(
@@ -29,9 +36,9 @@ def test_released_and_reclaimed_same_owner_cannot_acknowledge_old_work(tmp_path)
     assert registry.claim_leader("producer")
     second = registry.leader_token("producer")
     assert second and second != first
-    assert not registry.finish_owned(key, 500, "producer", "stale", token=first)
+    assert not registry.finish_owned(key, 500, "producer", "stale", token=first, subscription_token=_generation(registry, key))
     assert _subscription(registry, key)[1:3] == (0, "")
-    assert registry.finish_owned(key, 2, "producer", "new", token=second)
+    assert registry.finish_owned(key, 2, "producer", "new", token=second, subscription_token=_generation(registry, key))
     assert _subscription(registry, key)[2] == "new"
 
 
@@ -57,8 +64,8 @@ def test_expired_same_owner_mints_new_fencing_generation(tmp_path):
     assert registry.claim_leader("producer")
     second = registry.leader_token("producer")
     assert second and second != first
-    assert not registry.finish_owned(key, 120, "producer", token=first)
-    assert registry.finish_owned(key, 1, "producer", token=second)
+    assert not registry.finish_owned(key, 120, "producer", token=first, subscription_token=_generation(registry, key))
+    assert registry.finish_owned(key, 1, "producer", token=second, subscription_token=_generation(registry, key))
 
 
 def test_legacy_leader_table_is_migrated_without_reusing_empty_token(tmp_path):
@@ -79,7 +86,7 @@ def test_legacy_leader_table_is_migrated_without_reusing_empty_token(tmp_path):
     token = registry.leader_token("legacy")
     assert isinstance(token, str) and len(token) == 32
     key = registry.subscribe(URL, {"symbol": "SOLUSDT"})
-    assert registry.finish_owned(key, 1, "legacy", token=token)
+    assert registry.finish_owned(key, 1, "legacy", token=token, subscription_token=_generation(registry, key))
 
 
 def test_shared_subscribers_cannot_shorten_each_others_lifetime(tmp_path):
