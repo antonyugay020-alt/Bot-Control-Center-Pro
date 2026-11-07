@@ -193,7 +193,7 @@ def ensure_hub(repo_root, *, timeout=8):
                         math.isfinite(leader[1]) and leader[1] > time.time()
                         and type(leader[2]) is str and bool(leader[2])):
                     return record['pid']
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError, sqlite3.Error) as exc:
                 raise HubUnavailable('Market Data Hub leadership check failed') from exc
             raise HubUnavailable(
                 'Market Data Hub process exists but has no valid leadership lease'
@@ -285,6 +285,7 @@ def ensure_hub(repo_root, *, timeout=8):
                             # live SQLite lease before advertising readiness.
                             # A stale receipt cannot certify a different Hub.
                             if not owner.startswith(str(service_pid) + ':'):
+                                time.sleep(.1)
                                 continue
                             with registry._connect() as db:
                                 lease = db.execute(
@@ -296,6 +297,7 @@ def ensure_hub(repo_root, *, timeout=8):
                                     and math.isfinite(lease[1])
                                     and lease[1] > time.time()
                                     and type(lease[2]) is str and bool(lease[2])):
+                                time.sleep(.1)
                                 continue
                             verified_child = (service_pid, service_created)
                             atomic_json(record_path, {
@@ -303,7 +305,7 @@ def ensure_hub(repo_root, *, timeout=8):
                                 'leader_owner': owner,
                             })
                             return service_pid
-                except (OSError, ValueError, TypeError, psutil.Error):
+                except (OSError, ValueError, TypeError, sqlite3.Error, psutil.Error):
                     pass
                 if proc.poll() is not None and proc.returncode != 0:
                     raise HubUnavailable('Market Data Hub launcher failed: ' + _hub_startup_details(root, proc))
