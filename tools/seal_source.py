@@ -10,7 +10,7 @@ import json
 import tempfile
 import zipfile
 from pathlib import Path
-from tools.verify_package import REQUIRED_FILES, verify, executable_sources
+from tools.verify_package import REQUIRED_FILES, verify, source_inventory
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRYPOINTS = (
@@ -43,9 +43,9 @@ def source_paths(root):
     """Enumerate tracked executable content, not transient filesystem debris."""
     root = Path(root).resolve()
     names = set(ENTRYPOINTS) | set(REQUIRED_FILES)
-    # Include ALL executable entrypoints and CI definitions, not only the
-    # original bcc/tests/tools Python modules. Verify uses this same inventory.
-    names.update(name for name, _ in executable_sources(root))
+    # The verifier uses this same complete inventory. New data/config,
+    # native library and documentation files are sealed alongside executables.
+    names.update(name for name, _ in source_inventory(root))
     for name in sorted(names):
         path = root / name
         if not path.is_file() or path.is_symlink() or any(

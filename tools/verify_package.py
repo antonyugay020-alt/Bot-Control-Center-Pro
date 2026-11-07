@@ -6,6 +6,7 @@ venvs, logs and test workspaces are not part of the verified source snapshot.
 import argparse
 import hashlib
 import json
+import os
 import re
 from pathlib import Path, PurePosixPath
 
@@ -65,6 +66,43 @@ def executable_sources(root):
             yield name, path
 
 
+# A sealed source snapshot must cover *every* distributed file, not only
+# Python/batch entrypoints. An unmanifested JSON strategy override, native
+# library, stylesheet or text policy can otherwise change behavior after QA.
+# Runtime state is separate from immutable source; only explicit QA workspaces
+# and generated evidence are exempt from this inventory.
+RUNTIME_ROOT_DIRS = frozenset({"verification_reports", ".check_venv", "MY_BOTS"})
+
+
+def source_inventory(root):
+    """Yield every immutable source file or symlink, pruning runtime trees."""
+    root = Path(root).resolve()
+    for current, directories, filenames in os.walk(root, topdown=True, followlinks=False):
+        parent = Path(current)
+        retained = []
+        for dirname in directories:
+            if dirname in EXCLUDED_SOURCE_DIRS or (
+                    parent == root and dirname in RUNTIME_ROOT_DIRS):
+                continue
+            candidate = parent / dirname
+            if candidate.is_symlink():
+                # Never follow an untrusted directory alias. It is still a
+                # source-tree entry and must fail sealing or verification.
+                yield candidate.relative_to(root).as_posix(), candidate
+            else:
+                retained.append(dirname)
+        directories[:] = retained
+        for filename in filenames:
+            candidate = parent / filename
+            if parent == root and filename == "SHA256_MANIFEST.json":
+                continue  # Manifest is fingerprinted separately (no recursion).
+            if (parent == root and filename.startswith("BCC_VALIDATION_RESULTS_")
+                    and filename.endswith(".zip")):
+                continue  # Generated QA evidence, never distributed as source.
+            yield candidate.relative_to(root).as_posix(), candidate
+
+
+
 class SourceIntegrityError(ValueError):
     pass
 
@@ -104,11 +142,18 @@ def verify(root=ROOT):
         if actual != digest:
             raise SourceIntegrityError("Не совпадает SHA-256: " + key)
         checked.add(key)
-    # Use the same discovery as the sealer: a newly added executable or
-    # workflow cannot be omitted from the archive and then pass verification.
-    for rel, _ in executable_sources(root):
+    # Exact package membership is part of the acceptance fingerprint.
+    # Executables are only a subset: unsealed configs, native modules, policy
+    # files and assets must not be able to influence the checked application.
+    for rel, path in source_inventory(root):
+        if path.is_symlink():
+            raise SourceIntegrityError("Незарегистрированная ссылка: " + rel)
         if rel not in checked:
-            raise SourceIntegrityError("Незарегистрированный исполняемый файл: " + rel)
+            if (path.suffix.lower() in EXECUTABLE_SUFFIXES or
+                    (rel.startswith(".github/workflows/")
+                     and path.suffix.lower() in AUTOMATION_SUFFIXES)):
+                raise SourceIntegrityError("Незарегистрированный исполняемый файл: " + rel)
+            raise SourceIntegrityError("Незарегистрированный файл исходников: " + rel)
     for required in REQUIRED_FILES:
         if required not in checked:
             raise SourceIntegrityError("Неучтён обязательный файл: " + required)
