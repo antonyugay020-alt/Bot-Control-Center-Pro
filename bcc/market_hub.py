@@ -55,10 +55,16 @@ class HubRegistry:
               k TEXT PRIMARY KEY, url TEXT NOT NULL, params TEXT NOT NULL,
               active_until REAL NOT NULL, next_due REAL NOT NULL DEFAULT 0,
               last_error TEXT NOT NULL DEFAULT '',
-              priority_until REAL NOT NULL DEFAULT 0)''')
+              priority_until REAL NOT NULL DEFAULT 0,
+              subscription_token TEXT NOT NULL DEFAULT '')''')
             columns = {row[1] for row in db.execute('PRAGMA table_info(hub_subscriptions)')}
             if 'priority_until' not in columns:
                 db.execute('ALTER TABLE hub_subscriptions ADD COLUMN priority_until REAL NOT NULL DEFAULT 0')
+            if 'subscription_token' not in columns:
+                db.execute("ALTER TABLE hub_subscriptions ADD COLUMN subscription_token TEXT NOT NULL DEFAULT ''")
+            # Migrated subscriptions also require durable incarnation fences.
+            db.execute("UPDATE hub_subscriptions SET subscription_token=lower(hex(randomblob(16))) "
+                       "WHERE subscription_token=''")
             db.execute('CREATE INDEX IF NOT EXISTS hub_due ON hub_subscriptions(next_due,active_until)')
             # Reclaimed subscription rows must not grow without bound as the
             # registered fleet and its requested markets change over time.
@@ -136,14 +142,15 @@ class HubRegistry:
             )
             return cursor.rowcount == 1
 
-    def finish_owned(self, key, delay, owner, error='', *, token):
+    def finish_owned(self, key, delay, owner, error='', *, token, subscription_token):
         """Acknowledge only while this producer still holds an unexpired lease.
 
         The ownership check and subscription update share one SQLite writer
         transaction so a replacement producer cannot be raced by an old one.
         """
-        if not isinstance(token, str) or not token:
-            raise ValueError('Hub completion requires a lease fencing token')
+        if (not isinstance(token, str) or not token
+                or not isinstance(subscription_token, str) or not subscription_token):
+            raise ValueError('Hub completion requires leader and subscription fencing tokens')
         now = time.time()
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -155,10 +162,15 @@ class HubRegistry:
             if not valid:
                 db.rollback()
                 return False
-            db.execute('UPDATE hub_subscriptions SET next_due=?,last_error=? WHERE k=?',
-                       (now + delay, str(error)[:300], key))
+            # A revived/pruned-and-recreated subscriber has a new incarnation,
+            # even when the same producer still owns the leader lease.
+            updated = db.execute(
+                'UPDATE hub_subscriptions SET next_due=?,last_error=? '
+                'WHERE k=? AND subscription_token=? AND active_until>?',
+                (now + delay, str(error)[:300], key, subscription_token, now),
+            )
             db.commit()
-        return True
+        return updated.rowcount == 1
 
     @staticmethod
     def identity(url, params):
@@ -183,10 +195,16 @@ class HubRegistry:
         PublicData.validated_public_request(url, params)
         key, encoded = self.identity(url, params)
         now = time.time()
+        generation = uuid.uuid4().hex
         with self._connect() as db:
-            db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until)
-              VALUES(?,?,?,?,0,?) ON CONFLICT(k) DO UPDATE SET
+            db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until,subscription_token)
+              VALUES(?,?,?,?,0,?,?) ON CONFLICT(k) DO UPDATE SET
               active_until=max(hub_subscriptions.active_until,excluded.active_until),
+              subscription_token=CASE WHEN hub_subscriptions.active_until<=?
+                             OR hub_subscriptions.params<>excluded.params
+                             OR hub_subscriptions.url<>excluded.url
+                             THEN excluded.subscription_token
+                             ELSE hub_subscriptions.subscription_token END,
               priority_until=CASE WHEN hub_subscriptions.active_until<=?
                              THEN excluded.priority_until
                              ELSE max(hub_subscriptions.priority_until,excluded.priority_until) END,
@@ -202,7 +220,7 @@ class HubRegistry:
                               THEN '' ELSE hub_subscriptions.last_error END''',
               (key, url, encoded, now + lifetime,
                now + min(lifetime * 0.75, 90) if priority else 0,
-               now, now, now))
+               generation, now, now, now, now))
         return key
 
     def prune_expired(self, *, retention=3600, batch=256):
@@ -239,10 +257,13 @@ class HubRegistry:
                 (time.time(),),
             ).fetchone() is not None
 
-    def due(self, limit=32, *, reserve_regular=0, exclude=(), include_priority=False):
+    def due(self, limit=32, *, reserve_regular=0, exclude=(), include_priority=False,
+            include_generation=False):
         # Urgent position marks first, reserve slots for scans.
 
         # Urgency belongs to a short renewable lease, not a permanent flag.
+        if type(include_generation) is not bool:
+            raise ValueError('Hub generation flag must be boolean')
         if type(limit) is not int or limit < 1:
             raise ValueError('Invalid due batch limit')
         if type(reserve_regular) is not int or not 0 <= reserve_regular < limit:
@@ -256,15 +277,15 @@ class HubRegistry:
         skip_sql = (' AND k NOT IN (' + ','.join('?' for _ in exclude) + ')') if exclude else ''
         now = time.time()
         with self._connect() as db:
-            urgent = db.execute('''SELECT k,url,params FROM hub_subscriptions
+            urgent = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
               ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, limit-reserve_regular)).fetchall()
-            regular = db.execute('''SELECT k,url,params FROM hub_subscriptions
+            regular = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until<=?''' + skip_sql +
               ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, limit-len(urgent))).fetchall()
             rows = [(row, True) for row in urgent] + [(row, False) for row in regular]
             if len(rows) < limit and len(urgent) == limit-reserve_regular:
-                more = db.execute('''SELECT k,url,params FROM hub_subscriptions
+                more = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
                   WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
                   ' ORDER BY next_due,k LIMIT ? OFFSET ?',
                   (now,now,now,*exclude,limit-len(rows),len(urgent))).fetchall()
@@ -274,20 +295,25 @@ class HubRegistry:
         # at registration; invalid rows must not consume producer HTTP slots.
         from .market import PublicData
         valid = []
-        for (key, url, raw_params), is_urgent in rows:
+        for (key, url, raw_params, generation), is_urgent in rows:
             try:
                 params = json.loads(raw_params, parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
                 PublicData.validated_public_request(url, params)
-                if self.identity(url, params)[0] != key:
-                    raise ValueError('Subscription identity differs from persisted data')
+                if self.identity(url, params)[0] != key or not generation:
+                    raise ValueError('Subscription identity or generation differs from persisted data')
             except (ValueError, TypeError, UnicodeError):
                 with self._connect() as db:
                     db.execute('UPDATE hub_subscriptions SET last_error=?, next_due=? '
-                               'WHERE k=? AND params=?',
+                               'WHERE k=? AND params=? AND subscription_token=?',
                                ('Invalid persisted public subscription',
-                                time.time() + 60, key, raw_params))
+                                time.time() + 60, key, raw_params, generation))
                 continue
-            valid.append((key, url, params, is_urgent) if include_priority else (key, url, params))
+            row = (key, url, params)
+            if include_priority:
+                row += (is_urgent,)
+            if include_generation:
+                row += (generation,)
+            valid.append(row)
         return valid
 
     def finish(self, key, delay, error=''):
@@ -354,7 +380,7 @@ class MarketDataHub:
             return []
         self._maintain_registry()
         results = []
-        for key, url, params in self.registry.due(limit):
+        for key, url, params, generation in self.registry.due(limit, include_generation=True):
             if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
             delay = 120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0)
@@ -390,11 +416,13 @@ class MarketDataHub:
             if lease_lost.is_set() or not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
             if error is None:
-                if not self.registry.finish_owned(key, delay, self.owner, token=token):
+                if not self.registry.finish_owned(key, delay, self.owner, token=token,
+                                                  subscription_token=generation):
                     break
                 results.append((key, True))
             else:
-                if not self.registry.finish_owned(key, 2.0, self.owner, str(error), token=token):
+                if not self.registry.finish_owned(key, 2.0, self.owner, str(error), token=token,
+                                                  subscription_token=generation):
                     break
                 results.append((key, False))
         return results
@@ -412,7 +440,8 @@ class MarketDataHub:
             return []
         self._maintain_registry()
         due = self.registry.due(min(limit, self.max_workers),
-                                reserve_regular=1 if self.max_workers > 1 else 0)
+                                reserve_regular=1 if self.max_workers > 1 else 0,
+                                include_generation=True)
         if not due:
             return []
         stop = threading.Event()
@@ -429,12 +458,12 @@ class MarketDataHub:
                     return
 
         def fetch(request):
-            key, url, params = request
+            key, url, params, generation = request
             try:
                 self.source.get(url, params=params)
-                return key, url, None
+                return key, url, generation, None
             except Exception as exc:
-                return key, url, exc
+                return key, url, generation, exc
 
         keeper = threading.Thread(target=keep_leader, name='hub-lease-renewal', daemon=True)
         keeper.start()
@@ -442,7 +471,7 @@ class MarketDataHub:
         try:
             futures = [self._pool.submit(fetch, request) for request in due]
             for future in as_completed(futures):
-                key, url, error = future.result()
+                key, url, generation, error = future.result()
                 if lost.is_set() or not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                     lost.set()
                     break
@@ -451,7 +480,8 @@ class MarketDataHub:
                     delay = 2.0
                 if not self.registry.finish_owned(key, delay, self.owner,
                                                  str(error) if error is not None else '',
-                                                 token=token):
+                                                 token=token,
+                                                 subscription_token=generation):
                     lost.set()
                     break
                 results.append((key, error is None))
@@ -488,7 +518,7 @@ class MarketDataHub:
 
         self._maintain_registry()
         results = []
-        for key, (future, url, is_urgent, launched_token) in list(self._inflight.items()):
+        for key, (future, url, is_urgent, launched_token, generation) in list(self._inflight.items()):
             if not future.done():
                 continue
             del self._inflight[key]
@@ -505,7 +535,8 @@ class MarketDataHub:
                      120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0))
             if not self.registry.finish_owned(key, delay, self.owner,
                                              str(error) if error is not None else '',
-                                             token=launched_token):
+                                             token=launched_token,
+                                             subscription_token=generation):
                 self._leader_held = False
                 return results
             results.append((key, error is None))
@@ -519,12 +550,13 @@ class MarketDataHub:
         available = self.registry.due(
             limit=self.max_workers, reserve_regular=1,
             exclude=tuple(self._inflight), include_priority=True,
+            include_generation=True,
         )
         regular_inflight = sum(not item[2] for item in self._inflight.values())
         urgent_inflight = len(self._inflight) - regular_inflight
         urgent_available = any(item[3] for item in available)
         regular_available = any(not item[3] for item in available)
-        for key, url, params, is_urgent in available:
+        for key, url, params, is_urgent, generation in available:
             if free <= 0:
                 break
             if (is_urgent and regular_available and regular_inflight == 0
@@ -553,7 +585,8 @@ class MarketDataHub:
                 finally:
                     if context is not None:
                         context.position_mark = previous
-            self._inflight[key] = (self._pool.submit(fetch), url, is_urgent, self._leader_token)
+            self._inflight[key] = (self._pool.submit(fetch), url, is_urgent,
+                                   self._leader_token, generation)
             urgent_inflight += bool(is_urgent)
             regular_inflight += not is_urgent
             free -= 1
