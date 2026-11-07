@@ -54,7 +54,9 @@ def test_hub_fleet_operations_leave_no_open_sqlite_connection(tmp_path):
     token = registry.leader_token("producer")
     assert token
     assert registry.due(limit=1) == [(key, URL, PARAMS)]
-    assert registry.finish_owned(key, 1, "producer", token=token)
+    generation = registry.due(limit=1, include_generation=True)[0][-1]
+    assert registry.finish_owned(key, 1, "producer", token=token,
+                                 subscription_token=generation)
     assert registry.renew_leader("producer", token=token)
     registry.release_leader("producer", token=token)
 
