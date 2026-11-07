@@ -9,6 +9,8 @@ from contextlib import contextmanager
 import sqlite3
 import time
 
+import pytest
+
 from bcc.data_cache import CacheBusy, PublicCache
 from bcc.market_hub import HubRegistry
 
@@ -26,7 +28,7 @@ class AssertTransactionalSchema:
     def execute(self, statement, *args):
         sql = statement.strip().upper()
         if (sql.startswith(("CREATE ", "ALTER ", "UPDATE PROVIDER_DENIAL",
-                            "UPDATE HUB_SUBSCRIPTIONS"))):
+                            "UPDATE HUB_SUBSCRIPTIONS", "DROP INDEX"))):
             assert self.connection.in_transaction, sql
         return self.connection.execute(statement, *args)
 
@@ -190,3 +192,70 @@ def test_hub_fast_path_falls_back_for_incomplete_index_or_token(tmp_path):
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='index' AND name='hub_expiry'"
         ).fetchone() == (1,)
+
+
+def test_hub_rebuilds_misnamed_queue_indexes_atomically(tmp_path):
+    """An existing index name is not evidence of its SQL query-plan columns."""
+    path = tmp_path / "market.sqlite"
+    first = HubRegistry(path)
+    key = first.subscribe(URL, PARAMS)
+    with sqlite3.connect(path) as db:
+        db.execute("DROP INDEX hub_due")
+        db.execute("DROP INDEX hub_expiry")
+        db.execute("CREATE INDEX hub_due ON hub_subscriptions(active_until,next_due)")
+        db.execute("CREATE INDEX hub_expiry ON hub_subscriptions(next_due)")
+    # The fast path must reject both wrong definitions. Migration rebuilds
+    # both indexes inside the same writer transaction, preserving subscriber.
+    repaired = HubRegistry(path)
+    with repaired._connect() as db:
+        assert tuple(r[0] for r in db.execute(
+            "SELECT name FROM pragma_index_info('hub_due') ORDER BY seqno"
+        )) == ("next_due", "active_until")
+        assert tuple(r[0] for r in db.execute(
+            "SELECT name FROM pragma_index_info('hub_expiry') ORDER BY seqno"
+        )) == ("active_until",)
+        assert db.execute(
+            "SELECT subscription_token FROM hub_subscriptions WHERE k=?", (key,)
+        ).fetchone()[0]
+
+
+def test_hub_rejects_incompatible_primary_key_without_partial_migration(tmp_path):
+    """An additive migration cannot invent a missing durable identity key."""
+    path = tmp_path / "market.sqlite"
+    HubRegistry(path)
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TABLE hub_subscriptions")
+        db.execute(
+            "CREATE TABLE hub_subscriptions("
+            "k TEXT NOT NULL, url TEXT NOT NULL, params TEXT NOT NULL,"
+            "active_until REAL NOT NULL, next_due REAL NOT NULL DEFAULT 0,"
+            "last_error TEXT NOT NULL DEFAULT '',"
+            "priority_until REAL NOT NULL DEFAULT 0,"
+            "subscription_token TEXT NOT NULL DEFAULT '')"
+        )
+    with pytest.raises(sqlite3.DatabaseError, match="schema integrity check failed"):
+        HubRegistry(path)
+    with sqlite3.connect(path) as db:
+        assert not db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' "
+            "AND name IN ('hub_due','hub_expiry')"
+        ).fetchone()
+        assert not any(row[5] for row in db.execute(
+            "PRAGMA table_info(hub_subscriptions)"
+        ))
+
+
+def test_hub_rejects_foreign_index_name_without_touching_it(tmp_path):
+    """Do not destroy another table's index to make a broken schema boot."""
+    path = tmp_path / "market.sqlite"
+    HubRegistry(path)
+    with sqlite3.connect(path) as db:
+        db.execute("DROP INDEX hub_due")
+        db.execute("CREATE TABLE other_component(id INTEGER)")
+        db.execute("CREATE INDEX hub_due ON other_component(id)")
+    with pytest.raises(sqlite3.DatabaseError, match="owned by another table"):
+        HubRegistry(path)
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT tbl_name FROM sqlite_master WHERE type='index' AND name='hub_due'"
+        ).fetchone() == ("other_component",)
