@@ -346,8 +346,13 @@ class PublicCache:
 
     def finish(self, key, owner, host, value=None, ttl=0, cooldown=0,
                denial_status=None):
+        """Return True only when this lease published its value to shared cache.
+
+        A replaced lease or provider denial may discard a 200 HTTP response;
+        callers must never treat that uncommitted payload as PAPER market data.
+        """
         if owner is None:
-            return
+            return False
         # Serialization may be expensive for a long candle history. It must not
         # run while blocking every other bot's short write transaction.
         encoded = (
@@ -356,6 +361,7 @@ class PublicCache:
             else None
         )
         self._ensure_schema()
+        published = False
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT owner FROM lease WHERE k=?", (key,)).fetchone()
@@ -369,6 +375,7 @@ class PublicCache:
                         "VALUES(?,?,?,?)",
                         (key, encoded, time.time() + ttl, host),
                     )
+                    published = True
                 if cooldown:
                     db.execute(
                         "INSERT INTO cooldown VALUES(?,?) ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)",
@@ -382,3 +389,4 @@ class PublicCache:
                     db.execute("DELETE FROM lease WHERE until<?", (time.time(),))
                     self._next_cleanup = time.monotonic() + 30
                 db.commit()
+        return published
