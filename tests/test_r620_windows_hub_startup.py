@@ -16,10 +16,15 @@ def test_hub_registry_reuses_existing_wal_without_reconfiguration(tmp_path, monk
     original = HubRegistry._connect
     commands = []
 
+    from contextlib import contextmanager
+
+    @contextmanager
     def instrumented(self):
-        db = original(self)
-        db.set_trace_callback(commands.append)
-        return db
+        # _connect now owns and closes its SQLite handle on context exit.
+        # The old test treated the context manager itself as a connection.
+        with original(self) as db:
+            db.set_trace_callback(commands.append)
+            yield db
 
     monkeypatch.setattr(HubRegistry, '_connect', instrumented)
     HubRegistry(cache)
