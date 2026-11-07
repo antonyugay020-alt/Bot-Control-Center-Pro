@@ -60,8 +60,13 @@ def main():
                     if args.ready_file:
                         from pathlib import Path
                         from bcc.storage import atomic_json
+                        # Bind the readiness challenge to this exact Hub lease
+                        # incarnation. A PID alone can be reused after a crash;
+                        # the supervisor must persist and later revoke only
+                        # this owner's generation, never a successor's lease.
                         atomic_json(Path(args.ready_file), {
                             'pid': os.getpid(), 'token': args.ready_token,
+                            'leader_owner': hub.owner,
                         })
                     print('Market Hub leader lease acquired', flush=True)
                     ready_logged = True
