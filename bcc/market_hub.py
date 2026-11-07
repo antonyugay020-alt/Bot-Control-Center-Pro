@@ -53,6 +53,47 @@ class HubRegistry:
         finally:
             db.close()
 
+    @staticmethod
+    def _schema_current(db):
+        """Read-only fast path for already migrated multi-worker databases.
+
+        Thousands of independent workers can open the same Hub registry at
+        startup. Taking BEGIN IMMEDIATE for every schema inspection serializes
+        otherwise independent readers behind the producer's writer lock.
+        A complete inventory (columns, indices, and token backfill) is the
+        admission condition; legacy or partially migrated schemas still take
+        the atomic writer-locked migration path below.
+        """
+        tables = {row[0] for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name IN ('hub_subscriptions','hub_leader')"
+        )}
+        if tables != {'hub_subscriptions', 'hub_leader'}:
+            return False
+        subscriptions = {row[1] for row in db.execute(
+            'PRAGMA table_info(hub_subscriptions)'
+        )}
+        leaders = {row[1] for row in db.execute(
+            'PRAGMA table_info(hub_leader)'
+        )}
+        if not {
+            'k', 'url', 'params', 'active_until', 'next_due',
+            'last_error', 'priority_until', 'subscription_token'
+        } <= subscriptions:
+            return False
+        if not {'singleton', 'owner', 'expires', 'lease_token', 'boot_epoch'} <= leaders:
+            return False
+        indexes = {row[0] for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name IN ('hub_due','hub_expiry')"
+        )}
+        if indexes != {'hub_due', 'hub_expiry'}:
+            return False
+        return db.execute(
+            "SELECT 1 FROM hub_subscriptions "
+            "WHERE subscription_token='' LIMIT 1"
+        ).fetchone() is None
+
     def _init(self):
         with self._connect() as db:
             # A journal-mode *change* needs exclusive access on Windows. The
@@ -63,10 +104,15 @@ class HubRegistry:
                 mode = db.execute('PRAGMA journal_mode=WAL').fetchone()[0]
                 if mode.lower() != 'wal':
                     raise sqlite3.OperationalError('Market Hub requires SQLite WAL mode')
-            # Serialize *all* schema inspection, DDL and legacy token backfill.
-            # In autocommit mode CREATE/ALTER and PRAGMA table_info otherwise
-            # race with other worker processes starting the same Hub registry.
-            # The WAL transition above must stay outside this transaction.
+            # Existing migrated databases need no writer transaction just
+            # to register another independent PAPER worker. The read-only
+            # preflight can coexist with a producer's active SQLite writer.
+            if self._schema_current(db):
+                return
+            # Missing columns, indices or legacy tokens require migration.
+            # Recheck and apply DDL/backfill under ONE SQLite writer lock:
+            # concurrent processes may all observe the same old schema.
+            # WAL setup above must remain outside this transaction.
             db.execute('BEGIN IMMEDIATE')
             db.execute('''CREATE TABLE IF NOT EXISTS hub_subscriptions(
               k TEXT PRIMARY KEY, url TEXT NOT NULL, params TEXT NOT NULL,
@@ -79,9 +125,8 @@ class HubRegistry:
                 db.execute('ALTER TABLE hub_subscriptions ADD COLUMN priority_until REAL NOT NULL DEFAULT 0')
             if 'subscription_token' not in columns:
                 db.execute("ALTER TABLE hub_subscriptions ADD COLUMN subscription_token TEXT NOT NULL DEFAULT ''")
-            # Existing processes initialize this registry frequently. Avoid
-            # a write transaction on every read-only startup once migration
-            # is complete, while still recovering an interrupted backfill.
+            # An interrupted legacy backfill is completed atomically here.
+            # Subsequent startups use the read-only fast path above.
             if db.execute("SELECT 1 FROM hub_subscriptions WHERE subscription_token='' LIMIT 1").fetchone():
                 db.execute("UPDATE hub_subscriptions SET subscription_token=lower(hex(randomblob(16))) "
                            "WHERE subscription_token=''")
