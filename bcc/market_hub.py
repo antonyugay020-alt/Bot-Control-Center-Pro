@@ -405,6 +405,25 @@ class MarketDataHub:
             if context is not None:
                 context.position_mark = previous
 
+    def _acknowledge(self, key, delay, error, *, token, generation):
+        """Classify a fenced acknowledgement without confusing subscriber churn
+        with loss of producer leadership.
+
+        A subscriber can expire, be pruned or re-register under a new
+        incarnation while its old HTTP request is in flight. Its stale
+        completion must be discarded, but the same leader must continue
+        servicing unrelated subscriptions. Only actual leadership loss stops
+        the producer. Every successful acknowledgement is still checked in
+        the same SQLite transaction as the two fencing tokens.
+        """
+        if self.registry.finish_owned(
+                key, delay, self.owner, error, token=token,
+                subscription_token=generation):
+            return "acknowledged"
+        if self.registry.leader_token(self.owner) == token:
+            return "stale_subscription"
+        return "lost_leader"
+
     def run_once(self, limit=32):
         if self.max_workers > 1:
             return self._run_parallel(limit)
@@ -449,16 +468,15 @@ class MarketDataHub:
             # separately by PublicCache's per-request ownership lease.
             if lease_lost.is_set() or not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
-            if error is None:
-                if not self.registry.finish_owned(key, delay, self.owner, token=token,
-                                                  subscription_token=generation):
-                    break
-                results.append((key, True))
-            else:
-                if not self.registry.finish_owned(key, 2.0, self.owner, str(error), token=token,
-                                                  subscription_token=generation):
-                    break
-                results.append((key, False))
+            outcome = self._acknowledge(
+                key, 2.0 if error is not None else delay,
+                str(error) if error is not None else "",
+                token=token, generation=generation,
+            )
+            if outcome == "lost_leader":
+                break
+            if outcome == "acknowledged":
+                results.append((key, error is None))
         return results
 
     def _run_parallel(self, limit):
@@ -515,13 +533,15 @@ class MarketDataHub:
                 delay = 120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0)
                 if error is not None:
                     delay = 2.0
-                if not self.registry.finish_owned(key, delay, self.owner,
-                                                 str(error) if error is not None else '',
-                                                 token=token,
-                                                 subscription_token=generation):
+                outcome = self._acknowledge(
+                    key, delay, str(error) if error is not None else "",
+                    token=token, generation=generation,
+                )
+                if outcome == "lost_leader":
                     lost.set()
                     break
-                results.append((key, error is None))
+                if outcome == "acknowledged":
+                    results.append((key, error is None))
         finally:
             stop.set()
             keeper.join(timeout=2)
@@ -570,13 +590,15 @@ class MarketDataHub:
                 error = exc
             delay = (2.0 if error is not None else
                      120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0))
-            if not self.registry.finish_owned(key, delay, self.owner,
-                                             str(error) if error is not None else '',
-                                             token=launched_token,
-                                             subscription_token=generation):
+            outcome = self._acknowledge(
+                key, delay, str(error) if error is not None else "",
+                token=launched_token, generation=generation,
+            )
+            if outcome == "lost_leader":
                 self._leader_held = False
                 return results
-            results.append((key, error is None))
+            if outcome == "acknowledged":
+                results.append((key, error is None))
 
         free = self.max_workers - len(self._inflight)
         if free <= 0:
