@@ -10,7 +10,7 @@ import json
 import tempfile
 import zipfile
 from pathlib import Path
-from tools.verify_package import REQUIRED_FILES, verify
+from tools.verify_package import REQUIRED_FILES, verify, executable_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRYPOINTS = (
@@ -43,12 +43,9 @@ def source_paths(root):
     """Enumerate tracked executable content, not transient filesystem debris."""
     root = Path(root).resolve()
     names = set(ENTRYPOINTS) | set(REQUIRED_FILES)
-    for folder in ('bcc', 'tests', 'tools'):
-        for path in (root / folder).rglob('*.py'):
-            rel = path.relative_to(root)
-            if any(part.startswith('.') or part == '__pycache__' for part in rel.parts):
-                continue
-            names.add(rel.as_posix())
+    # Include ALL executable entrypoints and CI definitions, not only the
+    # original bcc/tests/tools Python modules. Verify uses this same inventory.
+    names.update(name for name, _ in executable_sources(root))
     for name in sorted(names):
         path = root / name
         if not path.is_file() or path.is_symlink() or any(

@@ -38,6 +38,33 @@ REQUIRED_FILES = (
 
 
 
+# Both the source sealer and the unpack verifier use this exact executable
+# inventory. Otherwise a new launcher or CI workflow can silently disappear
+# from the archive before the verifier ever sees it.
+EXECUTABLE_SUFFIXES = frozenset({".py", ".pyw", ".bat", ".cmd", ".ps1"})
+AUTOMATION_SUFFIXES = frozenset({".yml", ".yaml"})
+EXCLUDED_SOURCE_DIRS = frozenset({
+    ".git", ".ai_work", ".venv", "venv", "__pycache__", ".pytest_cache",
+    "check_workspaces", "node_modules",
+})
+
+
+def executable_sources(root):
+    """Enumerate executable sources and CI definitions from an actual tree."""
+    root = Path(root).resolve()
+    for path in root.rglob("*"):
+        if not path.is_file() and not path.is_symlink():
+            continue
+        relative = path.relative_to(root)
+        if any(part in EXCLUDED_SOURCE_DIRS for part in relative.parts):
+            continue
+        name = relative.as_posix()
+        if (path.suffix.lower() in EXECUTABLE_SUFFIXES
+                or (name.startswith(".github/workflows/")
+                    and path.suffix.lower() in AUTOMATION_SUFFIXES)):
+            yield name, path
+
+
 class SourceIntegrityError(ValueError):
     pass
 
@@ -77,25 +104,11 @@ def verify(root=ROOT):
         if actual != digest:
             raise SourceIntegrityError("Не совпадает SHA-256: " + key)
         checked.add(key)
-    # Seal all executable entrypoints and automation definitions, not just
-    # previously known names. A new launcher, PowerShell script, Python module
-    # or CI workflow must never bypass the manifest through an unlisted path.
-    # Generated paths are excluded; no application code should live there.
-    executable_suffixes = {".py", ".pyw", ".bat", ".cmd", ".ps1"}
-    automation_dirs = {".github/workflows"}
-    excluded_dirs = {".git", ".ai_work", ".venv", "venv", "__pycache__",
-                     ".pytest_cache", "check_workspaces", "node_modules"}
-    for path in root.rglob("*"):
-        if not path.is_file() and not path.is_symlink():
-            continue
-        relative = path.relative_to(root)
-        if any(part in excluded_dirs for part in relative.parts):
-            continue
-        rel = relative.as_posix()
-        is_automation = any(rel.startswith(folder + "/") for folder in automation_dirs)
-        if path.suffix.lower() in executable_suffixes or (is_automation and path.suffix.lower() in {".yml", ".yaml"}):
-            if rel not in checked:
-                raise SourceIntegrityError("Незарегистрированный исполняемый файл: " + rel)
+    # Use the same discovery as the sealer: a newly added executable or
+    # workflow cannot be omitted from the archive and then pass verification.
+    for rel, _ in executable_sources(root):
+        if rel not in checked:
+            raise SourceIntegrityError("Незарегистрированный исполняемый файл: " + rel)
     for required in REQUIRED_FILES:
         if required not in checked:
             raise SourceIntegrityError("Неучтён обязательный файл: " + required)
