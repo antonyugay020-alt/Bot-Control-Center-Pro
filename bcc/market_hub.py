@@ -442,8 +442,11 @@ class MarketDataHub:
         if not token:
             return []
         self._maintain_registry()
-        due = self.registry.due(min(limit, self.max_workers),
-                                reserve_regular=1 if self.max_workers > 1 else 0,
+        batch = min(limit, self.max_workers)
+        # A one-request batch has no second lane to reserve. Keep the
+        # scheduler's reservation strictly below the actual batch size.
+        due = self.registry.due(batch,
+                                reserve_regular=1 if batch > 1 else 0,
                                 include_generation=True)
         if not due:
             return []
