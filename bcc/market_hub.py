@@ -54,6 +54,19 @@ class HubRegistry:
             db.close()
 
     @staticmethod
+    def _index_matches(db, name, columns):
+        """Verify index ownership AND ordered columns, not merely its name."""
+        row = db.execute(
+            "SELECT tbl_name FROM sqlite_master WHERE type='index' AND name=?",
+            (name,),
+        ).fetchone()
+        return bool(row and row[0] == 'hub_subscriptions' and
+                    tuple(item[0] for item in db.execute(
+                        'SELECT name FROM pragma_index_info(?) ORDER BY seqno',
+                        (name,),
+                    )) == tuple(columns))
+
+    @staticmethod
     def _schema_current(db):
         """Read-only fast path for already migrated multi-worker databases.
 
@@ -70,10 +83,10 @@ class HubRegistry:
         )}
         if tables != {'hub_subscriptions', 'hub_leader'}:
             return False
-        subscriptions = {row[1] for row in db.execute(
+        subscriptions = {row[1]: row for row in db.execute(
             'PRAGMA table_info(hub_subscriptions)'
         )}
-        leaders = {row[1] for row in db.execute(
+        leaders = {row[1]: row for row in db.execute(
             'PRAGMA table_info(hub_leader)'
         )}
         if not {
@@ -83,11 +96,19 @@ class HubRegistry:
             return False
         if not {'singleton', 'owner', 'expires', 'lease_token', 'boot_epoch'} <= leaders:
             return False
-        indexes = {row[0] for row in db.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' "
-            "AND name IN ('hub_due','hub_expiry')"
-        )}
-        if indexes != {'hub_due', 'hub_expiry'}:
+        # Columns without their primary-key contract can appear valid while
+        # ON CONFLICT updates silently fail or admit duplicate leaders.
+        if subscriptions['k'][5] != 1 or leaders['singleton'][5] != 1:
+            return False
+        for name in ('url', 'params', 'active_until', 'next_due',
+                     'last_error', 'priority_until', 'subscription_token'):
+            if subscriptions[name][3] != 1:
+                return False
+        for name in ('owner', 'expires', 'lease_token', 'boot_epoch'):
+            if leaders[name][3] != 1:
+                return False
+        if not (HubRegistry._index_matches(db, 'hub_due', ('next_due', 'active_until'))
+                and HubRegistry._index_matches(db, 'hub_expiry', ('active_until',))):
             return False
         return db.execute(
             "SELECT 1 FROM hub_subscriptions "
@@ -130,10 +151,24 @@ class HubRegistry:
             if db.execute("SELECT 1 FROM hub_subscriptions WHERE subscription_token='' LIMIT 1").fetchone():
                 db.execute("UPDATE hub_subscriptions SET subscription_token=lower(hex(randomblob(16))) "
                            "WHERE subscription_token=''")
-            db.execute('CREATE INDEX IF NOT EXISTS hub_due ON hub_subscriptions(next_due,active_until)')
-            # Reclaimed subscription rows must not grow without bound as the
-            # registered fleet and its requested markets change over time.
-            db.execute('CREATE INDEX IF NOT EXISTS hub_expiry ON hub_subscriptions(active_until)')
+            # A named index is not proof of the queue/expiry access path.
+            # Repair malformed same-table indexes under the migration writer
+            # lock; never drop an index belonging to an unrelated table.
+            for name, columns in (
+                    ('hub_due', ('next_due', 'active_until')),
+                    ('hub_expiry', ('active_until',))):
+                existing = db.execute(
+                    "SELECT tbl_name FROM sqlite_master WHERE type='index' AND name=?",
+                    (name,),
+                ).fetchone()
+                if existing and existing[0] != 'hub_subscriptions':
+                    raise sqlite3.DatabaseError(
+                        'Market Hub schema integrity: index name owned by another table: ' + name
+                    )
+                if existing and not self._index_matches(db, name, columns):
+                    db.execute('DROP INDEX "' + name + '"')
+                db.execute('CREATE INDEX IF NOT EXISTS "' + name +
+                           '" ON hub_subscriptions(' + ','.join(columns) + ')')
             db.execute("CREATE TABLE IF NOT EXISTS hub_leader(singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL, expires REAL NOT NULL, lease_token TEXT NOT NULL DEFAULT '', boot_epoch REAL NOT NULL DEFAULT 0)")
             # Existing installations may have a live legacy leader row. The
             # next admission mints a new token; no old producer can prove it.
@@ -142,6 +177,15 @@ class HubRegistry:
                 db.execute("ALTER TABLE hub_leader ADD COLUMN lease_token TEXT NOT NULL DEFAULT ''")
             if 'boot_epoch' not in leader_columns:
                 db.execute("ALTER TABLE hub_leader ADD COLUMN boot_epoch REAL NOT NULL DEFAULT 0")
+            # Recheck the complete schema while holding the same writer lock.
+            # An incompatible primary key/NOT NULL contract cannot be safely
+            # repaired by additive ALTER TABLE: fail closed, rollback the DDL,
+            # and require an explicit migration rather than starting a Hub
+            # that will fail at runtime under fleet load.
+            if not self._schema_current(db):
+                raise sqlite3.DatabaseError(
+                    'Market Hub schema integrity check failed; refusing startup'
+                )
 
     def claim_leader(self, owner, *, lifetime=15):
         if not owner or not 1 <= lifetime <= 120:
