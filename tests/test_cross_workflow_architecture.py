@@ -81,4 +81,4 @@ def test_independent_hub_fleet_transfer_and_access_denial(tmp_path, monkeypatch)
     finally:
         client.close()
         producer.close()
-        registry.release_leader("integration-producer")
+        registry.release_leader("integration-producer", token=token)

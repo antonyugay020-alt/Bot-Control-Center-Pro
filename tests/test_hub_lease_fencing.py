@@ -190,3 +190,25 @@ def test_hub_close_releases_only_the_acquired_generation(tmp_path):
     hub.close()
     assert registry.leader_token(hub.owner) == new
     assert registry.release_leader(hub.owner, token=new)
+
+
+def test_all_hub_lease_mutations_in_source_are_generation_scoped():
+    """Reject unscoped callsites throughout the integrated Python tree."""
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    for directory in ("bcc", "tools", "tests"):
+        for source in (root / directory).glob("*.py"):
+            module = ast.parse(source.read_text(encoding="utf-8"),
+                               filename=str(source))
+            for node in ast.walk(module):
+                if not isinstance(node, ast.Call):
+                    continue
+                if not isinstance(node.func, ast.Attribute):
+                    continue
+                if node.func.attr not in ("renew_leader", "release_leader"):
+                    continue
+                assert any(kw.arg == "token" for kw in node.keywords), (
+                    f"Unfenced Hub lease mutation: {source}:{node.lineno}"
+                )
