@@ -145,6 +145,29 @@ def test_nonblocking_producer_does_not_ack_revived_subscriber(tmp_path):
         release.set()
         hub.close()
 
+
+def test_parallel_single_request_batch_keeps_valid_lane_reservation(tmp_path):
+    path = tmp_path / "hub.sqlite"
+    registry = HubRegistry(path)
+    key = registry.subscribe(URL, PARAMS)
+    calls = []
+
+    class Source:
+        shared = object()
+
+        def get(self, url, params=None):
+            calls.append((url, params))
+
+        def close(self):
+            pass
+
+    hub = MarketDataHub(path, Source(), max_workers=2)
+    try:
+        assert hub.run_once(limit=1) == [(key, True)]
+        assert calls == [(URL, PARAMS)]
+    finally:
+        hub.close()
+
 def test_every_hub_completion_callsite_carries_both_fencing_tokens():
     """A future producer path must not silently omit subscriber incarnation."""
     import ast
