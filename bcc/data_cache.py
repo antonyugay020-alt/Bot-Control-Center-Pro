@@ -59,20 +59,31 @@ class PublicCache:
                     mode = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]
                     if mode.lower() != "wal":
                         raise CacheBusy("Не удалось включить совместный доступ к кэшу")
-                db.executescript(
+                # BEGIN IMMEDIATE is essential for concurrent Windows worker
+                # startups. executescript() implicitly COMMITs an open SQLite
+                # transaction, leaving CREATE/ALTER and column discovery
+                # unprotected against another process running the migration.
+                # Keep WAL setup outside the write transaction, then apply the
+                # entire schema upgrade atomically with individual statements.
+                db.execute("BEGIN IMMEDIATE")
+                for statement in (
                     "CREATE TABLE IF NOT EXISTS cache("
                     "k TEXT PRIMARY KEY,value TEXT NOT NULL,until REAL NOT NULL,"
-                    "host TEXT NOT NULL DEFAULT '');"
-                    "CREATE TABLE IF NOT EXISTS lease(k TEXT PRIMARY KEY,owner TEXT NOT NULL,until REAL NOT NULL);"
-                    "CREATE TABLE IF NOT EXISTS cooldown(host TEXT PRIMARY KEY,until REAL NOT NULL);"
+                    "host TEXT NOT NULL DEFAULT '')",
+                    "CREATE TABLE IF NOT EXISTS lease("
+                    "k TEXT PRIMARY KEY,owner TEXT NOT NULL,until REAL NOT NULL)",
+                    "CREATE TABLE IF NOT EXISTS cooldown("
+                    "host TEXT PRIMARY KEY,until REAL NOT NULL)",
                     "CREATE TABLE IF NOT EXISTS provider_denial("
                     "host TEXT PRIMARY KEY,status INTEGER NOT NULL,until_mono REAL NOT NULL,"
                     "recorded_mono REAL NOT NULL DEFAULT 0,until_utc REAL NOT NULL DEFAULT 0,"
-                    "boot_epoch REAL NOT NULL DEFAULT 0);"
-                    "CREATE TABLE IF NOT EXISTS request_budget(host TEXT PRIMARY KEY,slot INTEGER NOT NULL,count INTEGER NOT NULL);"
-                    "CREATE INDEX IF NOT EXISTS cache_until ON cache(until);"
-                    "CREATE INDEX IF NOT EXISTS lease_until ON lease(until);"
-                )
+                    "boot_epoch REAL NOT NULL DEFAULT 0)",
+                    "CREATE TABLE IF NOT EXISTS request_budget("
+                    "host TEXT PRIMARY KEY,slot INTEGER NOT NULL,count INTEGER NOT NULL)",
+                    "CREATE INDEX IF NOT EXISTS cache_until ON cache(until)",
+                    "CREATE INDEX IF NOT EXISTS lease_until ON lease(until)",
+                ):
+                    db.execute(statement)
                 # The previous cache schema did not record provider ownership
                 # for each response. Legacy rows have an empty host and must
                 # never be admitted as verified host-specific market data.
@@ -115,6 +126,7 @@ class PublicCache:
                         "WHERE recorded_mono=0 AND until_utc=0",
                         (time.monotonic(), time.time(), time.monotonic()),
                     )
+                db.commit()
             self._ready = True
 
     @contextmanager
