@@ -33,6 +33,12 @@ def test_redirected_hub_identifies_actual_service_and_persists_real_pid(tmp_path
         pid = ensure_hub(tmp_path, timeout=8)
         record = json.loads((tmp_path / 'market_hub_process.json').read_text(encoding="utf-8"))
         assert record['pid'] == pid
+        assert record['leader_owner'].startswith(str(pid) + ':')
+        from bcc.market_hub import HubRegistry
+        registry = HubRegistry(tmp_path / 'market_cache.sqlite')
+        with registry._connect() as db:
+            lease = db.execute('SELECT owner,expires FROM hub_leader WHERE singleton=1').fetchone()
+        assert lease[0] == record['leader_owner'] and lease[1] > time.time()
         assert _matches(record, tmp_path / 'market_cache.sqlite')
         assert pid != launchers[0].pid
 
