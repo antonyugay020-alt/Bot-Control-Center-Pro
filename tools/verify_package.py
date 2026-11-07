@@ -73,6 +73,29 @@ def executable_sources(root):
 # and generated evidence are exempt from this inventory.
 RUNTIME_ROOT_DIRS = frozenset({"verification_reports", ".check_venv", "MY_BOTS"})
 
+# Runtime secrets and account databases are NEVER source assets, even when
+# someone accidentally places them under the checkout. Refuse the package
+# rather than silently adding their contents to a shareable ZIP.
+PRIVATE_SOURCE_NAMES = frozenset({
+    ".git-credentials", "client_secret.json", "credentials.json",
+    "token.json", "service_account.json", "id_rsa", "id_ed25519",
+})
+PRIVATE_SOURCE_SUFFIXES = frozenset({
+    ".pem", ".key", ".p12", ".pfx", ".kdbx",
+    ".sqlite", ".sqlite3", ".db",
+})
+
+
+def _private_source_file(name):
+    filename = Path(name).name.lower()
+    return (
+        filename in PRIVATE_SOURCE_NAMES
+        or (filename.startswith(".env")
+            and filename not in (".env.example", ".env.sample", ".env.template"))
+        or any(filename.endswith(suffix) for suffix in PRIVATE_SOURCE_SUFFIXES)
+        or filename.endswith((".sqlite-wal", ".sqlite-shm", ".db-wal", ".db-shm"))
+    )
+
 
 def source_inventory(root):
     """Yield every immutable source file or symlink, pruning runtime trees."""
@@ -94,6 +117,10 @@ def source_inventory(root):
         directories[:] = retained
         for filename in filenames:
             candidate = parent / filename
+            if _private_source_file(filename):
+                raise SourceIntegrityError(
+                    "Закрытые данные не могут входить в исходный пакет: "
+                    + candidate.relative_to(root).as_posix())
             if parent == root and filename == "SHA256_MANIFEST.json":
                 continue  # Manifest is fingerprinted separately (no recursion).
             if (parent == root and filename.startswith("BCC_VALIDATION_RESULTS_")

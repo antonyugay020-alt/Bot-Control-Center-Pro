@@ -142,3 +142,29 @@ def test_seal_includes_new_nonexecutable_sources_and_ignores_qa_state(tmp_path):
                        or '.check_venv/' in name or 'MY_BOTS/' in name for name in members)
         archive.extractall(tmp_path / 'unpacked')
     assert verify(tmp_path / 'unpacked' / 'BCC_ALL_SOURCE_TYPES')['status'] == 'PASS'
+
+
+@pytest.mark.parametrize('secret', [
+    '.env',
+    '.env.production',
+    'client_secret.json',
+    'tools/signing_key.pem',
+    'bcc/live_account.sqlite3',
+])
+def test_seal_fails_closed_on_private_runtime_data(tmp_path, secret):
+    """The broad source inventory must never archive keys or account state."""
+    import shutil
+    from tools.seal_source import source_paths
+
+    original = Path(__file__).resolve().parents[1]
+    working = tmp_path / 'working'
+    for name, path in source_paths(original):
+        target = working / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target)
+    private = working / secret
+    private.parent.mkdir(parents=True, exist_ok=True)
+    private.write_bytes(b'PRIVATE_DO_NOT_PACKAGE')
+    with pytest.raises(SourceIntegrityError, match='Закрытые данные'):
+        seal(working, tmp_path / 'must-not-exist.zip', checkpoint='BCC_PRIVATE_GUARD')
+    assert not (tmp_path / 'must-not-exist.zip').exists()
