@@ -18,7 +18,7 @@ PARAMS = {"category": "linear", "symbol": "BTCUSDT"}
 
 
 class AssertTransactionalSchema:
-    """Assert every schema read/write runs under the writer lock."""
+    """DDL and legacy backfills require the writer lock; preflight reads do not."""
 
     def __init__(self, connection):
         self.connection = connection
@@ -26,7 +26,7 @@ class AssertTransactionalSchema:
     def execute(self, statement, *args):
         sql = statement.strip().upper()
         if (sql.startswith(("CREATE ", "ALTER ", "UPDATE PROVIDER_DENIAL",
-                            "UPDATE HUB_SUBSCRIPTIONS", "PRAGMA TABLE_INFO"))):
+                            "UPDATE HUB_SUBSCRIPTIONS"))):
             assert self.connection.in_transaction, sql
         return self.connection.execute(statement, *args)
 
@@ -143,3 +143,50 @@ def test_legacy_schema_converges_across_independent_processes(tmp_path):
         assert db.execute(
             "SELECT status FROM provider_denial WHERE host='api.bybit.com'"
         ).fetchone() == (451,)
+
+
+def test_migrated_hub_registry_opens_while_another_process_owns_writer(tmp_path):
+    """Ready-schema admission is read-only, even under a live SQLite writer.
+
+    This reproduces the startup contention of many independent PAPER workers
+    while the Market Data Hub producer updates subscriptions in WAL mode.
+    """
+    path = tmp_path / "market.sqlite"
+    first = HubRegistry(path)
+    assert first.subscribe(URL, PARAMS)
+
+    writer = sqlite3.connect(path, timeout=0.1, isolation_level=None)
+    try:
+        writer.execute("BEGIN IMMEDIATE")
+        # A second registry must not request BEGIN IMMEDIATE: it would block
+        # behind this writer and fail its one-second connection timeout.
+        other = HubRegistry(path)
+        assert other.has_active_subscriptions()
+    finally:
+        writer.rollback()
+        writer.close()
+
+
+def test_hub_fast_path_falls_back_for_incomplete_index_or_token(tmp_path):
+    """The read-only shortcut cannot skip interrupted legacy migrations."""
+    path = tmp_path / "market.sqlite"
+    registry = HubRegistry(path)
+    key = registry.subscribe(URL, PARAMS)
+    db = sqlite3.connect(path)
+    try:
+        db.execute("DROP INDEX hub_expiry")
+        db.execute(
+            "UPDATE hub_subscriptions SET subscription_token='' WHERE k=?", (key,)
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    repaired = HubRegistry(path)
+    with repaired._connect() as connection:
+        assert connection.execute(
+            "SELECT subscription_token FROM hub_subscriptions WHERE k=?", (key,)
+        ).fetchone()[0]
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name='hub_expiry'"
+        ).fetchone() == (1,)
