@@ -37,7 +37,7 @@
     "bcc/funding.py": "a52f6023260951eac98f77028b26a09d2eb5c64eeb18c1374ea5590da95072b8",
     "bcc/gui_check.py": "4394ec3e4ebedb54515cd2955f38972eff72bf66da4ab9a64598888b9ba445c0",
     "bcc/health.py": "9f1f05e73059ff311cc2b7adb8c33e18b9c79c38d3e97309c0089b06d52e82fb",
-    "bcc/hub_supervisor.py": "a2a337838da46d8c93dcb5e16d043802b4ea01ff66e406e4e37069b99c17d990",
+    "bcc/hub_supervisor.py": "666bcf48a5ae6548d9e7798035d62504d583d0552f079d47f43e2e1c6cdfbe8a",
     "bcc/indicators.py": "7b906a08f76a78cc7dead46d5c976d6442cbea95d303348ac962fd132137c48a",
     "bcc/inspection.py": "b2f1d65d90c875220c83ab27ac585c422749c8e00dc41656b3beba0d5ff467a4",
     "bcc/launch_claim.py": "b70b233d0bd38c2f42b7ad72b3583d60c7600ddf7ae8c0ee0ad281e643ec6ecf",
@@ -46,7 +46,7 @@
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
-    "bcc/market_hub.py": "472686ae99e4f1fb55143fc917948bee85a47e1a5008e68d83f6ee387e5c6e76",
+    "bcc/market_hub.py": "29f28d53b926c29662950926493b30c014bfbb9bdc84651300fdbf93b0cf254f",
     "bcc/market_selection.py": "92995ed897565f90f5ade52973cdef75375b2adc6b95e7ba98bdca0e34344c91",
     "bcc/market.py": "4ac825c8f6cddf129e7a22e0a3a23cb056c779c489f8c8fc7f91227bac558719",
     "bcc/monitoring.py": "156aec7d9383e9879bef48149fd93cc9ad2957a4d517a4149c7619628f426622",
@@ -85,7 +85,7 @@
     "BUILD_INFO.json": "86d1085997b91c13b336acfc07fdcc0f1edd78a5b2195bb870f3a0b66ca71452",
     "CHECK_WINDOWS.bat": "48b58218779b2b6582d0b2ebc3a74e7b030103642f30d49d0243145d7ade42af",
     "CLOUD_DEVELOPMENT_RU.md": "b1d0d6bae9bbda1083084e7db95a708eb527c38b4aee2a57d37d898ade53478e",
-    "docs/INTEGRATION_CHECKPOINT.md": "fb2407044d5fa52ad8d8ebce42dc1b88f77c309bd98ad492a8e1c101a05bd6d0",
+    "docs/INTEGRATION_CHECKPOINT.md": "7e30cb7e5910580ce0fec80fbf10b916881057d392f507c69f227e37e828871e",
     "INSTALL.bat": "52866f98e889ba559663b2aaabc436947047015a2bddd8f49563ebdf40e42960",
     "INTEGRATION_REVIEW_RU.md": "d50aab2a41940c4c69b6e5db88cbbdb0f7ca2dbb9f9eea4f6995ab5459c15464",
     "INTERNAL_QA_STATUS_20261105.json": "92fbb2d238b8d950cd438bf3cd28424a3c49e6be08c930c2a30f96c79a17d1c5",
@@ -319,7 +319,7 @@
     "tests/test_shared_risk.py": "2ed2840d17c0d967f5d309a421cab7325bb7d2ad51bfb1750040296baee5c14f",
     "tests/test_shared_singleflight_15_bots.py": "5acf6654f42c20215c99722319fe1156f20231bc5fae3a65721efea5d1056a6c",
     "tests/test_shared_singleflight_multiprocess.py": "362aff2e00d5fb0db696edf3b41e40e204e6425bf2cb806020d17a9dfd4ad797",
-    "tests/test_shared_sqlite_schema_migration.py": "4ab4d693db2983dae7338cee1f4c09c0439dfda2d2ee1807f196d44f1ce9f23a",
+    "tests/test_shared_sqlite_schema_migration.py": "014ae7cf414df8233ec272c8821ec3df82e0d5623bd59df0137f1e21e151b882",
     "tests/test_source_executable_inventory.py": "2dc6672593b2518239f73e9c0c82abc4f85e08b5359f6b260e0c2a91865576dc",
     "tests/test_source_stage_integrity.py": "9211db67d762487b7aa079c9142553db1343c2204c428200399c1c892f2c7f52",
     "tests/test_startup_revocation_system.py": "d4433572b940e053592374795a04e72ed4ccb5f0f6487b7125d0849598439c02",
@@ -380,6 +380,7 @@
     "tools/windows_check.py": "93eab4c64726fe0bc3e5d976c6133bbb2f1b56462f308d38a8d4d58fd4f41a19",
     "VALIDATE_WINDOWS.bat": "cb94d061f3b61fdba0a2b0478a28327bd9531dad899e77d0452756f778aeabe0",
     "VALIDATION_STATUS.json": "e8c5d5e39bff40b8640605a9789f232520b811cfaad4c0a0d1131a4de32caadf",
-    "WINDOWS_CHECK_RU.md": "6ababddb0a7499ef61e327bf455eb32ac6e20321533de6b346531168b6145917"
+    "WINDOWS_CHECK_RU.md": "6ababddb0a7499ef61e327bf455eb32ac6e20321533de6b346531168b6145917",
+    "tests/test_hub_boot_epoch_recovery.py": "b3b1f736b4a16ecd20c2b9c76c496d249812b3db4e3f837e1178ab1c028d79b3"
   }
 }
