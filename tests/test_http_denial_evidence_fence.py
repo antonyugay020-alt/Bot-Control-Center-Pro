@@ -37,7 +37,8 @@ def test_real_http_denial_is_durable_after_request_lease_lost(
         headers = {"Retry-After": "120"}
 
     class Session:
-        def get(self, url, params, timeout):
+        def get(self, url, params, timeout, *, allow_redirects):
+            assert allow_redirects is False
             with observer.db() as db:
                 db.execute("BEGIN IMMEDIATE")
                 key, owner = db.execute(

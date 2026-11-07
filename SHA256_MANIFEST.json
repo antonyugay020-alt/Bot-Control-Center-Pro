@@ -196,7 +196,7 @@
     "tests/test_grid_preview_model.py": "b7aa5b944f0de116842d7707cfb8fd70c8b76f7fac8c14c5553095ebda12900c",
     "tests/test_gui_runtime_bootstrap_contract.py": "6fa5ddd4448b8a6e5e6a247e3568bcb23810fd9f75aeca598f744515d27bc89f",
     "tests/test_health_liquidity.py": "f719e2fdc28df14cedf7538ab4965c4694d7a36dc87a1692bf94e90f4679f615",
-    "tests/test_http_denial_evidence_fence.py": "7f85391b0cd5a1f6ca10e544bed71a813bdc4b0616c66586909af187fa876a3f",
+    "tests/test_http_denial_evidence_fence.py": "607fb73ddc1bc87948e3a595598d423d218a0a37426458288736b6dd9048c0de",
     "tests/test_hub_idle_lifecycle.py": "40ac6d1385c41fef2961b1e372e243c018c872b970f886059455096c6b8df633",
     "tests/test_hub_leader_recovery.py": "b59c9f41a72a6d39650462ac5873dc90e160998aa6b76bb3b5d7e4f28af1a8fd",
     "tests/test_hub_lease_fencing.py": "67194602a5d7f2b0156b31e2acc70468fb07f29e7a28cc041c0150992b9b9a72",
