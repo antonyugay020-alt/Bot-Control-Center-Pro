@@ -6,6 +6,8 @@ Windows reboot. All tests are offline PAPER-only: no HTTP, keys or orders.
 import sqlite3
 import time
 
+import pytest
+
 from bcc.market_hub import HubRegistry
 
 
@@ -101,3 +103,26 @@ def test_legacy_leader_schema_migrates_without_stealing_lease(tmp_path, monkeypa
     assert registry.live_leader() is None
     assert registry.claim_leader("successor", lifetime=120)
     assert registry.live_leader()[0] == "successor"
+
+
+def test_supervisor_allows_new_producer_after_previous_boot_lease(tmp_path, monkeypatch):
+    """A stale future-expiry leader must not block the Windows spawn gate."""
+    import bcc.hub_supervisor as supervisor
+
+    _set_boot(monkeypatch, OLD_BOOT)
+    registry = HubRegistry(tmp_path / "market_cache.sqlite")
+    assert registry.claim_leader("previous-boot", lifetime=120)
+    _set_boot(monkeypatch, NEW_BOOT)
+
+    calls = []
+
+    def prove_spawn_reached(args, **kwargs):
+        calls.append((args, kwargs))
+        # Do not actually launch Python or perform any network access.
+        raise RuntimeError("boot-aware spawn reached")
+
+    monkeypatch.setattr(supervisor, "_spawn_hub", prove_spawn_reached)
+    with pytest.raises(RuntimeError, match="boot-aware spawn reached"):
+        supervisor.ensure_hub(tmp_path, timeout=0.5)
+    assert len(calls) == 1
+    assert "tools.market_hub_service" in calls[0][0]
