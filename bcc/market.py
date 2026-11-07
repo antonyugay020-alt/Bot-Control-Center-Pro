@@ -337,8 +337,7 @@ class PublicData:
         deadline = time.monotonic() + 1.5
         while True:
             try:
-                self.shared.finish(*args, **kwargs)
-                return
+                return self.shared.finish(*args, **kwargs)
             except CacheBusy as exc:
                 if time.monotonic() >= deadline or self.stop_event.is_set():
                     # Failed publication remains unavailable to PAPER workers;
@@ -347,7 +346,7 @@ class PublicData:
                         if time.monotonic() >= self._cache_warning_at:
                             logging.warning("PUBLIC_CACHE: %s", exc)
                             self._cache_warning_at = time.monotonic() + 30
-                    return
+                    return False
                 self.stop_event.wait(.05)
 
     def _record_shared_denial(self, key, owner, host, cooldown, status):
@@ -595,11 +594,19 @@ class PublicData:
                 )
             )
             )
-            self._finish_shared(shared_key, owner, host, data, cache_ttl)
+            published = self._finish_shared(shared_key, owner, host, data, cache_ttl)
         # Another in-flight request can receive a 403/451 while this HTTP
         # request is completing. Its host-wide denial takes precedence over
         # this otherwise successful response, even if our lease was valid.
         self._assert_provider_allowed(host)
+        if self.shared is not None and not published:
+            # A 200 response is not proof of market admission: an obsolete
+            # singleflight owner or a locked shared SQLite writer can prevent
+            # atomic publication. The producer and direct workers both fail
+            # closed instead of trading on an uncommitted private snapshot.
+            raise DataUnavailable(
+                "Общий кэш: успешный HTTP-снимок не подтверждён транзакцией владельца"
+            )
         if self.shared is None:
             with self._lock:
                 self.cache[key] = (now, data)
