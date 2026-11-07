@@ -6,7 +6,7 @@ Status: **DEVELOPMENT / NOT RELEASE**. This is a durable checkpoint, not a test 
 
 - Integration branch: `codex/architecture-consolidation-20261107`, Draft PR #11.
 - Baseline read and reconciled: `e1535c9ae80054c1fc7f0916c608bd5ab302c82b` (prior checkpoint: Hub readiness bound to exact process generation).
-- This milestone's source and regression checkpoint: `1b3e888c6db3981bcf8d5e625d45e63f81bd5b7b`; the manifest sealing commit follows on this same branch. **Read live HEAD at next run.**
+- This milestone's source and regression checkpoint: `e3b471b2e68b8aa408d20146586d38fe4ac43d4d`; the manifest sealing commit follows on this same branch. **Read live HEAD at next run.**
 - Protocol: `docs/CONTROLLED_INTEGRATION.md`. No separate architectural branch or user release.
 
 ## Integrated milestone: OS-boot-aware Market Data Hub lease lifecycle
@@ -14,7 +14,7 @@ Status: **DEVELOPMENT / NOT RELEASE**. This is a durable checkpoint, not a test 
 - `bcc/market_hub.py`: shared Hub leader SQLite schema now includes a backward-compatible `boot_epoch` witness. Existing schema migration remains under `BEGIN IMMEDIATE`. A producer can reclaim a **previous-boot** leader even if a persisted wall-clock expiry remains in the future. A same-boot producer cannot steal a live leader.
 - Leadership acquisition, token lookup, renewal and subscription acknowledgement share the same boot-compatibility fence. Unknown/legacy boot witnesses retain the original bounded lease rather than allowing speculative takeover. An old leader token cannot acknowledge new subscriptions after boot-aware reclamation.
 - `bcc/hub_supervisor.py`: process reuse, missing-record recovery and child-authored readiness all consult `HubRegistry.live_leader()` instead of treating a future wall-clock expiry as proof of a live producer. Existing exact PID/process-generation checks remain mandatory.
-- `tests/test_hub_boot_epoch_recovery.py`: new offline regression for reboot with future expiry, same-boot exclusion, unknown witness, legacy leader schema migration, old-token renewal/completion refusal. `tests/test_shared_sqlite_schema_migration.py`: asserts the additional leader column during atomic migration.
+- `tests/test_hub_boot_epoch_recovery.py`: new offline regression for reboot with future expiry, same-boot exclusion, unknown witness, legacy leader schema migration, old-token renewal/completion refusal, plus a supervisor integration regression proving that a previous-boot leader does not block the safe producer-spawn path. `tests/test_shared_sqlite_schema_migration.py`: asserts the additional leader column during atomic migration.
 - No trading credentials, account records, LIVE execution or exchange requests were changed.
 
 ## Test evidence and independent defect inventory
