@@ -279,16 +279,27 @@ class MarketDataHub:
         if self.source.shared is None:
             self.source.shared = PublicCache(cache_path)
 
+    def acquire_leadership(self, *, lifetime=120):
+        """Single admission path for service readiness and every producer mode.
+
+        The token must be retained before the service announces readiness,
+        otherwise an early shutdown cannot release its own lease safely.
+        """
+        if not self.registry.claim_leader(self.owner, lifetime=lifetime):
+            self._leader_token = None
+            self._leader_held = False
+            return None
+        token = self.registry.leader_token(self.owner)
+        self._leader_token = token
+        self._leader_held = bool(token)
+        return token
+
     def run_once(self, limit=32):
         if self.max_workers > 1:
             return self._run_parallel(limit)
-        if not self.registry.claim_leader(self.owner, lifetime=120):
-            return []
-        token = self.registry.leader_token(self.owner)
+        token = self.acquire_leadership()
         if not token:
             return []
-        self._leader_token = token
-        self._leader_held = True
         results = []
         for key, url, params in self.registry.due(limit):
             if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
@@ -343,13 +354,9 @@ class MarketDataHub:
         thread acknowledges completed subscriptions. Fetch concurrency is
         bounded independently of the much larger registered symbol count.
         """
-        if not self.registry.claim_leader(self.owner, lifetime=120):
-            return []
-        token = self.registry.leader_token(self.owner)
+        token = self.acquire_leadership()
         if not token:
             return []
-        self._leader_token = token
-        self._leader_held = True
         due = self.registry.due(min(limit, self.max_workers),
                                 reserve_regular=1 if self.max_workers > 1 else 0)
         if not due:
@@ -415,7 +422,7 @@ class MarketDataHub:
             held = (
                 self.registry.renew_leader(self.owner, token=self._leader_token, lifetime=120)
                 if self._leader_held
-                else self.registry.claim_leader(self.owner, lifetime=120)
+                else self.acquire_leadership()
             )
             self._leader_token = self.registry.leader_token(self.owner) if held else None
             self._leader_held = bool(self._leader_token)

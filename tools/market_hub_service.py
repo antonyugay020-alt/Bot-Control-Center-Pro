@@ -54,7 +54,7 @@ def main():
                     # bounded SQLite contention policy. A brief writer lock
                     # must not kill the service before it can acknowledge
                     # readiness; no readiness receipt is emitted without a lease.
-                    if not hub.registry.claim_leader(hub.owner, lifetime=120):
+                    if not hub.acquire_leadership(lifetime=120):
                         stop.wait(args.poll)
                         continue
                     if args.ready_file:

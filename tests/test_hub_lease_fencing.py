@@ -212,3 +212,26 @@ def test_all_hub_lease_mutations_in_source_are_generation_scoped():
                 assert any(kw.arg == "token" for kw in node.keywords), (
                     f"Unfenced Hub lease mutation: {source}:{node.lineno}"
                 )
+
+
+def test_startup_leadership_is_released_even_without_a_poll(tmp_path):
+    """Readiness acquisition and shutdown share the producer's token."""
+    path = tmp_path / "hub.sqlite"
+    registry = HubRegistry(path)
+
+    class Source:
+        shared = object()
+        def get(self, url, params=None):
+            raise AssertionError("startup must not fetch HTTP")
+        def close(self):
+            pass
+
+    hub = MarketDataHub(path, Source(), max_workers=2)
+    token = hub.acquire_leadership()
+    assert token == registry.leader_token(hub.owner)
+    hub.close()
+    assert registry.leader_token(hub.owner) is None
+    assert registry.claim_leader("replacement")
+    assert registry.release_leader(
+        "replacement", token=registry.leader_token("replacement")
+    )
