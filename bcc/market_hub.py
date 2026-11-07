@@ -484,8 +484,10 @@ class MarketDataHub:
     """Single producer intended to run as one managed service process."""
     def __init__(self, cache_path, source=None, *, max_workers=1):
         from .market import PublicData
-        if type(max_workers) is not int or not 1 <= max_workers <= 12:
-            raise ValueError('Hub producer concurrency must be 1..12')
+        if type(max_workers) is not int or max_workers < 1:
+            raise ValueError('Hub producer concurrency must be a positive integer')
+        # Provider request quotas remain enforced separately; the operator's
+        # concurrency setting is a resource budget, not a fixed software cap.
         self.max_workers = max_workers
         # One bounded pool for the whole lifetime of this independent Hub.
         # A new pool per poll would constantly churn threads on large scans.

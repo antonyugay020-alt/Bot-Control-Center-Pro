@@ -32,7 +32,10 @@ def policy_path(root):
 def validate_policy(policy):
     if not isinstance(policy, dict) or set(policy) != set(DEFAULT_POLICY):
         raise ValueError("Неверная конфигурация общего риск-менеджера")
-    number(policy["max_positions"], 0, 1_000_000, "Общий лимит позиций", integer=True)
+    # Zero disables the optional policy; positive values are user-selected,
+    # not restricted by an unrelated software-wide position ceiling.
+    if type(policy["max_positions"]) is not int or policy["max_positions"] < 0:
+        raise ValueError("Общий лимит позиций должен быть целым неотрицательным числом")
     number(policy["max_committed_usdt"], 0, 1e12, "Общий лимит обеспечения PAPER")
     return deepcopy(policy)
 
