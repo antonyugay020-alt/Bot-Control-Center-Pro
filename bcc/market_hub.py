@@ -11,6 +11,7 @@ import uuid
 import sqlite3
 import time
 import threading
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -23,10 +24,22 @@ class HubRegistry:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init()
 
+    @contextmanager
     def _connect(self):
+        """Bounded ownership of each SQLite handle, including native Windows.
+
+        sqlite3.Connection.__exit__ commits or rolls back but DOES NOT close.
+        The Hub registry makes short-lived cross-process calls for every
+        heartbeat, subscription and poll; leaking those connections can keep
+        WAL and DB handles live after the Qt supervisor shuts down.
+        """
         db = sqlite3.connect(self.path, timeout=1.0, isolation_level=None)
-        db.execute('PRAGMA busy_timeout=1000')
-        return db
+        try:
+            db.execute('PRAGMA busy_timeout=1000')
+            with db:
+                yield db
+        finally:
+            db.close()
 
     def _init(self):
         with self._connect() as db:
