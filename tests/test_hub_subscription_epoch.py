@@ -2,7 +2,6 @@
 
 Offline PAPER-only SQLite tests. No public HTTP, credentials or orders.
 """
-import json
 import sqlite3
 import threading
 import time
@@ -145,3 +144,21 @@ def test_nonblocking_producer_does_not_ack_revived_subscriber(tmp_path):
     finally:
         release.set()
         hub.close()
+
+def test_every_hub_completion_callsite_carries_both_fencing_tokens():
+    """A future producer path must not silently omit subscriber incarnation."""
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    for directory in ("bcc", "tools", "tests"):
+        for source in (root / directory).glob("*.py"):
+            tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "finish_owned"):
+                    keywords = {item.arg for item in node.keywords}
+                    assert {"token", "subscription_token"} <= keywords, (
+                        f"Unfenced Hub completion: {source}:{node.lineno}"
+                    )
