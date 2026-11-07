@@ -62,9 +62,12 @@ class HubRegistry:
                 db.execute('ALTER TABLE hub_subscriptions ADD COLUMN priority_until REAL NOT NULL DEFAULT 0')
             if 'subscription_token' not in columns:
                 db.execute("ALTER TABLE hub_subscriptions ADD COLUMN subscription_token TEXT NOT NULL DEFAULT ''")
-            # Migrated subscriptions also require durable incarnation fences.
-            db.execute("UPDATE hub_subscriptions SET subscription_token=lower(hex(randomblob(16))) "
-                       "WHERE subscription_token=''")
+            # Existing processes initialize this registry frequently. Avoid
+            # a write transaction on every read-only startup once migration
+            # is complete, while still recovering an interrupted backfill.
+            if db.execute("SELECT 1 FROM hub_subscriptions WHERE subscription_token='' LIMIT 1").fetchone():
+                db.execute("UPDATE hub_subscriptions SET subscription_token=lower(hex(randomblob(16))) "
+                           "WHERE subscription_token=''")
             db.execute('CREATE INDEX IF NOT EXISTS hub_due ON hub_subscriptions(next_due,active_until)')
             # Reclaimed subscription rows must not grow without bound as the
             # registered fleet and its requested markets change over time.
