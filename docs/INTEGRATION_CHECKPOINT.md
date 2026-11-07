@@ -1,32 +1,29 @@
 # Bot Control Center Pro — controlled integration checkpoint
 
-Status: **DEVELOPMENT / NOT RELEASE**. This is a durable checkpoint, not a test or release certificate.
+Status: **DEVELOPMENT / NOT RELEASE**. This file records an integration milestone, not release acceptance.
 
-## Branch and baseline
+## Source of truth
 
-- Integration branch: `codex/architecture-consolidation-20261107`, Draft PR #11.
-- Baseline read and reconciled: `e1535c9ae80054c1fc7f0916c608bd5ab302c82b` (prior checkpoint: Hub readiness bound to exact process generation).
-- This milestone's source and regression checkpoint: `e3b471b2e68b8aa408d20146586d38fe4ac43d4d`; the manifest sealing commit follows on this same branch. **Read live HEAD at next run.**
-- Protocol: `docs/CONTROLLED_INTEGRATION.md`. No separate architectural branch or user release.
+- Branch: `codex/architecture-consolidation-20261107`, Draft PR #11.
+- Baseline verified before this milestone: `18e06c58defc27f24cdbb0255d7c3b44f4b18031` (boot-aware Hub leadership).
+- Result: the current PR #11 HEAD after this checkpoint and manifest-sealing commits; **always reread HEAD** on next run.
+- Protocol: `docs/CONTROLLED_INTEGRATION.md`. No alternate architecture branch, no user archive.
 
-## Integrated milestone: OS-boot-aware Market Data Hub lease lifecycle
+## Integrated milestone — writer-free ready-schema admission
 
-- `bcc/market_hub.py`: shared Hub leader SQLite schema now includes a backward-compatible `boot_epoch` witness. Existing schema migration remains under `BEGIN IMMEDIATE`. A producer can reclaim a **previous-boot** leader even if a persisted wall-clock expiry remains in the future. A same-boot producer cannot steal a live leader.
-- Leadership acquisition, token lookup, renewal and subscription acknowledgement share the same boot-compatibility fence. Unknown/legacy boot witnesses retain the original bounded lease rather than allowing speculative takeover. An old leader token cannot acknowledge new subscriptions after boot-aware reclamation.
-- `bcc/hub_supervisor.py`: process reuse, missing-record recovery and child-authored readiness all consult `HubRegistry.live_leader()` instead of treating a future wall-clock expiry as proof of a live producer. Existing exact PID/process-generation checks remain mandatory.
-- `tests/test_hub_boot_epoch_recovery.py`: new offline regression for reboot with future expiry, same-boot exclusion, unknown witness, legacy leader schema migration, old-token renewal/completion refusal, plus a supervisor integration regression proving that a previous-boot leader does not block the safe producer-spawn path. `tests/test_shared_sqlite_schema_migration.py`: asserts the additional leader column during atomic migration.
-- No trading credentials, account records, LIVE execution or exchange requests were changed.
+The shared Market Data Hub SQLite schema migration remains atomic under `BEGIN IMMEDIATE` for new, legacy or incomplete databases. A new read-only schema inventory checks both tables, all required columns, both queue/expiry indexes and the completion of subscription-token backfill. **Only fully migrated databases skip the writer lock.** This removes the serialized startup bottleneck when many independent PAPER workers initialize their HubRegistry while a producer holds a normal SQLite writer transaction. A partial migration (including a missing index or empty generation token) still takes the protected migration path. Provider-denial, leader-epoch and subscription-generation contracts are unchanged.
 
-## Test evidence and independent defect inventory
+Regression coverage added to `tests/test_shared_sqlite_schema_migration.py`: initialize a second HubRegistry while another SQLite connection holds `BEGIN IMMEDIATE` in WAL mode; verify that incomplete index/token state triggers repair; retain independent-process legacy migration and transactional DDL/backfill checks. These tests make no HTTP requests, account changes or orders.
 
-- **Defect H3:** a leader row persisted across an OS reboot could block new Hub startup until its wall-clock TTL expired, despite the producer being dead. The new code applies a boot witness at all leader admission boundaries. **Source committed; execution of repository tests pending.**
-- **Defect H1/H2 from prior milestone:** exact owner recovery and updated readiness contracts remain integrated; full execution still pending.
-- **Executed isolated check:** Linux Python 3.13.5, SQLite 3.46.1, in-memory reproduction of the new SQLite `INSERT ... ON CONFLICT` admission statement. Verified old-boot initial claim, same-boot takeover refusal and new-boot takeover with fresh token. This tests SQL behavior, **not** the checked-out repository or its pytest suite.
-- **GitHub readback:** source and regression changes are committed to Draft PR #11. Source SHA-256 manifest must be resealed and independently read back after this checkpoint; no code commit alone constitutes acceptance.
-- **Not executed:** `python -m pytest -q tests/test_hub_boot_epoch_recovery.py tests/test_shared_sqlite_schema_migration.py tests/test_hub_exact_generation_recovery.py tests/test_hub_supervisor_lifecycle.py tests/test_r620_windows_hub_startup.py tests/test_r622_hub_readiness_order.py tests/test_r625_windows_redirector_hub_pid.py`, full project pytest, and native Windows Modern Qt E2E.
-- **Environment blocker:** this runtime cannot resolve github.com for cloning the private repository, and has no GitHub credential available to the isolated Python environment. The GitHub connector supports source read/write but not Python execution. No paid CI reruns or API calls were requested.
-- **Release gate:** full source integrity audit, all-regression acceptance, clean-unpack Windows Qt GUI lifecycle tests and independent review remain **NOT RUN / NOT CERTIFIED**. No release or clean-run counter.
+## Verification and defect inventory
+
+- **H4 (new):** every HubRegistry initialization took `BEGIN IMMEDIATE` even on a complete schema; fleet startup could queue behind unrelated producer writes and exceed the one-second SQLite timeout. Fixed in source with a read-only fast path and guarded fallback; repository pytest execution **pending**.
+- **H1–H3:** exact owner/readiness, subscription generations and boot-aware leader recovery remain integrated; whole-system execution **pending**.
+- **Executed isolated reproduction:** Linux SQLite WAL: one connection holds `BEGIN IMMEDIATE`, a separate connection successfully reads `PRAGMA journal_mode`, `sqlite_master` and subscription-token metadata. This validates the SQLite mechanism, **not** the repository implementation or pytest suite.
+- **Not executed:** `python -m pytest -q tests/test_shared_sqlite_schema_migration.py tests/test_hub_boot_epoch_recovery.py tests/test_hub_exact_generation_recovery.py tests/test_hub_supervisor_lifecycle.py`, full project regression, native Windows Qt E2E.
+- **Runtime blocker:** isolated container cannot resolve github.com to clone the private repository; GitHub connector permits source read/write but not Python execution. GitHub Actions are not treated as code failures when jobs have no steps. No paid rerun.
+- **Release gate:** all-source SHA-256 verification, independent review, complete regressions and clean-unpack Windows Modern Qt E2E remain **NOT RUN / NOT CERTIFIED**. No release.
 
 ## Next coherent milestone
 
-Run boot-epoch and previous Hub recovery tests together in an executable checkout. Reconcile any failures across HubRegistry, supervisor and service lifecycle as one integration unit, then perform multiple independent PAPER worker Stop/Restart, Market Data Hub recovery and Windows Modern Qt monitoring E2E. Preserve the exact-source SHA-256 manifest and continue from current PR #11 HEAD.
+Execute the Hub schema, boot-epoch, exact-generation and Windows supervisor regressions together in an executable checkout. Integrate any cross-component failures as one package. Then exercise multi-worker PAPER Stop/Restart, independent Hub recovery, dashboard monitoring and transactional financial recovery in native Windows Qt E2E. Revalidate the exact-source manifest and record results against a specific HEAD.
