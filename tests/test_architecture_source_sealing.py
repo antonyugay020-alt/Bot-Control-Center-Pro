@@ -24,6 +24,7 @@ def test_source_seal_excludes_runtime_debris_and_verifies_entire_tree(tmp_path):
     assert verify(root)['status'] == 'PASS'
     manifest = json.loads((root / 'SHA256_MANIFEST.json').read_text(encoding='utf-8'))
     assert 'files' in manifest and 'bcc/worker.py' in manifest['files']
+    assert 'README.md' in manifest['files']
     (root / 'bcc' / 'runtime_service.py').write_text('corrupt', encoding="utf-8")
     with pytest.raises(SourceIntegrityError, match='SHA-256'):
         verify(root)
