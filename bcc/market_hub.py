@@ -51,6 +51,11 @@ class HubRegistry:
                 mode = db.execute('PRAGMA journal_mode=WAL').fetchone()[0]
                 if mode.lower() != 'wal':
                     raise sqlite3.OperationalError('Market Hub requires SQLite WAL mode')
+            # Serialize *all* schema inspection, DDL and legacy token backfill.
+            # In autocommit mode CREATE/ALTER and PRAGMA table_info otherwise
+            # race with other worker processes starting the same Hub registry.
+            # The WAL transition above must stay outside this transaction.
+            db.execute('BEGIN IMMEDIATE')
             db.execute('''CREATE TABLE IF NOT EXISTS hub_subscriptions(
               k TEXT PRIMARY KEY, url TEXT NOT NULL, params TEXT NOT NULL,
               active_until REAL NOT NULL, next_due REAL NOT NULL DEFAULT 0,
