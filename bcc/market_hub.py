@@ -60,6 +60,9 @@ class HubRegistry:
             if 'priority_until' not in columns:
                 db.execute('ALTER TABLE hub_subscriptions ADD COLUMN priority_until REAL NOT NULL DEFAULT 0')
             db.execute('CREATE INDEX IF NOT EXISTS hub_due ON hub_subscriptions(next_due,active_until)')
+            # Reclaimed subscription rows must not grow without bound as the
+            # registered fleet and its requested markets change over time.
+            db.execute('CREATE INDEX IF NOT EXISTS hub_expiry ON hub_subscriptions(active_until)')
             db.execute("CREATE TABLE IF NOT EXISTS hub_leader(singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL, expires REAL NOT NULL, lease_token TEXT NOT NULL DEFAULT '')")
             # Existing installations may have a live legacy leader row. The
             # next admission mints a new token; no old producer can prove it.
@@ -184,17 +187,45 @@ class HubRegistry:
             db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until)
               VALUES(?,?,?,?,0,?) ON CONFLICT(k) DO UPDATE SET
               active_until=max(hub_subscriptions.active_until,excluded.active_until),
-              priority_until=max(hub_subscriptions.priority_until,excluded.priority_until),
+              priority_until=CASE WHEN hub_subscriptions.active_until<=?
+                             THEN excluded.priority_until
+                             ELSE max(hub_subscriptions.priority_until,excluded.priority_until) END,
               params=excluded.params,
               url=excluded.url,
-              next_due=CASE WHEN hub_subscriptions.params<>excluded.params
+              next_due=CASE WHEN hub_subscriptions.active_until<=?
+                            OR hub_subscriptions.params<>excluded.params
                             OR hub_subscriptions.url<>excluded.url
                             THEN 0 ELSE hub_subscriptions.next_due END,
-              last_error=CASE WHEN hub_subscriptions.params<>excluded.params
+              last_error=CASE WHEN hub_subscriptions.active_until<=?
+                              OR hub_subscriptions.params<>excluded.params
                               OR hub_subscriptions.url<>excluded.url
                               THEN '' ELSE hub_subscriptions.last_error END''',
-              (key, url, encoded, now + lifetime, now + min(lifetime * 0.75, 90) if priority else 0))
+              (key, url, encoded, now + lifetime,
+               now + min(lifetime * 0.75, 90) if priority else 0,
+               now, now, now))
         return key
+
+    def prune_expired(self, *, retention=3600, batch=256):
+        """Bounded garbage collection of abandoned market subscriptions.
+
+        The grace interval protects subscribers across short restarts and
+        clock adjustments. A bounded SQL batch avoids locking the SQLite
+        writer for an unbounded fleet-size delete; repeated producer polls
+        eventually reclaim the backlog. Never prune an active subscription.
+        """
+        if (type(retention) not in (int, float) or not math.isfinite(retention)
+                or not 60 <= retention <= 86400
+                or type(batch) is not int or not 1 <= batch <= 1024):
+            raise ValueError('Invalid Hub retention or cleanup batch')
+        cutoff = time.time() - retention
+        with self._connect() as db:
+            cursor = db.execute(
+                'DELETE FROM hub_subscriptions WHERE k IN ('
+                'SELECT k FROM hub_subscriptions WHERE active_until<? '
+                'ORDER BY active_until,k LIMIT ?)',
+                (cutoff, batch),
+            )
+            return cursor.rowcount
 
     def has_active_subscriptions(self):
         """Read-only liveness probe for the independent producer lifecycle.
@@ -287,6 +318,7 @@ class MarketDataHub:
         self._leader_check_due = 0.0
         self._leader_held = False
         self._leader_token = None
+        self._prune_due = 0.0
         self.lease_renew_interval = 5.0
         self.source = source or PublicData()
         if self.source.shared is None:
@@ -307,12 +339,20 @@ class MarketDataHub:
         self._leader_held = bool(token)
         return token
 
+    def _maintain_registry(self):
+        """Only the admitted leader performs bounded subscription cleanup."""
+        now = time.monotonic()
+        if now >= self._prune_due:
+            self.registry.prune_expired()
+            self._prune_due = now + 30.0
+
     def run_once(self, limit=32):
         if self.max_workers > 1:
             return self._run_parallel(limit)
         token = self.acquire_leadership()
         if not token:
             return []
+        self._maintain_registry()
         results = []
         for key, url, params in self.registry.due(limit):
             if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
@@ -370,6 +410,7 @@ class MarketDataHub:
         token = self.acquire_leadership()
         if not token:
             return []
+        self._maintain_registry()
         due = self.registry.due(min(limit, self.max_workers),
                                 reserve_regular=1 if self.max_workers > 1 else 0)
         if not due:
@@ -445,6 +486,7 @@ class MarketDataHub:
             # always be cancelled; its single-flight cache lease is separate.
             return []
 
+        self._maintain_registry()
         results = []
         for key, (future, url, is_urgent, launched_token) in list(self._inflight.items()):
             if not future.done():
