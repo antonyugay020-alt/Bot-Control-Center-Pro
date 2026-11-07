@@ -46,7 +46,7 @@
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
-    "bcc/market_hub.py": "992ea872026335423145fcea5c84eae6d4b69a72a76a996cee1fa9c56ff8e1a7",
+    "bcc/market_hub.py": "fb12f345ccaae29f249d37f72507ac4e18e424055f7ad52006a3a669078801ec",
     "bcc/market_selection.py": "92995ed897565f90f5ade52973cdef75375b2adc6b95e7ba98bdca0e34344c91",
     "bcc/market.py": "4ac825c8f6cddf129e7a22e0a3a23cb056c779c489f8c8fc7f91227bac558719",
     "bcc/monitoring.py": "156aec7d9383e9879bef48149fd93cc9ad2957a4d517a4149c7619628f426622",
