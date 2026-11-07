@@ -273,6 +273,77 @@ class PublicCache:
             db.commit()
         return key, owner, None
 
+    def _store_denial(self, db, host, cooldown, denial_status):
+        """Atomically fence a provider and invalidate only its cached data.
+
+        Called inside a SQLite BEGIN IMMEDIATE transaction, independently of
+        whether an HTTP request still owns its short-lived cache lease.
+        """
+        if (type(host) is not str or not host
+                or type(denial_status) is not int or denial_status not in (403, 451)
+                or type(cooldown) not in (int, float)
+                or not math.isfinite(cooldown) or not 0 < cooldown <= 3600):
+            raise ValueError("Invalid public-provider denial")
+        db.execute("DELETE FROM cache WHERE host=?", (host,))
+        # Reconcile under the same SQLite write transaction.
+        # Monotonic deadlines cannot be compared across boots.
+        if self._denied(db, host) is None:
+            db.execute("DELETE FROM provider_denial WHERE host=?", (host,))
+        previous = db.execute(
+            "SELECT status,until_mono,recorded_mono,until_utc,boot_epoch "
+            "FROM provider_denial WHERE host=?", (host,)
+        ).fetchone()
+        now_mono = time.monotonic()
+        now_utc = time.time()
+        boot = self._boot_epoch()
+        deadline_mono = now_mono + cooldown
+        deadline_utc = now_utc + cooldown
+        status = denial_status
+        if previous is not None:
+            if previous[0] == 451:
+                status = 451
+            deadline_utc = max(deadline_utc, previous[3])
+            same_boot = (
+                bool(boot and previous[4] and abs(boot - previous[4]) <= 60)
+                or (not boot and not previous[4]
+                    and now_mono >= previous[2])
+            )
+            if same_boot:
+                deadline_mono = max(deadline_mono, previous[1])
+            else:
+                deadline_mono = now_mono + max(
+                    cooldown, max(0, previous[3] - now_utc)
+                )
+        db.execute(
+            "INSERT OR REPLACE INTO provider_denial("
+            "host,status,until_mono,recorded_mono,until_utc,boot_epoch"
+            ") VALUES(?,?,?,?,?,?)",
+            (host, status, deadline_mono, now_mono, deadline_utc, boot),
+        )
+
+    def record_http_denial(self, key, owner, host, *, cooldown, denial_status):
+        """Publish a real HTTP 403/451 even if its request lease has expired.
+
+        The caller must have observed the upstream response. Request leases
+        fence successful cache writes, not authoritative host-wide refusals.
+        Releasing the old request must never delete a successor's lease.
+        """
+        if (type(key) is not str or len(key) != 64
+                or any(ch not in "0123456789abcdef" for ch in key)
+                or type(owner) is not str or not owner):
+            raise ValueError("Invalid observed HTTP request identity")
+        self._ensure_schema()
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._store_denial(db, host, cooldown, denial_status)
+            db.execute(
+                "INSERT INTO cooldown VALUES(?,?) "
+                "ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)",
+                (host, time.time() + cooldown),
+            )
+            db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
+            db.commit()
+
     def finish(self, key, owner, host, value=None, ttl=0, cooldown=0,
                denial_status=None):
         if owner is None:
@@ -304,49 +375,7 @@ class PublicCache:
                         (host, time.time() + cooldown),
                     )
                 if denial_status is not None:
-                    if denial_status not in (403, 451) or cooldown <= 0:
-                        raise ValueError("Invalid public-provider denial")
-                    # Atomic with lease release: another worker cannot read a
-                    # cached response or reserve a request after the refusal.
-                    # Invalidate only this host's cached market responses.
-                    # They must not become available again after the denial
-                    # expires without a fresh authorized upstream GET.
-                    db.execute("DELETE FROM cache WHERE host=?", (host,))
-                    # Reconcile under the same SQLite write transaction.
-                    # Monotonic deadlines cannot be compared across boots.
-                    if self._denied(db, host) is None:
-                        db.execute("DELETE FROM provider_denial WHERE host=?", (host,))
-                    previous = db.execute(
-                        "SELECT status,until_mono,recorded_mono,until_utc,boot_epoch "
-                        "FROM provider_denial WHERE host=?", (host,)
-                    ).fetchone()
-                    now_mono = time.monotonic()
-                    now_utc = time.time()
-                    boot = self._boot_epoch()
-                    deadline_mono = now_mono + cooldown
-                    deadline_utc = now_utc + cooldown
-                    status = denial_status
-                    if previous is not None:
-                        if previous[0] == 451:
-                            status = 451
-                        deadline_utc = max(deadline_utc, previous[3])
-                        same_boot = (
-                            bool(boot and previous[4] and abs(boot - previous[4]) <= 60)
-                            or (not boot and not previous[4]
-                                and now_mono >= previous[2])
-                        )
-                        if same_boot:
-                            deadline_mono = max(deadline_mono, previous[1])
-                        else:
-                            deadline_mono = now_mono + max(
-                                cooldown, max(0, previous[3] - now_utc)
-                            )
-                    db.execute(
-                        "INSERT OR REPLACE INTO provider_denial("
-                        "host,status,until_mono,recorded_mono,until_utc,boot_epoch"
-                        ") VALUES(?,?,?,?,?,?)",
-                        (host, status, deadline_mono, now_mono, deadline_utc, boot),
-                    )
+                    self._store_denial(db, host, cooldown, denial_status)
                 db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
                 if time.monotonic() >= self._next_cleanup:
                     db.execute("DELETE FROM cache WHERE until<?", (time.time() - 120,))

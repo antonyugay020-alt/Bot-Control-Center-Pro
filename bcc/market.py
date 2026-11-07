@@ -294,6 +294,26 @@ class PublicData:
                     return
                 self.stop_event.wait(.05)
 
+    def _record_shared_denial(self, key, owner, host, cooldown, status):
+        """Durably publish observed HTTP refusal independently of lease age.
+
+        SQLite contention is retried without repeating the provider request.
+        An uncommitted refusal is an explicit fail-closed error, not success.
+        """
+        deadline = time.monotonic() + 2.0
+        while True:
+            try:
+                self.shared.record_http_denial(
+                    key, owner, host, cooldown=cooldown, denial_status=status
+                )
+                return
+            except CacheBusy as exc:
+                if time.monotonic() >= deadline:
+                    raise DataUnavailable(
+                        "Общий кэш: запрет публичного источника не сохранён " + host
+                    ) from exc
+                time.sleep(.05)
+
     def _position_critical_request(self, url, params):
         # An existing position requires BOTH instrument metadata and the
         # executable book. Reserving only the book request is not sufficient:
@@ -464,9 +484,8 @@ class PublicData:
                         self.cooldowns.get(host, 0), time.time() + delay
                     )
                 if self.shared:
-                    self._finish_shared(
-                        shared_key, owner, host, cooldown=delay,
-                        denial_status=response.status_code,
+                    self._record_shared_denial(
+                        shared_key, owner, host, delay, response.status_code
                     )
                 raise SourceAccessDenied(host, response.status_code)
             if response.status_code in (418, 429):
