@@ -140,6 +140,25 @@ def _hub_startup_details(root, proc):
     return 'pid={} exit={} last_log={}'.format(proc.pid, proc.poll(), repr(tail[-2000:]))
 
 
+def _revoke_dead_owner(registry, record):
+    """Revoke only the proven dead producer's exact SQLite lease generation.
+
+    A PID prefix is not a generation: after Windows PID reuse a different,
+    healthy Hub can own the same numeric PID. Legacy PID-only records cannot
+    safely authorize early revocation and must wait for natural lease expiry.
+    """
+    pid = record.get('pid')
+    owner = record.get('leader_owner')
+    if (type(pid) is not int or pid <= 0 or type(owner) is not str
+            or not owner.startswith(str(pid) + ':')
+            or len(owner.split(':', 1)[1]) != 32
+            or any(ch not in '0123456789abcdef' for ch in owner.split(':', 1)[1])):
+        return False
+    with registry._connect() as db:
+        cursor = db.execute('DELETE FROM hub_leader WHERE owner=?', (owner,))
+        return cursor.rowcount == 1
+
+
 def ensure_hub(repo_root, *, timeout=8):
     root = Path(repo_root).resolve()
     cache = root / 'market_cache.sqlite'
@@ -164,12 +183,15 @@ def ensure_hub(repo_root, *, timeout=8):
                 registry = HubRegistry(cache)
                 with registry._connect() as db:
                     leader = db.execute(
-                        'SELECT owner, expires FROM hub_leader WHERE singleton=1'
+                        'SELECT owner, expires, lease_token FROM hub_leader WHERE singleton=1'
                     ).fetchone()
-                if (leader and type(leader[0]) is str and
-                        leader[0].split(':', 1)[0] == str(record['pid']) and
-                        type(leader[1]) in (int, float) and
-                        math.isfinite(leader[1]) and leader[1] > time.time()):
+                expected_owner = record.get('leader_owner')
+                owner_matches = (leader and type(leader[0]) is str and (
+                    leader[0] == expected_owner if type(expected_owner) is str
+                    else leader[0].startswith(str(record['pid']) + ':')))
+                if (owner_matches and type(leader[1]) in (int, float) and
+                        math.isfinite(leader[1]) and leader[1] > time.time()
+                        and type(leader[2]) is str and bool(leader[2])):
                     return record['pid']
             except (OSError, ValueError) as exc:
                 raise HubUnavailable('Market Data Hub leadership check failed') from exc
@@ -189,8 +211,7 @@ def ensure_hub(repo_root, *, timeout=8):
                 dead = False
             if dead:
                 registry = HubRegistry(cache)
-                with registry._connect() as db:
-                    db.execute('DELETE FROM hub_leader WHERE owner LIKE ?', (str(record['pid']) + ':%',))
+                _revoke_dead_owner(registry, record)
         # If the PID file was lost/corrupted while an old producer still
         # holds leadership, do not overwrite its identity with a speculative
         # second Hub. A live database lease is not enough to authorize using
@@ -248,7 +269,8 @@ def ensure_hub(repo_root, *, timeout=8):
                 try:
                     proof = json.loads(ready_path.read_text(encoding='utf-8'))
                     if (type(proof) is dict and proof.get('token') == challenge
-                            and type(proof.get('pid')) is int):
+                            and type(proof.get('pid')) is int
+                            and type(proof.get('leader_owner')) is str):
                         service_pid = proof['pid']
                         if service_pid == proc.pid:
                             service_created = psutil.Process(service_pid).create_time()
@@ -258,11 +280,28 @@ def ensure_hub(repo_root, *, timeout=8):
                                 service_pid, cache, ready_path, challenge, spawned_at)
                             valid = service_created is not None
                         if valid:
+                            owner = proof['leader_owner']
+                            # Authenticate both the OS process and the actual
+                            # live SQLite lease before advertising readiness.
+                            # A stale receipt cannot certify a different Hub.
+                            if not owner.startswith(str(service_pid) + ':'):
+                                continue
+                            with registry._connect() as db:
+                                lease = db.execute(
+                                    'SELECT owner,expires,lease_token FROM hub_leader '
+                                    'WHERE singleton=1'
+                                ).fetchone()
+                            if not (lease and lease[0] == owner
+                                    and type(lease[1]) in (int, float)
+                                    and math.isfinite(lease[1])
+                                    and lease[1] > time.time()
+                                    and type(lease[2]) is str and bool(lease[2])):
+                                continue
                             verified_child = (service_pid, service_created)
-                            if service_pid != proc.pid:
-                                atomic_json(record_path, {
-                                    'pid': service_pid, 'created': service_created,
-                                })
+                            atomic_json(record_path, {
+                                'pid': service_pid, 'created': service_created,
+                                'leader_owner': owner,
+                            })
                             return service_pid
                 except (OSError, ValueError, TypeError, psutil.Error):
                     pass
