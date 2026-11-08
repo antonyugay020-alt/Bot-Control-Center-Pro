@@ -497,6 +497,7 @@ class PublicData:
             # Other cache failures (host budget/cooldown, SQLite busy) must
             # remain hard denials; never bypass the cross-process limiter.
             lease_deadline = time.monotonic() + 13.0
+            sqlite_deadline = time.monotonic() + 1.25
             while True:
                 if self.stop_event.is_set():
                     raise DataUnavailable("Получение данных остановлено")
@@ -511,6 +512,15 @@ class PublicData:
                 except ProviderDenied as exc:
                     raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as e:
+                    # Transient SQLite writer contention may be retried
+                    # briefly before any network request is admitted.
+                    # Budget/cooldown/policy rejections are never bypassed.
+                    if (str(e).startswith("Общий кэш публичных данных недоступен:")
+                            or str(e).startswith("Общий кэш занят другим запросом этого процесса")):
+                        if time.monotonic() < sqlite_deadline:
+                            if self.stop_event.wait(.05):
+                                raise DataUnavailable("Получение данных остановлено")
+                            continue
                     if (str(e) != "Данные уже запрашиваются другим ботом"
                             or time.monotonic() >= lease_deadline):
                         raise DataUnavailable(str(e)) from e

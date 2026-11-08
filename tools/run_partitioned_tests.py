@@ -7,6 +7,7 @@ regression can ever return PASS. This runner has no trading capability.
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -86,6 +87,45 @@ def partitions(inventory, groups=6, *, excluded=()):
     if sorted(x for bucket in result for x in bucket) != sorted(modules):
         raise ValueError('Some pytest files were not scheduled')
     return result
+
+
+def reconcile_pytest_subtest_totals(xml, log):
+    """Reconcile passing pytest unittest subtests, not missing tests.
+
+    Pytest may count successful subtests in the JUnit suite header without
+    providing individual testcase nodes. Reconcile this known discrepancy
+    only against the final pytest summary; the complete collected testcase
+    identities are still checked separately before any shard can PASS.
+    """
+    parsed = ET.parse(xml)
+    root = parsed.getroot()
+    suites = [root] if root.tag == 'testsuite' else root.findall('testsuite')
+    if len(suites) != 1:
+        return 0
+    suite = suites[0]
+    cases = suite.findall('testcase')
+    try:
+        excess = int(suite.get('tests', '0')) - len(cases)
+    except ValueError:
+        return 0
+    if excess <= 0:
+        return 0
+    lines = Path(log).read_text(encoding='utf-8', errors='replace').splitlines()
+    summaries = [line.strip() for line in lines if line.startswith('=')
+                 and 'subtests passed' in line and ' in ' in line]
+    if len(summaries) != 1 or 'subtests failed' in summaries[0]:
+        return 0
+    match = re.search(r'\b(\d+) subtests passed\b', summaries[0])
+    if match is None or int(match.group(1)) != excess:
+        return 0
+    # All failures, errors and skips must still be represented by testcases.
+    for kind, tag in (('failures', 'failure'), ('errors', 'error'),
+                      ('skipped', 'skipped')):
+        if int(suite.get(kind, '-1')) != sum(bool(case.findall(tag)) for case in cases):
+            return 0
+    suite.set('tests', str(len(cases)))
+    parsed.write(xml, encoding='utf-8', xml_declaration=True)
+    return excess
 
 
 def read_shard_junit(path, inventory, module_files):
@@ -184,8 +224,10 @@ def run(inventory, output, *, shard_timeout=360, heavy_timeout=600, headless=Fal
                 error = type(exc).__name__ + ': ' + str(exc)
         elapsed = round(time.monotonic() - started, 3)
         totals = None
+        reconciled_subtests = 0
         try:
             if xml.is_file():
+                reconciled_subtests = reconcile_pytest_subtest_totals(xml, log)
                 totals, _ = read_shard_junit(xml, inventory, files)
                 xmls.append(xml)
                 # Preserve complete failed evidence for the merged report.
@@ -197,7 +239,8 @@ def run(inventory, output, *, shard_timeout=360, heavy_timeout=600, headless=Fal
         all_good &= bool(passed)
         outcome['shards'].append({'name': name, 'files': files, 'seconds': elapsed,
                                   'timeout': budget, 'exit_code': code, 'error': error,
-                                  'totals': totals, 'status': 'PASS' if passed else 'FAIL'})
+                                  'totals': totals, 'reconciled_subtests': reconciled_subtests,
+                                  'status': 'PASS' if passed else 'FAIL'})
         (output / 'status.json').write_text(json.dumps(outcome, indent=2), encoding='utf-8')
     try:
         if len(xmls) == len(schedule):

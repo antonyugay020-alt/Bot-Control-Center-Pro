@@ -99,7 +99,18 @@ def decision(folder, cfg, client, depth=None):
             process_polymarket(cfg, state, events, client, mc.market_now())
     else:
         depth = depth or client.orderbook('BTCUSDT')
-        rows = client.candles('BTCUSDT', 100)
+        deadline = time.monotonic() + 3
+        while True:
+            try:
+                rows = client.candles("BTCUSDT", 100)
+                break
+            except DataUnavailable as exc:
+                # The replay producer may hold the last closed candle for
+                # one cache TTL across a minute rollover. Do not weaken the
+                # executable-data freshness gate: wait for a genuinely new bar.
+                if str(exc) != "Устаревшие свечи" or time.monotonic() >= deadline:
+                    raise
+                time.sleep(.05)
         engine = {'VELES': Veles, 'GRID': Grid, 'PUMP_DUMP': PumpDump}[cfg['strategy']]()
         process_tick(cfg, store, engine, MarketTick('BTCUSDT', rows, depth, [], {}))
 

@@ -32,11 +32,13 @@ def test_fifteen_independent_processes_share_one_fetch(tmp_path):
             child.communicate()
 
 
-def test_shared_cache_busy_wait_matches_connection_timeout(tmp_path):
+def test_schema_wait_is_scoped_and_trading_cache_operations_remain_bounded(tmp_path):
     from bcc.data_cache import PublicCache
     cache = PublicCache(tmp_path / "lock-policy.sqlite")
     try:
-        with cache.db() as db:
+        with cache.db(schema=True) as db:
             assert db.execute("PRAGMA busy_timeout").fetchone()[0] >= 5000
+        with cache.db() as db:
+            assert db.execute("PRAGMA busy_timeout").fetchone()[0] <= 500
     finally:
         cache.close()

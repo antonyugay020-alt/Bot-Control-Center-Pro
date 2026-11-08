@@ -59,3 +59,30 @@ def test_shard_rejects_cross_module_assignment(tmp_path):
     path, inventory = evidence(tmp_path)
     with pytest.raises(ValueError, match='empty or duplicated'):
         validate_shard_junit(path, inventory, ['test_beta.py'], headless=True)
+
+
+def test_pytest_passing_subtests_reconcile_only_with_matching_summary(tmp_path):
+    from tools.run_partitioned_tests import reconcile_pytest_subtest_totals
+
+    xml, inventory = evidence(tmp_path)
+    log = tmp_path / 'shard.log'
+    parsed = ET.parse(xml)
+    parsed.getroot().set('tests', '5')
+    parsed.write(xml, encoding='utf-8')
+    log.write_text('==== 2 passed, 3 subtests passed in 1.2s ====\n', encoding='utf-8')
+    assert reconcile_pytest_subtest_totals(xml, log) == 3
+    assert validate_shard_junit(xml, inventory, ['test_alpha.py'], headless=True)['tests'] == 2
+
+
+def test_subtest_header_mismatch_without_real_summary_remains_blocked(tmp_path):
+    from tools.run_partitioned_tests import reconcile_pytest_subtest_totals
+
+    xml, inventory = evidence(tmp_path)
+    log = tmp_path / 'shard.log'
+    parsed = ET.parse(xml)
+    parsed.getroot().set('tests', '5')
+    parsed.write(xml, encoding='utf-8')
+    log.write_text('==== 2 passed, 1 subtests passed in 1.2s ====\n', encoding='utf-8')
+    assert reconcile_pytest_subtest_totals(xml, log) == 0
+    with pytest.raises(ValueError, match='testcase'):
+        validate_shard_junit(xml, inventory, ['test_alpha.py'], headless=True)

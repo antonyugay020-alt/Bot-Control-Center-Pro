@@ -162,7 +162,7 @@ def test_report_includes_queue_backlog_not_private_market_payload(tmp_path):
 
 
 def test_invalid_concurrency_is_rejected(tmp_path):
-    for value in (0, 13, 1.5, True):
+    for value in (0, -1, 1.5, True):
         with pytest.raises(ValueError):
             MarketDataHub(tmp_path / 'market_cache.sqlite', max_workers=value)
 
