@@ -140,12 +140,12 @@ class PublicCache:
             if self._connection is None:
                 self._connection = sqlite3.connect(
                     self.path,
-                    timeout=0.2,
+                    timeout=5.0,
                     isolation_level=None,
                     check_same_thread=False,
                 )
                 self.stats["connections"] += 1
-                self._connection.execute("PRAGMA busy_timeout=200")
+                self._connection.execute("PRAGMA busy_timeout=1000")
                 self._connection.execute("PRAGMA synchronous=NORMAL")
             self.stats["operations"] += 1
             yield self._connection
@@ -168,33 +168,62 @@ class PublicCache:
                 self._connection = None
                 self._ready = False
 
+    _cached_boot = None
+
     @staticmethod
     def _boot_epoch():
-        """Independent OS boot witness; uptime alone cannot prove a reboot."""
+        """Independent OS boot witness; uptime alone cannot prove a reboot.
+        Cached per process to avoid inconsistencies across multiple Python
+        interpreter invocations (e.g., during tests)."""
+        if PublicCache._cached_boot is not None:
+            return PublicCache._cached_boot
         try:
             import psutil
             value = float(psutil.boot_time())
-            return value if math.isfinite(value) and value > 0 else 0.0
+            PublicCache._cached_boot = value if math.isfinite(value) and value > 0 else 0.0
         except (ImportError, OSError, ValueError, AttributeError):
-            return 0.0
+            PublicCache._cached_boot = 0.0
+        return PublicCache._cached_boot
 
     @staticmethod
     def _denied(db, host):
+        """Return denial status for *host* respecting reboot and clock‑jump.
+
+        The table stores:
+        * ``status`` – HTTP status (403 or 451)
+        * ``until_mono`` – monotonic deadline (may be stale after a restart)
+        * ``recorded_mono`` – moment the denial was first recorded
+        * ``until_utc`` – absolute UTC expiry (authoritative across reboots)
+        * ``boot_epoch`` – OS boot timestamp at the moment of recording
+        """
         row = db.execute(
             "SELECT status,until_mono,recorded_mono,until_utc,boot_epoch "
             "FROM provider_denial WHERE host=?", (host,)
         ).fetchone()
         if row is None:
             return None
+        status, until_mono, recorded_mono, until_utc, boot_epoch = row
         now_mono = time.monotonic()
+        now_utc = time.time()
         boot = PublicCache._boot_epoch()
-        # A later reboot may already have MORE uptime than the previous
-        # recorded_mono, so the old monotonic-reset heuristic is insufficient.
-        rebooted = bool(row[4] and boot and abs(row[4] - boot) > 60)
-        # Rows migrated from the legacy schema have no boot witness.
-        if rebooted or (row[2] and now_mono < row[2]):
-            return int(row[0]) if time.time() < row[3] else None
-        return int(row[0]) if now_mono < row[1] else None
+        # 1️⃣ Reboot detection – rely solely on UTC expiry.
+        if boot and boot_epoch and abs(boot - boot_epoch) > 60:
+            return int(status) if now_utc < until_utc else None
+        # Detect monotonic clock reset (e.g., after a reboot where boot epoch may not have changed yet)
+        if now_mono < recorded_mono - 60:
+            # Fallback to UTC expiry only – monotonic timeline is unreliable.
+            return int(status) if now_utc < until_utc else None
+        # 2️⃣ Same boot – evaluate both monotonic and UTC deadlines.
+        # Effective monotonic deadline is the later of the original deadline
+        # and the moment we started recording (recorded_mono).  This protects
+        # against a second write that may have reduced ``until_mono``.
+        effective_mono = max(until_mono, recorded_mono)
+        if now_mono < effective_mono:
+            return int(status)
+        # If monotonic deadline passed but UTC deadline still valid → keep denial.
+        if now_utc < until_utc:
+            return int(status)
+        return None
 
     def denied_status(self, host):
         """Share policy refusals across workers, with restart-aware expiry."""

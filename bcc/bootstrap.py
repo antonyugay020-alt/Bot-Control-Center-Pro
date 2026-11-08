@@ -20,8 +20,13 @@ def ensure_runtime(root, *, spawn=None, timeout=15):
     if observe(root) is not None:
         return observe(root)
     root.mkdir(parents=True, exist_ok=True)
-    log_dir = Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()) / "BotControlCenterPro"
-    log_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        log_dir = Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()) / "BotControlCenterPro"
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        # Fallback to a writable temporary directory if the default location is not accessible
+        log_dir = Path(tempfile.gettempdir()) / "BotControlCenterPro"
+        log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "runtime_service.log"
     spawn = spawn or subprocess.Popen
     with log_path.open("ab") as log:

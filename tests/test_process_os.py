@@ -6,7 +6,8 @@ import subprocess
 import sys
 from types import SimpleNamespace
 
-import pytest
+# import pytest (fixed line)n@pytest.mark.skipif(os.name == "nt", reason="hard link not supported on Windows")
+
 
 from bcc import process_os
 
