@@ -1369,8 +1369,8 @@ class MainWindow(QMainWindow):
                     (
                         "max_positions",
                         "Позиции и ожидающие сетки: общий лимит (0 — без лимита)",
-                        "int",
-                        (0, 1_000_000),
+                        "text",
+                        None,
                     ),
                     (
                         "max_committed_usdt",
@@ -1390,7 +1390,12 @@ class MainWindow(QMainWindow):
                 )
             )
             if confirm_dialog(editor, "Общий риск-менеджер", self):
-                self.supervisor.save_shared_risk_policy(editor.value_data())
+                policy = editor.value_data()
+                raw = policy["max_positions"].strip()
+                if not raw.isascii() or not raw.isdecimal():
+                    raise ValueError("Общий лимит позиций: введите целое число от 0 (без лимита)")
+                policy["max_positions"] = int(raw)
+                self.supervisor.save_shared_risk_policy(policy)
 
         self.execute(action)
 

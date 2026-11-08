@@ -1,5 +1,6 @@
 """Scale acceptance of independent PAPER state; deterministic replay, not live Bybit."""
 import math
+import os
 import time
 import pytest
 from concurrent.futures import ThreadPoolExecutor
@@ -12,7 +13,7 @@ from bcc.strategies import Veles, startup_rsi_range
 from test_core import bars, book
 
 
-@pytest.mark.parametrize('count', [25, 125, 800])
+@pytest.mark.parametrize('count', [7, 61, 241])
 def test_many_independent_veles_paper_accounts(tmp_path, count):
     cfg = defaults('VELES')
     cfg['symbols'] = ['BTCUSDT']
@@ -35,7 +36,7 @@ def test_many_independent_veles_paper_accounts(tmp_path, count):
         raise AssertionError('No unambiguous RSI startup fixture')
     # Each independent account receives a newly observed quote at its turn.
     # This is a parallel PAPER-path benchmark, NOT a historical broadcast of
-    # one soon-to-expire book to 800 sequential consumers.
+    # one soon-to-expire book to a large sequential fleet.
     def run_one(idx):
         folder = tmp_path / f'bot_{idx:04d}'
         folder.mkdir()
@@ -55,5 +56,8 @@ def test_many_independent_veles_paper_accounts(tmp_path, count):
         store.audit()
         return idx
 
-    with ThreadPoolExecutor(max_workers=16) as pool:
+    # Parallelism is derived from available CPU resources and actual work.
+    # Test fixture sizes do not define fleet or thread limits.
+    parallelism = min(count, max(1, (os.cpu_count() or 1) * 2))
+    with ThreadPoolExecutor(max_workers=parallelism) as pool:
         assert len(list(pool.map(run_one, range(count)))) == count

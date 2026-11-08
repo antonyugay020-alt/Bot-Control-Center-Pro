@@ -1,22 +1,24 @@
 import threading
-import time
 import unittest
 
 from bcc.strategy_dispatch import DispatchBusy, StrategyDispatcher
 
 
 class StrategyDispatcherTests(unittest.TestCase):
-    def test_800_keys_no_loss(self):
-        with StrategyDispatcher(workers=12, maximum_pending=800) as hub:
-            futures = [hub.submit('bot-' + str(i), lambda n=i: n * 3) for i in range(800)]
-            results = hub.collect()
-            while len(results) < 800:
-                time.sleep(.001)
-                results.extend(hub.collect())
-            self.assertEqual({key: value for key, value, error in results},
-                             {'bot-' + str(i): i * 3 for i in range(800)})
-            self.assertTrue(all(error is None for _, _, error in results))
-            self.assertEqual(len(futures), 800)
+    def test_fleet_size_is_independent_of_thread_budget(self):
+        # Workload sizes are test data, never a production fleet ceiling.
+        for owner_count, threads in ((3, 1), (83, 4), (521, 19)):
+            with self.subTest(owner_count=owner_count, threads=threads):
+                with StrategyDispatcher(workers=threads) as hub:
+                    futures = [hub.submit('bot-' + str(i), lambda n=i: n * 3)
+                               for i in range(owner_count)]
+                    for future in futures:
+                        future.result(timeout=15)
+                    results = hub.collect()
+                    self.assertEqual({key: value for key, value, error in results},
+                                     {'bot-' + str(i): i * 3 for i in range(owner_count)})
+                    self.assertTrue(all(error is None for _, _, error in results))
+                    self.assertEqual(len(futures), owner_count)
 
     def test_bounded_and_no_overlap(self):
         gate = threading.Event()

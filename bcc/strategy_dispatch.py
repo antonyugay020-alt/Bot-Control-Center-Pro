@@ -1,6 +1,7 @@
-"""Bounded, isolated strategy execution prototype.
+"""Per-owner isolated strategy execution with resource-configured concurrency.
 
-No worker integration until accounting/Stop-Restart E2E is certified.
+Owner registration has no artificial numeric ceiling. Optional caller-selected
+queue admission is distinct from the number of bots in the fleet.
 """
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
@@ -11,17 +12,18 @@ class DispatchBusy(RuntimeError):
 
 
 class StrategyDispatcher:
-    """Bound concurrency and outstanding tasks, isolate keys and failures.
+    """Isolate owners and failures while permitting arbitrary fleet membership.
 
-    A key identifies a distinct state owner; a key must not run twice in
-    parallel. This layer does not share or mutate bot accounting state.
+    Worker concurrency is an adjustable thread budget, not a maximum bot count.
+    An unset queue budget imposes no unrelated fixed ceiling; callers may
+    explicitly enforce workload backpressure when needed.
     """
 
-    def __init__(self, workers=8, maximum_pending=128, thread_name_prefix="bot-exec"):
+    def __init__(self, workers=8, maximum_pending=None, thread_name_prefix="bot-exec"):
         if not isinstance(workers, int) or isinstance(workers, bool) or workers < 1:
             raise ValueError('workers must be positive')
-        if not isinstance(maximum_pending, int) or isinstance(maximum_pending, bool) or maximum_pending < workers:
-            raise ValueError('maximum_pending must be at least workers')
+        if maximum_pending is not None and (type(maximum_pending) is not int or maximum_pending < workers):
+            raise ValueError('maximum_pending must be None or at least workers')
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=thread_name_prefix)
         self._pending = {}
         self._limit = maximum_pending
@@ -36,7 +38,7 @@ class StrategyDispatcher:
                 raise DispatchBusy('dispatcher is closed')
             if key in self._pending:
                 raise DispatchBusy('bot already has outstanding execution')
-            if len(self._pending) >= self._limit:
+            if self._limit is not None and len(self._pending) >= self._limit:
                 raise DispatchBusy('strategy queue capacity reached')
             future = self._pool.submit(function, *args, **kwargs)
             self._pending[key] = future
