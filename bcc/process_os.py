@@ -13,10 +13,7 @@ import sys
 import threading
 import time
 
-try:
-    import psutil as _psutil
-except ImportError:
-    _psutil = None
+import psutil as _psutil
 
 Error = _psutil.Error
 NoSuchProcess = _psutil.NoSuchProcess

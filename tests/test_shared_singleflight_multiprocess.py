@@ -30,3 +30,13 @@ def test_fifteen_independent_processes_share_one_fetch(tmp_path):
         for child in children:
             if child.poll() is None: child.kill()
             child.communicate()
+
+
+def test_shared_cache_busy_wait_matches_connection_timeout(tmp_path):
+    from bcc.data_cache import PublicCache
+    cache = PublicCache(tmp_path / "lock-policy.sqlite")
+    try:
+        with cache.db() as db:
+            assert db.execute("PRAGMA busy_timeout").fetchone()[0] >= 5000
+    finally:
+        cache.close()

@@ -145,7 +145,7 @@ class PublicCache:
                     check_same_thread=False,
                 )
                 self.stats["connections"] += 1
-                self._connection.execute("PRAGMA busy_timeout=1000")
+                self._connection.execute("PRAGMA busy_timeout=5000")
                 self._connection.execute("PRAGMA synchronous=NORMAL")
             self.stats["operations"] += 1
             yield self._connection
