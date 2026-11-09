@@ -760,6 +760,54 @@ class PublicData:
             self._thread.position_history = previous_history
             self._thread.position_mark = previous
 
+    def portfolio_marks(self, symbols=None):
+        """One validated public Bybit ticker snapshot for all existing exposure.
+
+        Independent of per-symbol orderbook depth, instrument metadata and
+        risk-tier fetches. Requested symbols must ALL be present; missing,
+        duplicate or invalid marks fail closed. No synthetic mark-price,
+        external-venue substitution or stale-price fallback is permitted.
+        """
+        clock.ensure()
+        response = self.get(
+            "https://api.bybit.com/v5/market/tickers",
+            {"category": "linear"}, ttl=0.5,
+        )
+        if response.get("retCode") != 0:
+            raise DataUnavailable("Не получен пакет mark-price Bybit")
+        stamp = float(response["time"]) / 1000
+        if not book_is_fresh(stamp):
+            raise DataUnavailable("Не подтверждён свежий mark-price Bybit")
+        rows = response["result"]["list"]
+        if not isinstance(rows, list):
+            raise DataUnavailable("Повреждён пакет mark-price Bybit")
+        required = None if symbols is None else set(symbols)
+        if required is not None and not required:
+            return {}
+        marks = {}
+        for item in rows:
+            if not isinstance(item, dict):
+                raise DataUnavailable("Повреждён пакет mark-price Bybit")
+            key = item.get("symbol")
+            if not isinstance(key, str) or not key.endswith("USDT"):
+                continue
+            if required is not None and key not in required:
+                continue
+            if key in marks:
+                raise DataUnavailable("Дублирующийся mark-price " + key)
+            try:
+                mark = float(item["markPrice"])
+            except (KeyError, TypeError, ValueError, OverflowError) as exc:
+                raise DataUnavailable("Повреждён mark-price " + key) from exc
+            if not math.isfinite(mark) or mark <= 0:
+                raise DataUnavailable("Повреждён mark-price " + key)
+            marks[key] = observed_quote(dict(bid=mark, ask=mark, at=stamp))
+        if required is not None and required - set(marks):
+            raise DataUnavailable(
+                "Нет публичного mark-price: " + ", ".join(sorted(required - set(marks)))
+            )
+        return marks
+
     def margin_snapshot(self, symbol):
         from .margin import MarginUnavailable, parse_tiers
 
@@ -790,24 +838,7 @@ class PublicData:
             tiers = parse_tiers(rows, symbol)
         except MarginUnavailable as exc:
             raise DataUnavailable(str(exc)) from exc
-        ticker = self.get(
-            "https://api.bybit.com/v5/market/tickers", {"category": "linear"}, ttl=0.5
-        )
-        if ticker.get("retCode") != 0:
-            raise DataUnavailable("Не получен пакет mark-price Bybit")
-        rows = ticker["result"]["list"]
-        stamp = float(ticker["time"]) / 1000
-        if not book_is_fresh(stamp):
-            raise DataUnavailable("Не подтверждён свежий mark-price Bybit")
-        account_marks = {}
-        for item in rows:
-            key = item.get("symbol")
-            if not isinstance(key, str) or not key.endswith("USDT"):
-                continue
-            mark = float(item["markPrice"])
-            if not math.isfinite(mark) or mark <= 0 or key in account_marks:
-                raise DataUnavailable("Повреждён пакет mark-price Bybit")
-            account_marks[key] = observed_quote(dict(bid=mark, ask=mark, at=stamp))
+        account_marks = self.portfolio_marks()
         if symbol not in account_marks:
             raise DataUnavailable("В пакете mark-price нет выбранной монеты")
         if risk_at is None or not -0.5 <= market_now() - risk_at <= 300:

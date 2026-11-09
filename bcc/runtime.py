@@ -4,15 +4,17 @@ import json
 import logging
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from .control import claim_command, finish_requested, finished
 from .funding import apply_funding
-from .market import DataUnavailable, executable_quote
+from .market import DataUnavailable, PublicData, executable_quote
 from .data_cache import CacheBusy
 from .market_clock import book_is_fresh, market_now, observed_quote, quote_is_recent
 from .margin import MODEL, attach_snapshot, margin_status
 from .liquidation import REASONS, is_liquidating, status as liquidation_status
 from .scheduler import MarketScheduler
+from .portfolio_marks import commit_portfolio_marks
 from .strategies import record_completed_exit
 from .shared_risk import risk_transaction
 from .storage import atomic_json, load_json
@@ -232,6 +234,13 @@ def run_loop(
     next_poly = 0
     errors = {}
     next_perf = 0
+    # A dedicated single in-flight Bybit ticker batch refreshes the entire
+    # open portfolio independently of per-symbol depth/RSI scanning. One
+    # missing executable book can no longer starve every collateral mark.
+    portfolio_pool = None
+    portfolio_job = None
+    portfolio_due = 0.0
+    portfolio_errors_at = 0.0
     perf = {"processed": 0, "refreshed": 0, "data_errors": 0, "last_tick_ms": 0.0}
     market_health = {"completed_ticks": 0, "valid_history_ticks": 0,
                      "market_errors": 0, "last_error": "", "last_symbol": "",
@@ -262,7 +271,36 @@ def run_loop(
                 break
             if scheduler:
                 close_requested_positions(folder, store, books, control_revision=control_revision)
-                completed = scheduler.collect(store.read(include_charts=False))
+                state = store.read(include_charts=False)
+                exposed = sorted({p["symbol"] for p in state["positions"].values()}
+                                 | {p["symbol"] for p in state.get("pending", {}).values()})
+                # Official Bybit transport only. Replay adapters derived from
+                # PublicData override their upstream feed and must not receive
+                # a new real/external mark request through an inherited method.
+                reader = source.portfolio_marks if type(source) is PublicData else None
+                if callable(reader) and exposed:
+                    if portfolio_job is not None and portfolio_job.done():
+                        try:
+                            marks = portfolio_job.result()
+                            changed = commit_portfolio_marks(store, marks)
+                            if changed:
+                                market_health["portfolio_mark_count"] = changed
+                                market_health["last_portfolio_mark_utc"] = time.time()
+                        except (DataUnavailable, ValueError, KeyError, TypeError, OSError) as exc:
+                            # No catch-up using stale quotes: the existing
+                            # three-second margin validator fails closed.
+                            if time.monotonic() - portfolio_errors_at > 30:
+                                logging.warning("PORTFOLIO_MARKS: %s", exc)
+                                portfolio_errors_at = time.monotonic()
+                        finally:
+                            portfolio_job = None
+                    if portfolio_job is None and time.monotonic() >= portfolio_due:
+                        if portfolio_pool is None:
+                            portfolio_pool = ThreadPoolExecutor(
+                                max_workers=1, thread_name_prefix="portfolio-mark")
+                        portfolio_job = portfolio_pool.submit(reader, exposed)
+                        portfolio_due = time.monotonic() + 1.0
+                completed = scheduler.collect(state)
                 for symbol, tick, error in completed:
                     if should_stop():
                         break
@@ -381,5 +419,9 @@ def run_loop(
                 status['exit_reason'] = 'drained'
                 break
     finally:
+        if portfolio_pool is not None:
+            if portfolio_job is not None:
+                portfolio_job.cancel()
+            portfolio_pool.shutdown(wait=True, cancel_futures=True)
         if scheduler:
             scheduler.close()
