@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_VELES_PER_COIN_MARGIN_ARCHITECTURE_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_VELES_PER_COIN_MARGIN_WITH_REGRESSION_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -397,6 +397,8 @@
     "tests/test_margin_mark_authority_restoration.py": "142c7e58be6c5f8531d19b2a7136faf3c81275934a79e7bb4f2ff121654fa23c",
     "bcc/portfolio_marks.py": "873e59c723ad2ba2bfb4d670fb662f86919e53c82554ad1357c351ee46b25d8e",
     "tests/test_portfolio_marks_bulk_refresh.py": "949b69e4496896ded38659d02eb9e1edbc21db1870c08e62abf7380bd141a607",
-    "bcc/coin_allocation.py": "795ead91f8508266964da00a83c99e9b9420634e600a25881f35062a0e119446"
+    "bcc/coin_allocation.py": "795ead91f8508266964da00a83c99e9b9420634e600a25881f35062a0e119446",
+    "tests/test_coin_budget_engine_contract.py": "499ae71b57539a4dd822f89f7cc72f837e2ab02149bf8f7bec89607668f2a768",
+    "tests/test_coin_allocation_qt.py": "a353998d70989d80c4f1d9f21fe5249b3c7370963373edb64dae3bd625ad688b"
   }
 }
