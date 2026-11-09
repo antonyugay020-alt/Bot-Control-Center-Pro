@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_NATIVE_PROCESS_IDENTITY_READINESS_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_LEGACY_FAIR_DISCOVERY_RECOVERY_20261109_INTERNAL_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -97,7 +97,7 @@
     "bcc/runtime_paths.py": "7acdb59ad9b6b0533a430072a0017151f20d9fe1aa9cab219d0c974a9bcb60fc",
     "bcc/runtime_process.py": "ca867b2528d80bf3c18a2d2cacf964b9cf59e42f17fb240036bdd7765d607900",
     "bcc/runtime_service.py": "5124f6b6541fb02aff743b256654572024c4d77c0f89fcef048a3f8b0f14a523",
-    "bcc/scheduler.py": "33b29ff0ceb85cf60deebd1aca96e4fee4c2364506fead1e41a597a4842db79c",
+    "bcc/scheduler.py": "1b885f01ba537cb5acf1adc6cba76c39234ca3bdbe8560d3856a5e1d437705bc",
     "bcc/section_hierarchy.py": "d510c55f542234e59f2dcb4028529ee03a320bd868818a73b94cf7f8306e5674",
     "bcc/service_guard.py": "e622ffc5120972cfd2c6acdfeb6dd74b6b17228a562e193e9daa516483661ebb",
     "bcc/shared_risk.py": "807fa433a3724af8cdedcabe05427071f156d6ec397ca29055dd6e0ddad2adf1",
@@ -354,7 +354,7 @@
     "tests/test_w1_automatic_report.py": "f539c3fc92bdf49181afdd3dfa2f4423aa5b479f40a05eb08e4a7c1e0c6ff5ad",
     "tests/test_w2_market_data_architecture.py": "f55cfec7c07597d484b3f71876d98c710e029d47014ea457e283edf915506585",
     "tests/test_w3_integrated_recovery.py": "7034e611c662503e6705bde3da9e94d073018ef84c3cf293e7de41322adaecc7",
-    "tests/test_w4_priority_market_integrity.py": "2026ac716dfbf31ef09797ee44b6a6b7fc5bab0061167b052b9745e009a772c9",
+    "tests/test_w4_priority_market_integrity.py": "35da0d05c08babccab065bb68d90b99c0944a44396b2a0ff656953a0d5292a0d",
     "tests/test_w5_end_to_end_market_pipeline.py": "9f348d511b218febe8885355f161dab67a4599f645f842d00563f927d6dd8374",
     "tests/test_w6_position_capacity.py": "628194b9d4ab834dbe0d82b2e8f1c46462df7920a179ab9bc44080965dd754c8",
     "tests/test_windows_package.py": "7a535dd88cb7e0f010488fdcd0a20dac09ade98726a74119279ede292eab5fa2",
@@ -392,6 +392,7 @@
     "tests/test_resource_policy_no_fixed_ceiling.py": "5c0994c9bed071189479f08cbf00b362157a74f01b5159f2bd894e226918712e",
     "tests/test_veles_resource_scaled_accounts_replay.py": "4afca300be39d0a6e8e555ea1e1cb3f8d9f578a213b8bf1f2cc3a752afdef7f6",
     "tests/test_direct_transport_default.py": "d4f16b562b5a4a8b89d39bd4c67a2f7850dc10fd1bd9a0fa5234d27517f116d4",
-    "tests/test_unbounded_bot_cardinality.py": "af9a18b971b7a784253bd81945d006dad38bd1af5b86d1eabf4fd9a5871d124a"
+    "tests/test_unbounded_bot_cardinality.py": "af9a18b971b7a784253bd81945d006dad38bd1af5b86d1eabf4fd9a5871d124a",
+    "tests/test_market_scheduler_restoration.py": "f44f80bee979c209b2dd968335255248a56767f739e881f902aed62c3a30a4f3"
   }
 }

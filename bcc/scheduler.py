@@ -159,7 +159,8 @@ class MarketScheduler:
                                      for s in priority_set),
             'scan_paused': draining,
             'entry_admission_paused': draining or risk_mode,
-            'scan_throttled': draining or risk_mode,
+            'scan_throttled': draining,
+            'scanner_worker_reserve': self.capacity - self.priority_limit,
         }
         # Drain finished jobs before admitting new work. Without this, an
         # already-finished future occupies a slot for a whole collect cycle.
@@ -317,10 +318,17 @@ class MarketScheduler:
                     self.scan_turn = not self.scan_turn
                 # Normal queues below cannot submit a second job.
 
-        # Protect open positions before background discovery; outside
-        # draining allow one bounded scan lane even with stale marks.
+        # Restore the proven legacy fairness contract for all markets:
+        # reserve the same share of history workers for discovery whether
+        # position marks are fresh or stale. A separate priority quote lane
+        # handles existing exposure, while process_tick denies unsafe entry.
+        # Draining remains exposure-only, with funding accounting preserved.
         active_jobs = sum(s in priority_set for s in self.jobs)
-        priority_limit = (max(1, self.capacity-1) if risk_mode else self.priority_limit)
+        # Position quotes already have an independent priority pool.
+        # Keep the same fair history/discovery partition even when marks are
+        # missing. Missing marks block execution admission, not the scanning
+        # of otherwise healthy configured instruments.
+        priority_limit = self.priority_limit
         for _ in range(len(priority)):
             if len(self.jobs) >= self.capacity or (
                 scan and active_jobs >= priority_limit
@@ -329,13 +337,12 @@ class MarketScheduler:
             symbol = priority[self.priority_cursor % len(priority)]
             self.priority_cursor = (self.priority_cursor + 1) % len(priority)
             active_jobs += int(submit(symbol))
-        admitted_scans = 0
         for _ in range(len(scan)):
-            if len(self.jobs) >= self.capacity or (risk_mode and admitted_scans >= 1):
+            if len(self.jobs) >= self.capacity:
                 break
             symbol = scan[self.cursor % len(scan)]
             self.cursor = (self.cursor + 1) % len(scan)
-            admitted_scans += int(submit(symbol))
+            submit(symbol)
         pending_jobs = [*self.jobs.values(), *self.quote_jobs.values()]
         if pending_jobs:
             wait(pending_jobs, timeout=timeout, return_when=FIRST_COMPLETED)

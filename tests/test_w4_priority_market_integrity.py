@@ -55,7 +55,7 @@ def test_active_positions_precede_scans_but_regular_subscription_not_starved(tmp
         assert db.execute('SELECT COUNT(*) FROM hub_subscriptions WHERE priority_until>?', (time.time(),)).fetchone()[0] == 0
 
 
-def test_missing_position_marks_pause_wide_scans_and_deliver_book_before_candles():
+def test_missing_position_marks_prioritize_quote_without_stalling_scan():
     calls = []
     class Source:
         def position_orderbook(self, symbol):
@@ -86,7 +86,11 @@ def test_missing_position_marks_pause_wide_scans_and_deliver_book_before_candles
         assert priority_results and priority_results[0].book is not None
         assert priority_results[0].bars == []
         assert ('priority_book', 'BTCUSDT') in calls
-        assert sum(c[0] == 'normal_book' for c in calls) <= 1
+        # Old one-request scanner throttle caused the undercoverage observed
+        # on 822 configured symbols. The position quote remains independent
+        # and entry admission remains protected by the risk guard.
+        assert 1 <= sum(c[0] == 'normal_book' for c in calls) <= 3
+        assert scheduler.last_pressure['entry_admission_paused']
         assert not any(c == ('candles', 'BTCUSDT') or c == ('funding', 'BTCUSDT') for c in calls)
         assert scheduler.last_pressure['configured_symbols'] == 815
         assert scheduler.last_pressure['priority_symbols'] == 1
