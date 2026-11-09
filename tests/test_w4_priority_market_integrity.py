@@ -95,7 +95,10 @@ def test_missing_position_marks_prioritize_quote_without_stalling_scan():
         assert scheduler.last_pressure['configured_symbols'] == 815
         assert scheduler.last_pressure['priority_symbols'] == 1
         assert scheduler.last_pressure['entry_admission_paused'] is True
-        assert scheduler.last_pressure['scan_throttled'] is True
+        # Risk mode must block unsafe trade entry, not squeeze discovery.
+        # The separate priority quote lane remains available for exposure.
+        assert scheduler.last_pressure['scan_throttled'] is False
+        assert scheduler.last_pressure['scanner_worker_reserve'] == 2
     finally:
         scheduler.close()
 

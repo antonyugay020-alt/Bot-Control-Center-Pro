@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_COHERENT_MARGIN_MARK_AND_DEPTH_RESTORE_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_LEGACY_FAIRNESS_WINDOWS_REGRESSION_RECONCILED_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -354,7 +354,7 @@
     "tests/test_w1_automatic_report.py": "f539c3fc92bdf49181afdd3dfa2f4423aa5b479f40a05eb08e4a7c1e0c6ff5ad",
     "tests/test_w2_market_data_architecture.py": "f55cfec7c07597d484b3f71876d98c710e029d47014ea457e283edf915506585",
     "tests/test_w3_integrated_recovery.py": "7034e611c662503e6705bde3da9e94d073018ef84c3cf293e7de41322adaecc7",
-    "tests/test_w4_priority_market_integrity.py": "35da0d05c08babccab065bb68d90b99c0944a44396b2a0ff656953a0d5292a0d",
+    "tests/test_w4_priority_market_integrity.py": "5aabbc8bdce48e3d7bf97b7e6d88c8883ea9517a0015e435a0390369b08f2dfa",
     "tests/test_w5_end_to_end_market_pipeline.py": "9f348d511b218febe8885355f161dab67a4599f645f842d00563f927d6dd8374",
     "tests/test_w6_position_capacity.py": "628194b9d4ab834dbe0d82b2e8f1c46462df7920a179ab9bc44080965dd754c8",
     "tests/test_windows_package.py": "7a535dd88cb7e0f010488fdcd0a20dac09ade98726a74119279ede292eab5fa2",
