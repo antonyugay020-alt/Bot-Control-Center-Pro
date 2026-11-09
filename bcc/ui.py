@@ -47,6 +47,7 @@ from .flow_layout import FlowLayout
 from .trading import (
     available_margin,
     equity,
+    reserved,
     position_unrealized,
     position_initial_margin,
 )
@@ -886,8 +887,31 @@ class MainWindow(QMainWindow):
             ]
             free_margin = available_margin(state)
             free_margin_text = f"{free_margin:.2f} USDT" if math.isfinite(free_margin) else "— (нет достоверной оценки)"
+            # Show which *economic* limit has been reached instead of
+            # suggesting an arbitrary maximum number of bots/positions.
+            # Reservation is diagnostic, not a substitute for trusted free
+            # margin. The real executor still validates every incoming order.
+            budget_note = ""
+            if cfg["strategy"] == "VELES":
+                try:
+                    held = reserved(state)
+                    if math.isfinite(held):
+                        budget_note = f" · резерв позиций и DCA {held:.2f} USDT"
+                        if cfg["settings"].get("allocation_mode", "section_pct") == "section_pct":
+                            per_section = cfg["capital"] * cfg["settings"]["allocation_pct"] / 100
+                            # This is a BEFORE-PnL estimate from the starting
+                            # deposit, not a spendable balance. Label it so.
+                            if per_section > 0 and cfg["capital"] - held < per_section:
+                                budget_note += (
+                                    f" · бюджет новой секции {per_section:.2f} USDT"
+                                    " превышает остаток исходного депозита"
+                                    " после резервов (без учёта PnL)"
+                                )
+                except (ValueError, KeyError, TypeError, OverflowError):
+                    budget_note = " · резервы капитала не удалось рассчитать"
             self.notice.setText(
                 f"{cfg['name']} · свободная маржа {free_margin_text} · сохранено позиций {len(pos)}"
+                + budget_note
                 + f" · капитал {'—' if equity(state)[1] else format(equity(state)[0], '.2f')} · макс. DD {state.get('max_drawdown', 0):.2f}%"
                 + (
                     f" · реинвестировано {state['strategy'].get('veles_reinvested', 0):.2f} USDT"

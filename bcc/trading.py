@@ -330,10 +330,21 @@ def enter(
                 required = entry_reserve(
                     state, side, settings, margin, orders, preview, symbol
                 )
-                if available_margin(state) < required:
+                free = available_margin(state)
+                if free < required:
+                    # Distinguish *exhausted capital* from *unverified prices*.
+                    # Never turn an unknown collateral valuation into a number
+                    # or bypass the original margin protection.
+                    if not math.isfinite(free):
+                        return False, (
+                            "Нет достоверной оценки свободной маржи: "
+                            "проверьте свежесть mark-price всех открытых позиций"
+                        )
                     return (
                         False,
-                        "Недостаточно маржи с учётом mark-price, глубины и комиссий",
+                        "Недостаточно маржи с учётом mark-price, глубины и комиссий: "
+                        f"свободно {free:.2f} USDT, требуется {required:.2f} USDT "
+                        "(включая резерв DCA)",
                     )
                 _, mark = snapshot(state, symbol)
                 upnl = mark_pnl(

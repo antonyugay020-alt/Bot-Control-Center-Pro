@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_31_POSITION_PAPER_LEDGER_COIN_ALLOCATION_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_EXPLICIT_COLLATERAL_HEADROOM_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -108,9 +108,9 @@
     "bcc/supervisor.py": "2a7da36d4ec9b514b0c0cb782e12bab3af599befcfc9dd9151d3baaf2af38ab0",
     "bcc/support.py": "27b2403897d259ac5bd828e7e3e81361c60f01a09bb7318555c0270bc6416c7b",
     "bcc/trade_fence.py": "2cf535c93460728650e332420b676cc935ec2d57b525d6b99d3f492f2b469931",
-    "bcc/trading.py": "cae330c6e927bc62f9d515fc0d40eed2ed44168f04176676459edc4c49d3eff7",
+    "bcc/trading.py": "618112971c146779954810b831a733f70f0f741c805b14c6da94eae646c9bbcf",
     "bcc/transfer.py": "cf3d209b50ca0d0dd0aec8f1e2462c1a2f61ddb403e3417d4f74cefafd413f70",
-    "bcc/ui.py": "15bad84cb3c9fb0b7240ff1259857374effc954b3f750b29ea4ebb94242afd91",
+    "bcc/ui.py": "c43cc1f5019be3ddae5562aaf339eb073eab16c2aefa8c6a697e3b60f685cdec",
     "bcc/widgets.py": "3db4e563b00106cc26e2e701a86e11bb67adb6126677ceb9100ada222424b3fb",
     "bcc/wizard.py": "459eeed26b3937d439a52b90b6e388499c2c699ce63d24b3dcfa6f78100ca40e",
     "bcc/wizard_presentation.py": "6c7d944c8032d37ea55a7dd59281bd84be2047c61ecd527c235a573056f1d3b6",
@@ -400,6 +400,7 @@
     "bcc/coin_allocation.py": "795ead91f8508266964da00a83c99e9b9420634e600a25881f35062a0e119446",
     "tests/test_coin_budget_engine_contract.py": "499ae71b57539a4dd822f89f7cc72f837e2ab02149bf8f7bec89607668f2a768",
     "tests/test_coin_allocation_qt.py": "a353998d70989d80c4f1d9f21fe5249b3c7370963373edb64dae3bd625ad688b",
-    "tests/test_many_coin_budget_risk_integration.py": "2508db1ded5ed78452b3fda2aa0b1b41b91eece480c0062e16181c40652b8e5f"
+    "tests/test_many_coin_budget_risk_integration.py": "2508db1ded5ed78452b3fda2aa0b1b41b91eece480c0062e16181c40652b8e5f",
+    "tests/test_capital_headroom_19_positions.py": "024715bd7948906948a76880236160cb4d05f4bd0a58767c086aeffcaa4aa590"
   }
 }
