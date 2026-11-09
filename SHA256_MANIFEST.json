@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_PUBLIC_MARK_RISK_DECOUPLING_SYSTEMIC_QA_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_PUBLIC_MARK_RISK_DECOUPLING_WITH_REGRESSION_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -404,6 +404,7 @@
     "tests/test_capital_headroom_19_positions.py": "024715bd7948906948a76880236160cb4d05f4bd0a58767c086aeffcaa4aa590",
     "tools/run_native_qt_shard.py": "883481d990e5762c593beb7f423e80e889dfbf4791b972b41688b5aa843d9c19",
     "tests/test_native_qt_shard_lifecycle.py": "ea57bfa6732ea15805085c0c9cf8d4f29016084070b2b5d7ef4fa8280d4a5dc1",
-    "bcc/public_risk_refresh.py": "956b4b13978ca9c5efb7cf432bc0309251591c7326753b402e9ee862ac8e3b2a"
+    "bcc/public_risk_refresh.py": "956b4b13978ca9c5efb7cf432bc0309251591c7326753b402e9ee862ac8e3b2a",
+    "tests/test_public_market_pipeline_architecture.py": "1dd7938a4885ec42c59794a392bbe24fe6c8d3841e680f94776fc720fcdd14bd"
   }
 }
