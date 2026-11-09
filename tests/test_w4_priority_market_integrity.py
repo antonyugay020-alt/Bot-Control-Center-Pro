@@ -286,3 +286,65 @@ def test_position_candles_are_fenced_by_shared_hub_priority(tmp_path, monkeypatc
         assert not getattr(client._thread, 'position_mark', False)
     finally:
         client.close()
+
+
+def test_draining_funding_archive_without_positions_still_settles(tmp_path):
+    calls = []
+    class Source:
+        def candles(self, symbol, required):
+            calls.append(('candles', symbol))
+            return []
+        def orderbook(self, symbol):
+            calls.append(('book', symbol))
+            return {'at': time.time(), 'bids': [[10, 1]], 'asks': [[11, 1]]}
+        def funding(self, symbol):
+            calls.append(('funding', symbol))
+            return []
+    scheduler = MarketScheduler(Source(), {'symbols': [f'SCAN{i}USDT' for i in range(822)]},
+                                lambda *_: 10, workers=2, period=.05)
+    state = {'positions': {}, 'pending': {},
+             'funding_archive': {'old': {'symbol': 'REMOVEDUSDT', 'opened': time.time()-10}},
+             'marks': {}, 'strategy': {'draining': True}}
+    try:
+        rows = []
+        for _ in range(15):
+            rows.extend(scheduler.collect(state, timeout=.02))
+            if any(symbol == 'REMOVEDUSDT' for symbol, _, _ in rows):
+                break
+        assert any(symbol == 'REMOVEDUSDT' for symbol, _, _ in rows)
+        assert ('funding', 'REMOVEDUSDT') in calls
+        assert not any(kind in ('book', 'candles') for kind, _ in calls)
+        assert not any(symbol.startswith('SCAN') for _, symbol in calls)
+        assert scheduler.last_pressure['scan_paused']
+    finally:
+        scheduler.close()
+
+
+def test_stale_position_quote_does_not_block_independent_exit_history():
+    seen = []
+    class Source:
+        def position_orderbook(self, symbol):
+            return {'at': time.time() - 15, 'bids': [[10, 1]], 'asks': [[11, 1]]}
+        def position_candles(self, symbol, required):
+            seen.append(('history', symbol))
+            return [{'t': 1, 'symbol': symbol}]
+        def candles(self, symbol, required):
+            return []
+        def orderbook(self, symbol):
+            raise AssertionError('Stale position cannot use normal book')
+        def funding(self, symbol):
+            return []
+    state = {'positions': {'x': {'symbol': 'BTCUSDT', 'opened': 1}},
+             'pending': {}, 'funding_archive': {}, 'marks': {},
+             'strategy': {'draining': False}}
+    scheduler = MarketScheduler(Source(), {'symbols': ['BTCUSDT']},
+                                lambda *_: 100, workers=2, period=.05)
+    try:
+        for _ in range(25):
+            scheduler.collect(state, timeout=.02)
+            if seen:
+                break
+        assert ('history', 'BTCUSDT') in seen
+        assert scheduler.last_pressure['entry_admission_paused']
+    finally:
+        scheduler.close()

@@ -476,7 +476,10 @@ def test_five_pending_manual_exits_complete_with_813_charts_and_fresh_depth(tmp_
         assert len(exits) == 5
         assert len(store.history()) == 10
         assert threading.current_thread().name in quote_threads
-        assert any(name.startswith("public-market") for name in quote_threads)
+        # With exposure-only draining, the bounded position-quotes pool
+        # replaces scanner workers without weakening manual-close evidence.
+        assert any(name.startswith(("public-market", "position-quotes"))
+                   for name in quote_threads)
         store.audit()
         if os.environ.get("BCC_TEST_ARTIFACTS"):
             target = Path(os.environ["BCC_TEST_ARTIFACTS"]) / "manual_close_813.json"
