@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_VELES_PER_COIN_MARGIN_WITH_REGRESSION_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_31_POSITION_PAPER_LEDGER_COIN_ALLOCATION_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -399,6 +399,7 @@
     "tests/test_portfolio_marks_bulk_refresh.py": "949b69e4496896ded38659d02eb9e1edbc21db1870c08e62abf7380bd141a607",
     "bcc/coin_allocation.py": "795ead91f8508266964da00a83c99e9b9420634e600a25881f35062a0e119446",
     "tests/test_coin_budget_engine_contract.py": "499ae71b57539a4dd822f89f7cc72f837e2ab02149bf8f7bec89607668f2a768",
-    "tests/test_coin_allocation_qt.py": "a353998d70989d80c4f1d9f21fe5249b3c7370963373edb64dae3bd625ad688b"
+    "tests/test_coin_allocation_qt.py": "a353998d70989d80c4f1d9f21fe5249b3c7370963373edb64dae3bd625ad688b",
+    "tests/test_many_coin_budget_risk_integration.py": "2508db1ded5ed78452b3fda2aa0b1b41b91eece480c0062e16181c40652b8e5f"
   }
 }
