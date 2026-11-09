@@ -497,7 +497,15 @@ FINANCE = [
         "choice",
         [("Cross", "CROSS"), ("Isolated", "ISOLATED")],
     ),
-    ("allocation_pct", "Доля депозита на секцию, %", "float", (0.001, 100)),
+    (
+        "allocation_mode", "Как задавать бюджет VELES", "choice", [
+            ("Как раньше: % депозита на каждую секцию", "section_pct"),
+            ("% депозита на всю монету", "coin_pct"),
+            ("Фиксированная сумма на всю монету, USDT", "coin_fixed"),
+        ],
+    ),
+    ("allocation_pct", "Доля депозита, % (по выбранному режиму)", "float", (0.001, 100)),
+    ("allocation_usdt", "Маржа на монету, USDT (без плеча)", "float", (0.01, 1e9)),
     (
         "reinvest_pct",
         "Реинвест: доля чистой прибыли при включении, %",
@@ -590,12 +598,20 @@ STOP_FIELDS = [
 
 
 class SettingsEditor(QTabWidget):
-    def __init__(self, data, parent=None, *, strategy="VELES"):
+    def __init__(self, data, parent=None, *, strategy="VELES", section_scope=False):
         super().__init__(parent)
         self.data = deepcopy(data)
         finance = FINANCE
         if strategy != "VELES":
-            finance = [f for f in finance if f[0] != "reinvest_pct"]
+            finance = [f for f in finance if f[0] not in
+                       ("reinvest_pct", "allocation_mode", "allocation_usdt")]
+        elif section_scope:
+            # Coin budget cannot be changed for just one range; an active
+            # coin-level mode also makes legacy per-section percent inert.
+            hidden = {"allocation_mode", "allocation_usdt"}
+            if data.get("allocation_mode") != "section_pct":
+                hidden.add("allocation_pct")
+            finance = [f for f in finance if f[0] not in hidden]
         if strategy == "POLYMARKET":
             finance = [
                 f
@@ -605,6 +621,15 @@ class SettingsEditor(QTabWidget):
         elif strategy in ("GRID", "PUMP_DUMP"):
             finance = [f for f in finance if f[0] != "allocation_pct"]
         self.finance = Fields(data, finance)
+        if strategy == "VELES" and not section_scope:
+            mode = self.finance.controls["allocation_mode"][1]
+            percent = self.finance.controls["allocation_pct"][1]
+            fixed = self.finance.controls["allocation_usdt"][1]
+            def choose_budget_fields():
+                percent.setEnabled(mode.currentData() != "coin_fixed")
+                fixed.setEnabled(mode.currentData() == "coin_fixed")
+            mode.currentIndexChanged.connect(choose_budget_fields)
+            choose_budget_fields()
         self.addTab(scroll(self.finance), "Капитал и риск")
         orders = QWidget()
         layout = QVBoxLayout(orders)
@@ -701,7 +726,8 @@ class SectionEditor(QWidget):
         self.override.setChecked(bool(section.get("overrides")))
         v.addWidget(self.override)
         self.settings = SettingsEditor(
-            merge(settings, section.get("overrides", {})), strategy=strategy
+            merge(settings, section.get("overrides", {})),
+            strategy=strategy, section_scope=True
         )
         self.settings.setEnabled(self.override.isChecked())
         self.override.toggled.connect(self.settings.setEnabled)

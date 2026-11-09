@@ -6,7 +6,8 @@ read from the exact configuration being saved, not a duplicate set of inputs.
 
 from html import escape
 
-from .config import STRATEGY_NAMES, resolve_poly_market, validate_poly_rule
+from .config import STRATEGY_NAMES, resolve_poly_market, validate_poly_rule, effective
+from .coin_allocation import nominal_budget
 from .section_hierarchy import grouped_ranges
 
 
@@ -46,6 +47,13 @@ def summary_rows(config):
             ("Плечо", f"{s['leverage']:g}×"),
         ])
         if kind == "VELES":
+            mode = s.get("allocation_mode", "section_pct")
+            amount = (f"{s['allocation_usdt']:g} USDT на монету"
+                      if mode == "coin_fixed" else
+                      f"{s['allocation_pct']:g}% депозита на монету"
+                      if mode == "coin_pct" else
+                      f"{s['allocation_pct']:g}% депозита на секцию")
+            rows.append(("Бюджет", amount))
             # The tree groups flat execution rows under author-visible parents.
             rows.extend([
                 ("Секции", str(len(grouped_ranges(config["sections"])))),
@@ -171,7 +179,9 @@ def grid_preview_data(config, symbol, section_id):
     section = coin_section(config, symbol, original)
     settings = effective(config, symbol, original)
     planned = plan(settings["orders"], section["side"], 100)
-    margin = config["capital"] * settings["allocation_pct"] / 100
+    coin_settings = effective(config, symbol)
+    is_coin_budget = coin_settings.get("allocation_mode") != "section_pct"
+    margin = nominal_budget(config, coin_settings if is_coin_budget else settings)
     budget = margin * settings["leverage"]
     rows = tuple(
         (
@@ -184,7 +194,8 @@ def grid_preview_data(config, symbol, section_id):
     )
     status = (
         f"{symbol} · {section['label']} · {section['side']}\n"
-        f"Маржа из исходного депозита: {margin:g} USDT; "
+        f"{'Максимальная маржа на монету' if is_coin_budget else 'Маржа на секцию'}: "
+        f"{margin:g} USDT; "
         f"номинал сетки с плечом: {budget:g} USDT."
     )
     if settings["stop"]["mode"] in ("percent", "both"):

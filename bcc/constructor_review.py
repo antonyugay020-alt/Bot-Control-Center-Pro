@@ -5,6 +5,7 @@ JSON.  The review is passive: it does not normalize/mutate drafts, access a
 repository, start workers, or submit PAPER/real orders.
 """
 from .config import coin_section, effective, resolve_poly_market
+from .coin_allocation import nominal_budget
 
 # All persisted effective fields belong to an explicit review category. The
 # UI must not show "no entry changes" when a user changes entry mode/window
@@ -22,7 +23,8 @@ POLY_REVIEW_FIELDS = {
 }
 VELES_REVIEW_FIELDS = {
     "risk_changed": frozenset((
-        "leverage", "margin_mode", "allocation_pct", "reinvest_pct",
+        "leverage", "margin_mode", "allocation_pct", "allocation_mode",
+        "allocation_usdt", "reinvest_pct",
         "daily_loss_pct", "disabled", "stop_after_cycle")),
     "execution_changed": frozenset((
         "fee_rate", "slippage_pct", "execution_policy")),
@@ -215,7 +217,10 @@ def effective_risk_review_text(draft, *, sample_limit=8):
                 break
             resolved = coin_section(draft, symbol, section)
             settings = effective(draft, symbol, section)
-            margin = draft["capital"] * settings["allocation_pct"] / 100
+            policy = effective(draft, symbol)
+            margin = (nominal_budget(draft, policy) if
+                      policy["allocation_mode"] != "section_pct" else
+                      nominal_budget(draft, settings))
             notional = margin * settings["leverage"]
             stop = settings["stop"]
             stop_text = (f"{stop['pct']:g}%"

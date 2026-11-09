@@ -5,6 +5,7 @@ import json
 from copy import deepcopy
 
 from .config import coin_section, effective, merge
+from .coin_allocation import COIN_MODES, coin_policy, remaining_coin_budget
 from .indicators import evaluate
 from .margin import MODEL, entry_reason, pending_reserve
 from .liquidation import is_liquidating, status as liquidation_status
@@ -36,8 +37,12 @@ def signal(state, key, spec, bars, now_ms):
     return result
 
 
-def capital_margin(cfg, state, settings):
+def capital_margin(cfg, state, settings, symbol=None):
     if cfg["strategy"] == "VELES":
+        # A per-coin budget belongs to the coin (including all active RSI
+        # ranges and DCA grids), never to each range independently.
+        if symbol is not None and coin_policy(cfg, symbol)["allocation_mode"] in COIN_MODES:
+            return remaining_coin_budget(cfg, state, symbol)
         base = cfg["capital"] + (
             state["strategy"].get("veles_reinvested", 0) if cfg["reinvest"] else 0
         )
@@ -480,7 +485,13 @@ class Veles:
                 )
                 continue
             if (result.matched or handoff or bootstrap) and daily_ok(cfg, state, symbol, settings, now_ms):
-                margin = capital_margin(cfg, state, settings)
+                margin = capital_margin(cfg, state, settings, symbol)
+                if margin <= 0:
+                    diagnostics.append({
+                        "section": section["label"],
+                        "reason": "Бюджет капитала монеты исчерпан",
+                    })
+                    continue
                 anchor = ask if section["side"] == "LONG" else bid
                 order_plan = plan(settings["orders"], section["side"], anchor)
                 margin_reason = entry_reason(

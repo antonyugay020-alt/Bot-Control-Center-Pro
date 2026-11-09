@@ -73,6 +73,8 @@ def normalize_config(cfg):
         cfg.setdefault("stop_after_deals", False)
     if isinstance(cfg, dict) and isinstance(cfg.get("settings"), dict):
         cfg["settings"].setdefault("reinvest_pct", 20.0)
+        cfg["settings"].setdefault("allocation_mode", "section_pct")
+        cfg["settings"].setdefault("allocation_usdt", 25.0)
         if isinstance(cfg["settings"].get("stop"), dict):
             cfg["settings"]["stop"].setdefault("stop_after", False)
     if isinstance(cfg, dict) and cfg.get("strategy") == "POLYMARKET":
@@ -142,6 +144,8 @@ def defaults(strategy="VELES"):
             leverage=3.0,
             margin_mode="CROSS",
             allocation_pct=5.0,
+            allocation_mode="section_pct",
+            allocation_usdt=25.0,
             reinvest_pct=20.0,
             fee_rate=0.0006,
             slippage_pct=0.02,
@@ -514,6 +518,9 @@ def validate_settings(s):
         raise ValueError("Неизвестная настройка: " + ",".join(set(s) - set(base)))
     number(s["leverage"], 1, 100, "Плечо")
     number(s["allocation_pct"], 0.001, 100, "Доля капитала")
+    if s["allocation_mode"] not in ("section_pct", "coin_pct", "coin_fixed"):
+        raise ValueError("Режим распределения капитала на монету")
+    number(s["allocation_usdt"], 0.01, 1e9, "Бюджет монеты, USDT")
     number(s.get("reinvest_pct", 20.0), 0, 50, "Реинвестирование прибыли, %")
     number(s["fee_rate"], 0, 0.05, "Комиссия")
     number(s["slippage_pct"], 0, 5, "Проскальзывание")
@@ -705,6 +712,8 @@ def validate(cfg):
             )
         )
     validate_settings(cfg["settings"])
+    if cfg["strategy"] != "VELES" and cfg["settings"]["allocation_mode"] != "section_pct":
+        raise ValueError("Бюджет на монету доступен только для VELES")
     ids = set()
     parents = {}
     if (
@@ -746,6 +755,8 @@ def validate(cfg):
             raise ValueError("Направление секции")
         validate_group(sec["entry"])
         validate_group(sec["exit"])
+        if set(sec.get("overrides", {})) & {"allocation_mode", "allocation_usdt"}:
+            raise ValueError("Бюджет монеты редактируется только на уровне монеты")
         validate_position_settings(
             merge(cfg["settings"], sec.get("overrides", {})), sec["side"]
         )
@@ -754,6 +765,11 @@ def validate(cfg):
     ) - set(symbols):
         raise ValueError("Настройки неизвестной монеты")
     for sym, over in cfg["coin_overrides"].items():
+        if cfg["strategy"] != "VELES" and (
+            over.get("settings", {}).get("allocation_mode", "section_pct") != "section_pct"
+            or "allocation_usdt" in over.get("settings", {})
+        ):
+            raise ValueError("Индивидуальный бюджет доступен только для VELES")
         if set(over) - {"settings", "sections", "entry", "exit", "parameters"}:
             raise ValueError("Неизвестная настройка монеты")
         if set(over.get("sections", {})) - ids:
@@ -765,6 +781,8 @@ def validate(cfg):
         for sec in over.get("sections", {}).values():
             if set(sec) - {"settings", "entry", "exit", "side", "enabled", "label"}:
                 raise ValueError("Неизвестный параметр секции монеты")
+            if set(sec.get("settings", {})) & {"allocation_mode", "allocation_usdt"}:
+                raise ValueError("Бюджет монеты редактируется только на уровне монеты")
             if "side" in sec and sec["side"] not in ("LONG", "SHORT"):
                 raise ValueError("Направление секции монеты")
             if "enabled" in sec and type(sec["enabled"]) is not bool:

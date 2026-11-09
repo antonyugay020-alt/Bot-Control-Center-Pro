@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_INDEPENDENT_PORTFOLIO_MARK_PRICE_20261109_INTERNAL_NOT_RELEASE",
+  "checkpoint": "BCC_VELES_PER_COIN_MARGIN_ARCHITECTURE_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -55,11 +55,11 @@
     "bcc/chart.py": "ab2ab197427939896c70c617023044ee53b470547517a6dcb413b168f237f86c",
     "bcc/clock_diagnostics.py": "b1a10358a11cab7d1d6ce7c10e627a35bfb450a18ae7930b226c3fd5ddbae94a",
     "bcc/coin_picker.py": "72e98f3edbeeb2753e495b762e3ab57163a30062a164123297c05a48d36d87e7",
-    "bcc/config.py": "8b88ea47bc87f2ed1fec8cf99af9f9f1f9cefac3908f79a20237c60ff283930b",
+    "bcc/config.py": "fc71b940bd9c949d00787d41ab5958872d749f4438d1a9cd822eebd7160c156b",
     "bcc/constructor_contract.py": "0c9a81f69f204613629af8d3db64cf151222b6b7b904ec95d0e64febf2f416ef",
     "bcc/constructor_diagnostics.py": "33a21cddd4f705e77201e37cbe96fd9416732d636c3334e8f7c3f77fb0a6af7b",
     "bcc/constructor_edit_workspace.py": "6e94a346f70b7176a3d71fedf4181c501a4d490d59eb167821a1829ae5bf8ffe",
-    "bcc/constructor_review.py": "65420752982d3cc96371b98f2ec68c4e59689a57c0ed4157e4111d5c648993c4",
+    "bcc/constructor_review.py": "7473fff2dd6a11a7e08d599d035bd4c1326ffdca99787fc6144ecc02a4773437",
     "bcc/constructor_sections.py": "a02b2e28982f6637b44eff2f30e89b7f717ba915893e536eacf00b3f6d81a0c8",
     "bcc/constructor_session.py": "b59ded30f46bb5b63d5d845f65f7a068426ff2ab9a926a0311b96ed1e8103ab2",
     "bcc/constructor_transaction.py": "1cfd25a130450f820f5dc623f11568641820f6b84c9eb73c194eb5f4a87ad578",
@@ -102,7 +102,7 @@
     "bcc/service_guard.py": "e622ffc5120972cfd2c6acdfeb6dd74b6b17228a562e193e9daa516483661ebb",
     "bcc/shared_risk.py": "807fa433a3724af8cdedcabe05427071f156d6ec397ca29055dd6e0ddad2adf1",
     "bcc/storage.py": "113d0f3f4542a6fb630d2e63a7f68a290a13a037e5870b50c37f8c56a63ba26f",
-    "bcc/strategies.py": "1a9ac7897d8b51aa7853b20e0a277f650d963827d1e23a9b7cd17416ae5d95c7",
+    "bcc/strategies.py": "bb7b3697411df22ee99182613570d99b4d11fc7d40175cc87fe5336b5e857230",
     "bcc/strategy_dispatch.py": "69c15b98b2933afecc6eece7e2ddc8222516c15503025e7b54edd4e28cd0ac43",
     "bcc/strategy_picker.py": "e35e1afb869c308fe63db5a4ab3c9e8f147675f4510eb967d29e617227120ca5",
     "bcc/supervisor.py": "2a7da36d4ec9b514b0c0cb782e12bab3af599befcfc9dd9151d3baaf2af38ab0",
@@ -111,9 +111,9 @@
     "bcc/trading.py": "cae330c6e927bc62f9d515fc0d40eed2ed44168f04176676459edc4c49d3eff7",
     "bcc/transfer.py": "cf3d209b50ca0d0dd0aec8f1e2462c1a2f61ddb403e3417d4f74cefafd413f70",
     "bcc/ui.py": "15bad84cb3c9fb0b7240ff1259857374effc954b3f750b29ea4ebb94242afd91",
-    "bcc/widgets.py": "1a3c7adeb1d803316dab25166019fee036e428e8743e2c66525ce166351aaac0",
-    "bcc/wizard.py": "9d4accac33b355d067154e326e687e0770b4625bdc4dddaaed6115a2fe14a031",
-    "bcc/wizard_presentation.py": "aee1646cc799d362650aaf99a3f90c4f5c6f5dfc51a8b2ad8af81e5efba9d04b",
+    "bcc/widgets.py": "3db4e563b00106cc26e2e701a86e11bb67adb6126677ceb9100ada222424b3fb",
+    "bcc/wizard.py": "459eeed26b3937d439a52b90b6e388499c2c699ce63d24b3dcfa6f78100ca40e",
+    "bcc/wizard_presentation.py": "6c7d944c8032d37ea55a7dd59281bd84be2047c61ecd527c235a573056f1d3b6",
     "bcc/wizard_state.py": "08820a31c17f34c461fe4af2be0bcaf26dff2624983e0e3c9751581251e54b06",
     "bcc/wizard_stepper.py": "e7efa4d0d8c6ee88abd3bc1fad98abb93dbfb283c11cb6ed95a3d87ef714f4ef",
     "bcc/worker.py": "9eb144841bfcf9ad5bb0517e7bf7452890f57f76077728235525eb9537277119",
@@ -396,6 +396,7 @@
     "tests/test_market_scheduler_restoration.py": "f44f80bee979c209b2dd968335255248a56767f739e881f902aed62c3a30a4f3",
     "tests/test_margin_mark_authority_restoration.py": "142c7e58be6c5f8531d19b2a7136faf3c81275934a79e7bb4f2ff121654fa23c",
     "bcc/portfolio_marks.py": "873e59c723ad2ba2bfb4d670fb662f86919e53c82554ad1357c351ee46b25d8e",
-    "tests/test_portfolio_marks_bulk_refresh.py": "949b69e4496896ded38659d02eb9e1edbc21db1870c08e62abf7380bd141a607"
+    "tests/test_portfolio_marks_bulk_refresh.py": "949b69e4496896ded38659d02eb9e1edbc21db1870c08e62abf7380bd141a607",
+    "bcc/coin_allocation.py": "795ead91f8508266964da00a83c99e9b9420634e600a25881f35062a0e119446"
   }
 }
