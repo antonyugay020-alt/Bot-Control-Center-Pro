@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_WINDOWS_QA_REMEDIATION_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_WINDOWS_SCHEMA_CONTEXT_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -65,7 +65,7 @@
     "bcc/constructor_transaction.py": "1cfd25a130450f820f5dc623f11568641820f6b84c9eb73c194eb5f4a87ad578",
     "bcc/control.py": "64a9d9fe889ec9e9f989f6793050ffa09f00fcfedaf6346d95ddfcda08ce3092",
     "bcc/coordination.py": "4372dbb71bf5d80b484642e8b857da1cc34af7c6bd845d879de3e8d8326a49c8",
-    "bcc/data_cache.py": "d6721c9ae9626eb0889b17200a85578d4a2a6e4a06dd4c0626baa61a694ae9bc",
+    "bcc/data_cache.py": "28868b10df26f32172fcb1429a1f43c8947c79cd9cd489a4ea8a6c00533d22a6",
     "bcc/execution.py": "7ca97407a77e226f7d9c9ce3274d0074913d35264fbf4a29823acf607a71f50a",
     "bcc/fleet.py": "5c10de977f44f3c0041802b1434f5e7cb51abe0445a731fa1a2b8f0194fe9da4",
     "bcc/flow_layout.py": "1e5d9c4b48fbd8a31046030276a74a2c488a9ee90a3d8e89027b2714cd3b054a",

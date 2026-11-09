@@ -50,7 +50,7 @@ class PublicCache:
         with self._setup_lock:
             if self._ready:
                 return
-            with self.db(schema=True) as db:
+            with self._schema_db() as db:
                 # A WAL-mode *change* requires an exclusive SQLite lock. The
                 # HubRegistry may already have initialized this database and
                 # workers may be reading it: never issue a redundant change.
@@ -130,7 +130,23 @@ class PublicCache:
             self._ready = True
 
     @contextmanager
-    def db(self, *, schema=False):
+    def _schema_db(self):
+        """Give startup migrations a bounded long writer wait.
+
+        Keep db() as the stable, zero-argument runtime operation boundary:
+        production callers and transactional auditors instrument that method.
+        Always restore the short runtime busy timeout, including failed DDL.
+        """
+        with self.db() as db:
+            previous = db.execute("PRAGMA busy_timeout").fetchone()[0]
+            db.execute("PRAGMA busy_timeout=5000")
+            try:
+                yield db
+            finally:
+                db.execute(f"PRAGMA busy_timeout={previous}")
+
+    @contextmanager
+    def db(self):
         # One short SQL operation at a time within this process. Keeping the
         # connection open avoids the last-connection WAL checkpoint on every GET.
         if not self._guard.acquire(timeout=0.2):
@@ -147,9 +163,6 @@ class PublicCache:
                 self.stats["connections"] += 1
                 self._connection.execute("PRAGMA busy_timeout=200")
                 self._connection.execute("PRAGMA synchronous=NORMAL")
-            if schema:
-                # Only startup migrations need a long cross-process write wait.
-                self._connection.execute("PRAGMA busy_timeout=5000")
             self.stats["operations"] += 1
             yield self._connection
         except sqlite3.Error as exc:
@@ -162,9 +175,6 @@ class PublicCache:
                 if self._connection is not None:
                     if self._connection.in_transaction:
                         self._connection.rollback()
-                    if schema:
-                        # Prevent a 5-second migration wait leaking into ticks.
-                        self._connection.execute("PRAGMA busy_timeout=200")
             finally:
                 self._guard.release()
 
