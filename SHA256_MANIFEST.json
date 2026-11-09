@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_WINDOWS_SCHEMA_CONTEXT_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_WINDOWS_SCHEMA_CONTRACT_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -323,7 +323,7 @@
     "tests/test_shared_risk.py": "2ed2840d17c0d967f5d309a421cab7325bb7d2ad51bfb1750040296baee5c14f",
     "tests/test_shared_risk_command_boundary.py": "8ff1855dbb6040d9ecac444e8348e7c24a01b46550cf33def242e3c283198144",
     "tests/test_shared_singleflight_15_bots.py": "e200a7820745f40e971f4bd8043100fd39a672b585fcb18aa7de066f5b43fb97",
-    "tests/test_shared_singleflight_multiprocess.py": "4233128e6cd83b503654478f96b730bd8c3ac272bb1788e0e575d87c47814321",
+    "tests/test_shared_singleflight_multiprocess.py": "ede1a4675b25b12fc44135c6ef83b382838b04e1cda0a525cd1066e9d9a5e478",
     "tests/test_shared_sqlite_schema_migration.py": "9bbcefe974c414217874ee64ff1a46607719556d9216bf03cf94b5a6083ed1b1",
     "tests/test_source_executable_inventory.py": "2dc6672593b2518239f73e9c0c82abc4f85e08b5359f6b260e0c2a91865576dc",
     "tests/test_source_stage_integrity.py": "9211db67d762487b7aa079c9142553db1343c2204c428200399c1c892f2c7f52",

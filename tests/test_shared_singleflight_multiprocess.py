@@ -36,8 +36,23 @@ def test_schema_wait_is_scoped_and_trading_cache_operations_remain_bounded(tmp_p
     from bcc.data_cache import PublicCache
     cache = PublicCache(tmp_path / "lock-policy.sqlite")
     try:
-        with cache.db(schema=True) as db:
+        with cache._schema_db() as db:
             assert db.execute("PRAGMA busy_timeout").fetchone()[0] >= 5000
+        with cache.db() as db:
+            assert db.execute("PRAGMA busy_timeout").fetchone()[0] <= 500
+    finally:
+        cache.close()
+
+def test_schema_wait_restores_short_runtime_timeout_after_exception(tmp_path):
+    import pytest
+    from bcc.data_cache import PublicCache
+
+    cache = PublicCache(tmp_path / "failed-migration.sqlite")
+    try:
+        with pytest.raises(RuntimeError, match="simulated migration error"):
+            with cache._schema_db() as db:
+                assert db.execute("PRAGMA busy_timeout").fetchone()[0] >= 5000
+                raise RuntimeError("simulated migration error")
         with cache.db() as db:
             assert db.execute("PRAGMA busy_timeout").fetchone()[0] <= 500
     finally:
