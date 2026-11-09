@@ -15,6 +15,7 @@ from .margin import MODEL, attach_snapshot, margin_status
 from .liquidation import REASONS, is_liquidating, status as liquidation_status
 from .scheduler import MarketScheduler
 from .portfolio_marks import commit_portfolio_marks
+from .public_risk_refresh import PublicRiskRefresher
 from .strategies import record_completed_exit
 from .shared_risk import risk_transaction
 from .storage import atomic_json, load_json
@@ -230,6 +231,10 @@ def run_loop(
     )
     books = {}
     seen = set()
+    # This map records successful, usable history+book decisions, not raw
+    # requests or a scanner future that ultimately fails inside execution.
+    usable_history_seen = {}
+    coverage_window = 120.0
     next_heartbeat = 0
     next_poly = 0
     errors = {}
@@ -241,6 +246,9 @@ def run_loop(
     portfolio_job = None
     portfolio_due = 0.0
     portfolio_errors_at = 0.0
+    # Periodic public risk tiers never ride the executable book hot path.
+    risk_refresher = (PublicRiskRefresher(source, store)
+                      if scheduler and type(source) is PublicData else None)
     perf = {"processed": 0, "refreshed": 0, "data_errors": 0, "last_tick_ms": 0.0}
     market_health = {"completed_ticks": 0, "valid_history_ticks": 0,
                      "market_errors": 0, "last_error": "", "last_symbol": "",
@@ -254,6 +262,17 @@ def run_loop(
             # worker that has never received usable closed-candle history.
             status["market_health"] = dict(market_health)
             if scheduler is not None:
+                now_utc = time.time()
+                configured = set(cfg['symbols'])
+                recent = sum((now_utc - usable_history_seen.get(symbol, 0)) <= coverage_window
+                             for symbol in configured)
+                status["market_health"].update(
+                    scan_usable_symbols_120s=recent,
+                    scan_configured_symbols=len(configured),
+                    scan_coverage_pct_120s=round(100 * recent / len(configured), 2)
+                    if configured else 100.0,
+                    required_usable_decisions_per_second_120s=round(len(configured) / coverage_window, 3),
+                )
                 status["market_health"]["scheduler_pressure"] = dict(
                     getattr(scheduler, "last_pressure", {})
                 )
@@ -300,6 +319,8 @@ def run_loop(
                                 max_workers=1, thread_name_prefix="portfolio-mark")
                         portfolio_job = portfolio_pool.submit(reader, exposed)
                         portfolio_due = time.monotonic() + 1.0
+                if risk_refresher is not None:
+                    market_health['risk_tier_refresh'] = risk_refresher.poll(state)
                 completed = scheduler.collect(state)
                 for symbol, tick, error in completed:
                     if should_stop():
@@ -323,6 +344,8 @@ def run_loop(
                         if tick.bars and not tick.history_error:
                             market_health["valid_history_ticks"] += 1
                             market_health["last_valid_history_utc"] = time.time()
+                            if tick.book is not None and symbol in cfg['symbols']:
+                                usable_history_seen[symbol] = time.time()
                         if tick.book is not None:
                             perf["processed"] += 1
                             books[symbol] = tick.book
@@ -419,6 +442,8 @@ def run_loop(
                 status['exit_reason'] = 'drained'
                 break
     finally:
+        if risk_refresher is not None:
+            risk_refresher.close()
         if portfolio_pool is not None:
             if portfolio_job is not None:
                 portfolio_job.cancel()

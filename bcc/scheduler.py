@@ -52,7 +52,10 @@ class MarketScheduler:
         self.quote_jobs = {}
         self.quote_due = {}
         self.quote_cursor = 0
-        self.quote_period = min(period, .5)
+        # Risk tiers/mark-price are separately managed and do not need
+        # fetching on every protective depth quote. At the default 2 s
+        # history cadence, quote each exposed market at most once per second.
+        self.quote_period = min(period, 1.0)
         self._history_only = set()
         self._history_results = {}
         self._quote_ready = {}
@@ -117,9 +120,12 @@ class MarketScheduler:
                 quote_error = str(exc)
         return MarketTick(symbol, bars, book, rates, marks, history_error, quote_error)
 
-    def _quote(self, symbol):
+    def _quote(self, symbol, fast=False):
         try:
-            book = self.source.position_orderbook(symbol)
+            getter = (self.source.position_book_fast
+                      if fast and callable(getattr(self.source, 'position_book_fast', None))
+                      else self.source.position_orderbook)
+            book = getter(symbol)
             if not book_is_fresh(book['at']):
                 # Preserve the rejected observation so the owning run_loop
                 # can perform its existing last-moment refresh. It never
@@ -266,7 +272,19 @@ class MarketScheduler:
                 if (symbol in self.quote_jobs or symbol in quote_delivered
                         or self.quote_due.get(symbol, 0) > time.monotonic()):
                     continue
-                self.quote_jobs[symbol] = self.quote_pool.submit(symbol, self._quote, symbol)
+                # The first book for a recovered/legacy account MUST obtain
+                # full mark and risk proof. Only when tiers were already
+                # validated by the owner may the independent position quote
+                # lane skip redundant risk-limit and all-ticker requests.
+                data = state.get('margin_data', {}).get(symbol, {})
+                risk_age = time.time() - data.get('risk_at', 0) if isinstance(data, dict) else float('inf')
+                verified_tiers = (
+                    state.get('margin_model') == MODEL
+                    and isinstance(data, dict) and data.get('symbol') == symbol
+                    and isinstance(data.get('tiers'), list) and bool(data['tiers'])
+                    and -0.5 <= risk_age < 240
+                )
+                self.quote_jobs[symbol] = self.quote_pool.submit(symbol, self._quote, symbol, verified_tiers)
         # A zero-period batch must hand its final results to the worker before
         # beginning another round. Otherwise very fast symbols reoccupy slots
         # before the owner has processed the completed ticks.

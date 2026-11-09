@@ -760,6 +760,23 @@ class PublicData:
             self._thread.position_history = previous_history
             self._thread.position_mark = previous
 
+    def position_book_fast(self, symbol):
+        """Book-only refresh for VERIFIED open exposure.
+
+        Only the scheduler may select this path after checking the account's
+        retained public risk-tier evidence. An unknown/legacy financial model
+        always takes position_orderbook() to recover full margin proof.
+        Replay adapters are never redirected to the network by this method.
+        """
+        if type(self) is not PublicData:
+            return self.position_orderbook(symbol)
+        prior = getattr(self._thread, 'position_mark', False)
+        self._thread.position_mark = True
+        try:
+            return self.orderbook(symbol, refresh_margin=False)
+        finally:
+            self._thread.position_mark = prior
+
     def portfolio_marks(self, symbols=None):
         """One validated public Bybit ticker snapshot for all existing exposure.
 
@@ -808,7 +825,7 @@ class PublicData:
             )
         return marks
 
-    def margin_snapshot(self, symbol):
+    def risk_tiers(self, symbol):
         from .margin import MarginUnavailable, parse_tiers
 
         clock.ensure()
@@ -838,20 +855,21 @@ class PublicData:
             tiers = parse_tiers(rows, symbol)
         except MarginUnavailable as exc:
             raise DataUnavailable(str(exc)) from exc
+        if risk_at is None or not -0.5 <= market_now() - risk_at <= 300:
+            raise DataUnavailable("Устарели ступени риска Bybit")
+        return dict(symbol=symbol, tiers=tiers, risk_at=risk_at)
+
+    def margin_snapshot(self, symbol):
+        # New entries require both independently verified public sources.
+        # Open positions refresh tiers on a separate bounded lifecycle.
+        risk = self.risk_tiers(symbol)
         account_marks = self.portfolio_marks()
         if symbol not in account_marks:
             raise DataUnavailable("В пакете mark-price нет выбранной монеты")
-        if risk_at is None or not -0.5 <= market_now() - risk_at <= 300:
-            raise DataUnavailable("Устарели ступени риска Bybit")
-        return dict(
-            symbol=symbol,
-            tiers=tiers,
-            risk_at=risk_at,
-            quote=account_marks[symbol],
-            account_marks=account_marks,
-        )
+        return {**risk, "quote": account_marks[symbol],
+                "account_marks": account_marks}
 
-    def orderbook(self, symbol):
+    def orderbook(self, symbol, *, refresh_margin=True):
         clock.ensure()
         instrument = self.get(
             "https://api.bybit.com/v5/market/instruments-info",
@@ -871,10 +889,11 @@ class PublicData:
         # Margin data is independent of executable liquidity. Its failure must
         # block increases in exposure without blocking protective exits.
         margin_data, margin_error = None, ""
-        try:
-            margin_data = self.margin_snapshot(symbol)
-        except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
-            margin_error = str(exc)
+        if refresh_margin:
+            try:
+                margin_data = self.margin_snapshot(symbol)
+            except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
+                margin_error = str(exc)
         # Metadata may require a separate network round trip on the first read.
         # Fetch the executable snapshot only after that round trip has finished.
         response = self.bybit("orderbook", {"symbol": symbol, "limit": 200})
