@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_SCHEDULER_RECONCILIATION_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_DIRECT_DATA_UNBOUNDED_FLEET_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -76,7 +76,7 @@
     "bcc/indicators.py": "7b906a08f76a78cc7dead46d5c976d6442cbea95d303348ac962fd132137c48a",
     "bcc/inspection.py": "b2f1d65d90c875220c83ab27ac585c422749c8e00dc41656b3beba0d5ff467a4",
     "bcc/launch_claim.py": "b70b233d0bd38c2f42b7ad72b3583d60c7600ddf7ae8c0ee0ad281e643ec6ecf",
-    "bcc/lifecycle.py": "a2a96045689576175bbbbe9797811ba533626a94464321e541ab3b69b15a950b",
+    "bcc/lifecycle.py": "b0e202a0dfecff75961377aecfc3b7370b14b07dbfac19eb89034584e221637c",
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
     "bcc/market.py": "d27aaf93cd5db3f4fed54473d9367ecf3c3e348d56532abc9cb91569c32e92ec",
@@ -390,6 +390,8 @@
     "docs/RESOURCE_SCALING_CONTRACT.md": "0acd6330c15ba6bf033fe3adc760fe5454e5b5c76a59fce139f2aad646ad3f01",
     "tests/test_dispatch_resource_scaling.py": "cdcb3d7465bbd41e14b7236aa383877cf3a5a5eaa104229282633a61cf1dd54d",
     "tests/test_resource_policy_no_fixed_ceiling.py": "5c0994c9bed071189479f08cbf00b362157a74f01b5159f2bd894e226918712e",
-    "tests/test_veles_resource_scaled_accounts_replay.py": "4afca300be39d0a6e8e555ea1e1cb3f8d9f578a213b8bf1f2cc3a752afdef7f6"
+    "tests/test_veles_resource_scaled_accounts_replay.py": "4afca300be39d0a6e8e555ea1e1cb3f8d9f578a213b8bf1f2cc3a752afdef7f6",
+    "tests/test_direct_transport_default.py": "d4f16b562b5a4a8b89d39bd4c67a2f7850dc10fd1bd9a0fa5234d27517f116d4",
+    "tests/test_unbounded_bot_cardinality.py": "af9a18b971b7a784253bd81945d006dad38bd1af5b86d1eabf4fd9a5871d124a"
   }
 }

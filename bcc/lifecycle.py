@@ -19,6 +19,27 @@ from .launch_claim import (
 from .storage import BotBusy, BotLock, atomic_json, load_json, guard_paper_recovery
 
 
+def configure_public_market_transport(env, repo_root, strategy):
+    """Choose one public-data transport when launching a new PAPER worker.
+
+    Direct requests through PublicData and its shared PublicCache are the
+    production default. The cross-process cache keeps host budgets, leases,
+    denial fences, and singleflight; a Hub producer is not a prerequisite.
+    A deliberate opt-in retains the isolated Hub integration for experiments.
+    This function is called only for new workers, never an existing PID.
+    """
+    env["BCC_PUBLIC_CACHE"] = str(Path(repo_root) / "market_cache.sqlite")
+    # Parent shells, QA runners and previous workers must not silently force
+    # a new child back to the Hub client mode.
+    env.pop("BCC_MARKET_HUB_MODE", None)
+    if (strategy != "POLYMARKET"
+            and os.environ.get("BCC_EXPERIMENTAL_MARKET_HUB") == "1"):
+        ensure_hub(repo_root)
+        env["BCC_MARKET_HUB_MODE"] = "client"
+        return "hub"
+    return "direct"
+
+
 class Lifecycle:
     def __init__(self, repo):
         self.repo = repo
@@ -163,12 +184,7 @@ class Lifecycle:
         env = python_environment()
         env["PYTHONPATH"] = str(app_root)
         env["PYTHONIOENCODING"] = "utf-8"
-        env["BCC_PUBLIC_CACHE"] = str(self.repo.root / "market_cache.sqlite")
-        # Polymarket uses a separate market/settlement adapter; the public
-        # Bybit hub must not launch for bots that never subscribe to it.
-        if cfg["strategy"] != "POLYMARKET":
-            ensure_hub(self.repo.root)
-            env["BCC_MARKET_HUB_MODE"] = "client"
+        configure_public_market_transport(env, self.repo.root, cfg["strategy"])
         with BotLock(folder):
             check_launch_lease(folder)
             guard_paper_recovery(folder)
