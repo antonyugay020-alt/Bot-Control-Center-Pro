@@ -71,8 +71,15 @@ def partitions(inventory, groups=6, *, excluded=()):
     process_module = 'test_process.py'
     buckets = [[] for _ in range(groups)]
     weights = [0] * groups
+    # Native Qt imports have a process-wide C++/Shiboken lifecycle and must
+    # never share a pytest interpreter with unrelated HTTP/process/SQLite
+    # integration tests. Their own exit code remains mandatory evidence.
+    qt_files = sorted(name for name in modules if (
+        name == 'test_qt.py' or '_qt' in name
+        or name == 'test_settings_tree_contrast.py'
+    ))
     for name, weight in sorted(modules.items(), key=lambda kv: (-kv[1], kv[0])):
-        if name in (costly, process_module):
+        if name in (costly, process_module) or name in qt_files:
             continue
         idx = weights.index(min(weights))
         buckets[idx].append(name)
@@ -82,6 +89,10 @@ def partitions(inventory, groups=6, *, excluded=()):
         # Exercise the OS lifecycle before unrelated modules can accumulate
         # shared-state or orphaned worker side effects.
         result.insert(0, [process_module])
+    if qt_files:
+        # One disposable QApplication, one full native Qt lifecycle, one
+        # process exit verdict; a Qt shutdown crash cannot become PASS.
+        result.append(qt_files)
     if costly in modules:
         result.append([costly])
     if sorted(x for bucket in result for x in bucket) != sorted(modules):
@@ -204,7 +215,12 @@ def run(inventory, output, *, shard_timeout=360, heavy_timeout=600, headless=Fal
         budget = heavy_timeout if 'test_veles_800_accounts_replay.py' in files else shard_timeout
         xml = output / (name + '.xml')
         log = output / (name + '.log')
-        args = [sys.executable, '-X', 'faulthandler', '-m', 'pytest', '-vv',
+        native_qt = files and all(
+            f == 'test_qt.py' or '_qt' in f
+            or f == 'test_settings_tree_contrast.py'
+            for f in files)
+        entrypoint = ('tools.run_native_qt_shard' if native_qt else 'pytest')
+        args = [sys.executable, '-X', 'faulthandler', '-m', entrypoint, '-vv',
                 '-o', 'faulthandler_timeout=60', '--durations=15',
                 *('tests/' + f for f in files), '--junitxml=' + str(xml)]
         env = python_environment()

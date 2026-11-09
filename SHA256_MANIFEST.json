@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_EXPLICIT_COLLATERAL_HEADROOM_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_NATIVE_QT_SHUTDOWN_PROCESS_ISOLATION_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -159,7 +159,7 @@
     "tests/test_constructor_postcommit_unified_run27.py": "85bd960a4f176aca4fbc34067e9786451c8ee20876396d4307a141ddfea22723",
     "tests/test_constructor_preflight_run30.py": "f8e7c53cfbe3a060e0cac0f7781e7e0f80afb09f088916dcab1ec9bdef922aef",
     "tests/test_constructor_review_isolation_headless.py": "79ecc5d883087835755965407b9abc7a2fdc9fd97e15d476ac972c720f39c92e",
-    "tests/test_constructor_review_isolation_qt.py": "c1ce3333973357a07cd4305d6eacc1a9c1c96d36b69ae0b1f8a430b9a5aada41",
+    "tests/test_constructor_review_isolation_qt.py": "5e708f9f434f3d9eaa51527ddfc7c4c4170af9f9304a09206f8ede1c6563f004",
     "tests/test_constructor_review_purity.py": "3a4f3a35d7afe4fd5d62a9caa2cfa73c0ba3f65fa56e86c00027fc2ce338f117",
     "tests/test_constructor_revision_transactions.py": "cccf50e6b04da5489d7b56689d72582bc1da31f26e78730a251d00b98823dbc1",
     "tests/test_constructor_roundtrip_integration.py": "c4e23ff345942d520db3e9db20cf40d181337fc1c9eb7eb9e7d75697269e3091",
@@ -372,10 +372,10 @@
     "tools/export_test_report.py": "09f85e9ae97cf7bf0ba689d3a5f3603a6e915a37ae5fb2f78c735503574d9b4b",
     "tools/market_hub_service.py": "d881aa14069bb80dc4d15a4fc7cac74db7c443ec31b822ebfa9ae1dd871f3c47",
     "tools/process_guard.py": "ea2d2c5addc3b55508c77ef22330e9fdecfa27485ac1e3a67b7833e818c8a1b4",
-    "tools/qa_budgets.py": "d987f3a967c11570ceddb26aa16ef4657a789be3a6b34f0d3eacf726c6852242",
+    "tools/qa_budgets.py": "de1d0ef0c1cf252d2cf18ee825ec4b6cf259463e7b7300e63c00fe7524396f08",
     "tools/qa_locale.py": "a46a7105622cb23629465e7051ce0b3492fdc7bc7f67f3ba88cd144e1d79fa9a",
     "tools/repeat_full_qa.py": "d1035b270f0ec25eef23c782326baa01c244c33bc5d9c233e872758bd105855d",
-    "tools/run_partitioned_tests.py": "e1d4a48833ef4c54579608c420216dd72232f35e6d8264535f4a66b0f85a8ebf",
+    "tools/run_partitioned_tests.py": "790a60d26b5579bd8ef5ecaa3d6ef0a9e6e31385210a1f9e0dd8c55336663393",
     "tools/seal_source.py": "bd17e44d377a6c746f1e95358158c12d04fe616176298c6b89d22d0687c4601f",
     "tools/start_windows_check.ps1": "a774ae6d90b784461811b0ab810af9c04547108c38ab749d7c11a700f4278a66",
     "tools/verify_package.py": "ed69ce839b5b888af765311824dbd9129552e8a2b0d86f8e1ef751eac0277f1e",
@@ -401,6 +401,8 @@
     "tests/test_coin_budget_engine_contract.py": "499ae71b57539a4dd822f89f7cc72f837e2ab02149bf8f7bec89607668f2a768",
     "tests/test_coin_allocation_qt.py": "a353998d70989d80c4f1d9f21fe5249b3c7370963373edb64dae3bd625ad688b",
     "tests/test_many_coin_budget_risk_integration.py": "2508db1ded5ed78452b3fda2aa0b1b41b91eece480c0062e16181c40652b8e5f",
-    "tests/test_capital_headroom_19_positions.py": "024715bd7948906948a76880236160cb4d05f4bd0a58767c086aeffcaa4aa590"
+    "tests/test_capital_headroom_19_positions.py": "024715bd7948906948a76880236160cb4d05f4bd0a58767c086aeffcaa4aa590",
+    "tools/run_native_qt_shard.py": "883481d990e5762c593beb7f423e80e889dfbf4791b972b41688b5aa843d9c19",
+    "tests/test_native_qt_shard_lifecycle.py": "ea57bfa6732ea15805085c0c9cf8d4f29016084070b2b5d7ef4fa8280d4a5dc1"
   }
 }

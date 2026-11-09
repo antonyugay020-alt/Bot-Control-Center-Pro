@@ -29,7 +29,7 @@ def test_veles_review_and_grid_preview_are_independent_on_reselection(app):
         initial = wizard.review.text()
         assert 'Изменения относительно открытой конфигурации' in initial
         assert 'capital' in initial
-        assert 'Маржа из исходного депозита' in wizard.preview_status.text()
+        assert 'Маржа на секцию: 31.25 USDT' in wizard.preview_status.text()
         assert wizard.preview_status.objectName() == 'wizardGridPreviewStatus'
         wizard.preview_coin.setCurrentIndex(1)
         wizard.update_summary()
