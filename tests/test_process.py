@@ -158,7 +158,21 @@ def launch(life, folder, runner, *, accept_start=None):
     def ready():
         if proc.poll() is not None:
             raise RuntimeError(f"Worker launcher exited with code {proc.returncode}")
-        return life.active_snapshot(folder)
+        snapshot = life.active_snapshot(folder)
+        if not isinstance(snapshot, dict) or snapshot.get("status") != "RUNNING":
+            return None
+        # Owned Popen + process.json is an early launch handshake, not the
+        # independent OS identity that other controllers must trust after a
+        # Qt/guardian restart. Windows may expose the child command line a
+        # little later than the worker publishes its process.json. Never let
+        # the fast owned-child path stand in for independently verified PID,
+        # birth time, token and folder.
+        independent = life.process(folder)
+        if independent is None or independent.pid != snapshot["pid"]:
+            return None
+        if proc.poll() is not None:
+            raise RuntimeError("Worker exited during independent identity confirmation")
+        return snapshot
 
     try:
         wait_for(ready, seconds=20)
@@ -187,13 +201,17 @@ def launch(life, folder, runner, *, accept_start=None):
         raise AssertionError(
             f"Worker startup failed; launcher PID={proc.pid}, worker PID={(status or {}).get('pid')}, exit={proc.poll()}\n{detail}"
         ) from exc
+    # This evidence is recorded only after the actual independent
+    # verification passed; a transient fast-path observation cannot mark
+    # the Windows acceptance worker as confirmed.
+    confirmed = life.active_snapshot(folder)
     atomic_json(
         folder / "test_launch.json",
         {
             "launcher_pid": proc.pid,
-            "worker_pid": life.active_snapshot(folder)["pid"],
-            "worker_parent_pid": life.active_snapshot(folder).get("parent_pid"),
-            "independently_verified": life.process(folder) is not None,
+            "worker_pid": confirmed["pid"],
+            "worker_parent_pid": confirmed.get("parent_pid"),
+            "independently_verified": True,
         },
     )
     return proc
@@ -304,6 +322,37 @@ def test_independent_process_identity_with_native_procfs(tmp_path):
         if proc.poll() is None:
             proc.kill()
             proc.wait()
+
+
+def test_launch_never_reports_ready_before_independent_os_identity(tmp_path, monkeypatch):
+    """A live launcher/JSON alone is not proof that Windows sees our worker."""
+    repo = Repository(tmp_path / "app")
+    life = Lifecycle(repo)
+    runner = tmp_path / "replay_worker.py"
+    runner.write_text(RUNNER, encoding="utf-8")
+    folder, _ = setup_bot(repo, runner)
+    real_process = life.process
+    probes = []
+
+    def delayed_independent_identity(path):
+        probes.append(path)
+        # Model the short native-Windows command-line visibility delay.
+        if len(probes) <= 4:
+            return None
+        return real_process(path)
+
+    monkeypatch.setattr(life, "process", delayed_independent_identity)
+    proc = launch(life, folder, runner)
+    try:
+        assert len(probes) >= 5, "Fast owned-child snapshot bypassed OS verification"
+        evidence = json.loads((folder / "test_launch.json").read_text(encoding="utf-8"))
+        assert evidence["independently_verified"] is True
+        assert evidence["worker_pid"] == life.active_snapshot(folder)["pid"]
+        assert proc.poll() is None
+    finally:
+        if proc.poll() is None:
+            life.stop(folder)
+            proc.wait(timeout=7)
 
 
 def test_worker_stops_automatically_after_deal_when_configured(tmp_path):

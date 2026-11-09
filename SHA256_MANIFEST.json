@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_DIRECT_DATA_UNBOUNDED_FLEET_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_NATIVE_PROCESS_IDENTITY_READINESS_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -249,7 +249,7 @@
     "tests/test_position_journal_recovery.py": "f315e2d2f283dd30816e9d533ac8ae2f51dd7ceaf98ea3ee6938308bced5196c",
     "tests/test_position_report.py": "fda3000d2f1f796238335b555c4b274f15ad409f0306d13290c0415274e55d99",
     "tests/test_priority_control_plane_system.py": "54d39800dfc2df4424bf77553628ed1ca01691d34d8046006e3b2cf3b91481ab",
-    "tests/test_process.py": "8d1e365dd7da79856789a60b3db6178baddcf5f4cd0f7f198da141c487ce6678",
+    "tests/test_process.py": "5e2ef8c2c54336589d77b24c308ee865a4e5c7c46e8e467ba4c6c034247b2d64",
     "tests/test_process_os.py": "e0353c6bb045bb66528abeb5bc005aa6fc2e8a75e3adeebae2764ae4d684829d",
     "tests/test_provider_access_boundaries.py": "3800356bf2893b9f32bbe48d2d265434bb40fca80a2c66e508d6ca802eb03585",
     "tests/test_provider_denial_admission.py": "5b29511c3ebc4f7022cd83f93a678c2bc883a86b47a3d74930e054b0c7f7b95f",
