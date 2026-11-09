@@ -379,7 +379,7 @@ class PublicData:
         if 'orderbook' in url or '/book' in url:
             return True
         return (isinstance(params, dict) and (
-            any(route in url for route in ('/instruments-info', '/risk-limit'))
+            any(route in url for route in ('/instruments-info', '/risk-limit', '/kline'))
             and bool(params.get('symbol'))
             or '/tickers' in url and params.get('category') == 'linear'))
 
@@ -742,6 +742,19 @@ class PublicData:
             return self.orderbook(symbol)
         finally:
             self._thread.position_mark = prior
+
+    def position_candles(self, symbol, required=500):
+        """Prioritize open-position RSI history without weakening freshness.
+
+        The same host budgets, verified candles and provider restrictions apply.
+        Restore caller thread context on successful and failed reads.
+        """
+        previous = getattr(self._thread, 'position_mark', False)
+        self._thread.position_mark = True
+        try:
+            return self.candles(symbol, required)
+        finally:
+            self._thread.position_mark = previous
 
     def margin_snapshot(self, symbol):
         from .margin import MarginUnavailable, parse_tiers

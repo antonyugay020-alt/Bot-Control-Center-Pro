@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_WINDOWS_SCHEMA_CONTRACT_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_EXPOSURE_EXIT_PRIORITY_20261109_INTERNAL_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -79,7 +79,7 @@
     "bcc/lifecycle.py": "a2a96045689576175bbbbe9797811ba533626a94464321e541ab3b69b15a950b",
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
-    "bcc/market.py": "e45092568fe07e07eaeb518bea77a882a8912b9ff10c8be45d9dc42da0628521",
+    "bcc/market.py": "01491833fb2dbe60db40d8257cf11334349338cd351dca83a4d19e7d4baa2244",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
     "bcc/market_hub.py": "087a11770421786486f81b83e36c6684a048879a405f3b870fd200c7a2380bce",
@@ -97,7 +97,7 @@
     "bcc/runtime_paths.py": "7acdb59ad9b6b0533a430072a0017151f20d9fe1aa9cab219d0c974a9bcb60fc",
     "bcc/runtime_process.py": "ca867b2528d80bf3c18a2d2cacf964b9cf59e42f17fb240036bdd7765d607900",
     "bcc/runtime_service.py": "5124f6b6541fb02aff743b256654572024c4d77c0f89fcef048a3f8b0f14a523",
-    "bcc/scheduler.py": "f90077a49afeb8f05ad66a860270b034e3ae6e87c0029484b5599c79c37ba919",
+    "bcc/scheduler.py": "6b1edc613838659e988dc0c34b7cdb8f7020cf27fe234a4c23eed5ea23d115ac",
     "bcc/section_hierarchy.py": "d510c55f542234e59f2dcb4028529ee03a320bd868818a73b94cf7f8306e5674",
     "bcc/service_guard.py": "e622ffc5120972cfd2c6acdfeb6dd74b6b17228a562e193e9daa516483661ebb",
     "bcc/shared_risk.py": "807fa433a3724af8cdedcabe05427071f156d6ec397ca29055dd6e0ddad2adf1",
@@ -354,7 +354,7 @@
     "tests/test_w1_automatic_report.py": "f539c3fc92bdf49181afdd3dfa2f4423aa5b479f40a05eb08e4a7c1e0c6ff5ad",
     "tests/test_w2_market_data_architecture.py": "f55cfec7c07597d484b3f71876d98c710e029d47014ea457e283edf915506585",
     "tests/test_w3_integrated_recovery.py": "7034e611c662503e6705bde3da9e94d073018ef84c3cf293e7de41322adaecc7",
-    "tests/test_w4_priority_market_integrity.py": "298c3c2049a6ccc6d33f2dddfd273a350ab57e4ab2864e8da016c3736a318e28",
+    "tests/test_w4_priority_market_integrity.py": "704c4a67cfcf9601b634e850de673cbce363f710d27ae862e2282afb10305794",
     "tests/test_w5_end_to_end_market_pipeline.py": "9f348d511b218febe8885355f161dab67a4599f645f842d00563f927d6dd8374",
     "tests/test_w6_position_capacity.py": "628194b9d4ab834dbe0d82b2e8f1c46462df7920a179ab9bc44080965dd754c8",
     "tests/test_windows_package.py": "7a535dd88cb7e0f010488fdcd0a20dac09ade98726a74119279ede292eab5fa2",

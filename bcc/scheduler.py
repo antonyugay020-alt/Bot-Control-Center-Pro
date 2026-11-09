@@ -76,7 +76,13 @@ class MarketScheduler:
         bars = []
         if manage:
             try:
-                bars = self.source.candles(symbol, required)
+                # Exit-signal candles use the urgent position-data transport.
+                # The separate quote lane still gates all actual execution.
+                position_reader = getattr(self.source, 'position_candles', None)
+                if history_only and urgent and callable(position_reader):
+                    bars = position_reader(symbol, required)
+                else:
+                    bars = self.source.candles(symbol, required)
             except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
                 history_error = str(exc)
         rates = []
@@ -122,21 +128,16 @@ class MarketScheduler:
             return None, str(exc)
 
     def collect(self, state, timeout=0.2):
-        symbols = list(
-            dict.fromkeys(
-                self.cfg["symbols"]
-                + [p["symbol"] for p in state["positions"].values()]
-                + [p["symbol"] for p in state.get("pending", {}).values()]
-                + [p["symbol"] for p in state.get("funding_archive", {}).values()]
-            )
-        )
-        priority = list(
-            dict.fromkeys(
-                p["symbol"]
-                for p in list(state["positions"].values())
-                + list(state.get("pending", {}).values())
-            )
-        )
+        draining = state.get("strategy", {}).get("draining", False)
+        protected = list(dict.fromkeys(
+            [p["symbol"] for p in state["positions"].values()]
+            + [p["symbol"] for p in state.get("pending", {}).values()]
+            + [p["symbol"] for p in state.get("funding_archive", {}).values()]
+        ))
+        # Draining is an exposure-only lifecycle: hundreds of configured
+        # scan symbols cannot delay exit/settlement of current positions.
+        symbols = list(dict.fromkeys(([] if draining else self.cfg["symbols"]) + protected))
+        priority = protected
         priority_set = set(priority)
         scan = [s for s in symbols if s not in priority_set]
         # A portfolio with unmarked/unfresh positions is in risk-management
@@ -144,19 +145,18 @@ class MarketScheduler:
         marks = state.get('marks', {})
         risk_mode = any(not quote_is_recent(marks.get(symbol), maximum=3)
                         for symbol in priority_set)
-        # A reserved trickle of scanning must remain available: it can
-        # produce history/snapshots but cannot admit trades while marks are
-        # missing (process_tick's portfolio-wide _entry_blocked guard).
-        # Complete scanner starvation also breaks recovery for newly added
-        # symbols and users' configured portfolios.
+        # When exposure is unmarked, spend admission on protection first.
+        # Discovery resumes when quotes recover; draining never discovers.
+        if risk_mode:
+            scan = []
         self.last_pressure = {
             'configured_symbols': len(self.cfg['symbols']),
             'priority_symbols': len(priority),
             'unmarked_priority': sum(not quote_is_recent(marks.get(s), maximum=3)
                                      for s in priority_set),
-            'scan_paused': False,
-            'entry_admission_paused': risk_mode,
-            'scan_throttled': risk_mode,
+            'scan_paused': draining or risk_mode,
+            'entry_admission_paused': draining or risk_mode,
+            'scan_throttled': draining or risk_mode,
         }
         # Drain finished jobs before admitting new work. Without this, an
         # already-finished future occupies a slot for a whole collect cycle.
@@ -177,13 +177,18 @@ class MarketScheduler:
                 self.due[symbol] = time.monotonic() + self.period
                 try:
                     tick = job.result()
+                    if (draining or risk_mode) and symbol not in priority_set:
+                        # Never deliver obsolete discovery work to the
+                        # account writer during exposure recovery.
+                        continue
                     if self._separate_quotes and (symbol in priority_set or symbol in self._history_only):
                         # This plane publishes indicator inputs only. A scanner
                         # admitted just before OPEN must not emit a second book
                         # for the same position alongside the quote lane.
-                        self._history_results[symbol] = MarketTick(
-                            symbol, tick.bars, None, tick.rates, tick.funding_marks,
-                            tick.history_error, '')
+                        self._history_results[symbol] = (
+                            time.monotonic(), MarketTick(
+                                symbol, tick.bars, None, tick.rates, tick.funding_marks,
+                                tick.history_error, ''))
                     else:
                         completed.append((symbol, tick, None))
                 except Exception as exc:
@@ -208,7 +213,12 @@ class MarketScheduler:
                         self._quote_ready[symbol] = book['at']
                     else:
                         self._quote_ready.pop(symbol, None)
-                    history = self._history_results.get(symbol)
+                    saved = self._history_results.get(symbol)
+                    # An old indicator snapshot cannot be replayed forever
+                    # alongside newer executable books.
+                    history = saved[1] if saved and time.monotonic() - saved[0] <= 3 else None
+                    if saved and history is None:
+                        self._history_results.pop(symbol, None)
                     tick = MarketTick(symbol, history.bars if history else [], book,
                                       history.rates if history else [],
                                       history.funding_marks if history else {},
@@ -219,6 +229,10 @@ class MarketScheduler:
             if self.quote_pool is not None:
                 self.quote_pool.collect()
         drain_quotes()
+        # Drop old signal evidence as soon as exposure closes.
+        for symbol in set(self._history_results) - priority_set:
+            self._history_results.pop(symbol, None)
+            self._quote_ready.pop(symbol, None)
         if self._separate_quotes and priority:
             if self.quote_pool is None:
                 self.quote_pool = StrategyDispatcher(workers=self.quote_capacity,
@@ -254,7 +268,7 @@ class MarketScheduler:
                     or self.due.get(symbol, 0) > now):
                 return False
             history_only = self._separate_quotes and symbol in priority_set
-            if history_only and (risk_mode or not book_is_fresh(self._quote_ready.get(symbol, 0))):
+            if history_only and not book_is_fresh(self._quote_ready.get(symbol, 0)):
                 return False
             opened = [
                 p["opened"]
@@ -294,8 +308,8 @@ class MarketScheduler:
                     self.scan_turn = not self.scan_turn
                 # Normal queues below cannot submit a second job.
 
-        # Revisit positions and accepted grids before continuing a large scan.
-        # Reserve some jobs for discovery so many open deals cannot starve it.
+        # Protect existing positions and accepted grids before discovery.
+        # During draining and stale marks no new scans enter this queue.
         active_jobs = sum(s in priority_set for s in self.jobs)
         priority_limit = (max(1, self.capacity-1) if risk_mode else self.priority_limit)
         for _ in range(len(priority)):

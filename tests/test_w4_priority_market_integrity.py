@@ -222,3 +222,67 @@ def test_urgent_mark_only_falls_back_to_fail_closed_if_public_book_is_missing():
         assert scheduler.last_pressure['entry_admission_paused']
     finally:
         scheduler.close()
+
+
+def test_exposure_exit_history_survives_draining_822_scanned_symbols():
+    from bcc.scheduler import MarketScheduler
+    calls = []
+    class Source:
+        def position_orderbook(self, symbol):
+            calls.append(('book', symbol))
+            return dict(at=time.time(), bids=[[10, 10]], asks=[[11, 10]])
+        def position_candles(self, symbol, required):
+            calls.append(('history', symbol))
+            return [{'t': int(time.time()*1000), 'symbol': symbol}]
+        def candles(self, symbol, required):
+            calls.append(('scanner', symbol))
+            return []
+        def orderbook(self, symbol):
+            calls.append(('scanner_book', symbol))
+            return dict(at=time.time(), bids=[[10, 10]], asks=[[11, 10]])
+        def funding(self, symbol):
+            return []
+    state = dict(positions={f'p{i}':dict(symbol=f'OPEN{i}USDT', opened=1)
+                            for i in range(8)},
+                 pending={}, funding_archive={}, marks={}, strategy=dict(draining=True))
+    scheduler = MarketScheduler(Source(), {'symbols':[f'SCAN{i}USDT' for i in range(822)]},
+                                lambda *_:100, workers=8, period=.05)
+    try:
+        served = set()
+        for _ in range(100):
+            for symbol, tick, error in scheduler.collect(state, timeout=.02):
+                if error is None and tick.book is not None and tick.bars:
+                    served.add(symbol)
+            if len(served) == 8:
+                break
+        assert served == {f'OPEN{i}USDT' for i in range(8)}
+        assert {s for kind, s in calls if kind=='history'} == served
+        assert all(s.startswith('OPEN') for kind, s in calls)
+        assert scheduler.last_pressure['scan_paused']
+    finally:
+        scheduler.close()
+
+
+def test_position_candles_are_fenced_by_shared_hub_priority(tmp_path, monkeypatch):
+    monkeypatch.setenv('BCC_PUBLIC_CACHE', str(tmp_path / 'market.sqlite'))
+    monkeypatch.setenv('BCC_MARKET_HUB_MODE', 'client')
+    client = PublicData()
+    url = 'https://api.bybit.com/v5/market/kline'
+    params = dict(category='linear', symbol='BTCUSDT', interval='1', limit=100)
+    key, owner, _ = client.shared.begin(url, params, 'api.bybit.com')
+    client.shared.finish(key, owner, 'api.bybit.com', {'result':{'list':[]}}, ttl=20)
+    client.candles = lambda symbol, required: client.get(url, params)
+    reg = HubRegistry(client.shared.path)
+    try:
+        client.get(url, params)
+        subkey = HubRegistry.identity(url, params)[0]
+        with reg._connect() as db:
+            assert db.execute('SELECT priority_until FROM hub_subscriptions WHERE k=?',
+                              (subkey,)).fetchone()[0] == 0
+        client.position_candles('BTCUSDT', 100)
+        with reg._connect() as db:
+            assert db.execute('SELECT priority_until FROM hub_subscriptions WHERE k=?',
+                              (subkey,)).fetchone()[0] > time.time()
+        assert not getattr(client._thread, 'position_mark', False)
+    finally:
+        client.close()
