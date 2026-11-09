@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from .strategy_dispatch import StrategyDispatcher
 from .market import DataUnavailable
 from .market_clock import market_now, quote_is_recent, book_is_fresh
+from .margin import MODEL, MarginUnavailable, snapshot
 
 
 @dataclass
@@ -145,18 +146,31 @@ class MarketScheduler:
         ))
         priority_set = set(priority)
         scan = [s for s in symbols if s not in priority_set]
-        # A portfolio with unmarked/unfresh positions is in risk-management
-        # mode: do not spend HTTP/worker capacity discovering new entries.
+        # Risk admission uses the authoritative valuation feed for the
+        # account's financial model. Cross/isolated MODEL positions are valued
+        # by public mark-price/risk-tier snapshots, not by executable depth.
+        # Depth freshness is still required for EVERY actual execution.
         marks = state.get('marks', {})
-        risk_mode = any(not quote_is_recent(marks.get(symbol), maximum=3)
-                        for symbol in priority_set)
+        unquoted = sum(not quote_is_recent(marks.get(symbol), maximum=3)
+                       for symbol in priority_set)
+        if state.get('margin_model') == MODEL:
+            def missing_public_margin(symbol):
+                try:
+                    snapshot(state, symbol)
+                    return False
+                except (MarginUnavailable, ValueError, KeyError, TypeError):
+                    return True
+            unpriced = sum(missing_public_margin(symbol) for symbol in priority_set)
+        else:
+            unpriced = unquoted
+        risk_mode = unpriced > 0
         # A risk-limited scan lane must remain for fairness and funding.
         # Entry execution is still denied while any open position is unmarked.
         self.last_pressure = {
             'configured_symbols': len(self.cfg['symbols']),
             'priority_symbols': len(priority),
-            'unmarked_priority': sum(not quote_is_recent(marks.get(s), maximum=3)
-                                     for s in priority_set),
+            'unmarked_priority': unpriced,
+            'unquoted_priority': unquoted,
             'scan_paused': draining,
             'entry_admission_paused': draining or risk_mode,
             'scan_throttled': draining,

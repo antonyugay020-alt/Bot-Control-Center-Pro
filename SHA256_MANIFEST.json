@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_LEGACY_FAIR_DISCOVERY_RECOVERY_20261109_INTERNAL_NOT_RELEASE",
+  "checkpoint": "BCC_COHERENT_MARGIN_MARK_AND_DEPTH_RESTORE_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -92,12 +92,12 @@
     "bcc/preferences.py": "6cd532dbcd0c594be409d1914bea63fd2db901938cab9fb5a08056885cfae743",
     "bcc/process_identity.py": "7e95f57f32c5ae59b0c04e61ac6ba9d462849fcb7cdd46357902abd9ebf86bfd",
     "bcc/process_os.py": "943534d17560dd42cf0cbd8697d07995fd8ce2c1bc2e9218f9ae4a812a88f11d",
-    "bcc/runtime.py": "b5e135a843972a906a9144efcfdd3e551f0dfe914e56ba08b17d7191538795ca",
+    "bcc/runtime.py": "4c38d96543e054f5db7004ff8fab533f35c7445d7bb2854744116183ca9922b5",
     "bcc/runtime_health.py": "29e8c2bda444899b66021a57455ad79a02974f4699bd5e2ff218f92116dc5412",
     "bcc/runtime_paths.py": "7acdb59ad9b6b0533a430072a0017151f20d9fe1aa9cab219d0c974a9bcb60fc",
     "bcc/runtime_process.py": "ca867b2528d80bf3c18a2d2cacf964b9cf59e42f17fb240036bdd7765d607900",
     "bcc/runtime_service.py": "5124f6b6541fb02aff743b256654572024c4d77c0f89fcef048a3f8b0f14a523",
-    "bcc/scheduler.py": "1b885f01ba537cb5acf1adc6cba76c39234ca3bdbe8560d3856a5e1d437705bc",
+    "bcc/scheduler.py": "df53c7ef0356ec2fa0fd470ea12a8a9de2d7652f1ff918bb3b52ce6ee8fef169",
     "bcc/section_hierarchy.py": "d510c55f542234e59f2dcb4028529ee03a320bd868818a73b94cf7f8306e5674",
     "bcc/service_guard.py": "e622ffc5120972cfd2c6acdfeb6dd74b6b17228a562e193e9daa516483661ebb",
     "bcc/shared_risk.py": "807fa433a3724af8cdedcabe05427071f156d6ec397ca29055dd6e0ddad2adf1",
@@ -108,7 +108,7 @@
     "bcc/supervisor.py": "2a7da36d4ec9b514b0c0cb782e12bab3af599befcfc9dd9151d3baaf2af38ab0",
     "bcc/support.py": "27b2403897d259ac5bd828e7e3e81361c60f01a09bb7318555c0270bc6416c7b",
     "bcc/trade_fence.py": "2cf535c93460728650e332420b676cc935ec2d57b525d6b99d3f492f2b469931",
-    "bcc/trading.py": "3f313e49cabcb7662d65933e7a247d043d3c5043784ca4cc77827c2e8f626415",
+    "bcc/trading.py": "cae330c6e927bc62f9d515fc0d40eed2ed44168f04176676459edc4c49d3eff7",
     "bcc/transfer.py": "cf3d209b50ca0d0dd0aec8f1e2462c1a2f61ddb403e3417d4f74cefafd413f70",
     "bcc/ui.py": "15bad84cb3c9fb0b7240ff1259857374effc954b3f750b29ea4ebb94242afd91",
     "bcc/widgets.py": "1a3c7adeb1d803316dab25166019fee036e428e8743e2c66525ce166351aaac0",
@@ -393,6 +393,7 @@
     "tests/test_veles_resource_scaled_accounts_replay.py": "4afca300be39d0a6e8e555ea1e1cb3f8d9f578a213b8bf1f2cc3a752afdef7f6",
     "tests/test_direct_transport_default.py": "d4f16b562b5a4a8b89d39bd4c67a2f7850dc10fd1bd9a0fa5234d27517f116d4",
     "tests/test_unbounded_bot_cardinality.py": "af9a18b971b7a784253bd81945d006dad38bd1af5b86d1eabf4fd9a5871d124a",
-    "tests/test_market_scheduler_restoration.py": "f44f80bee979c209b2dd968335255248a56767f739e881f902aed62c3a30a4f3"
+    "tests/test_market_scheduler_restoration.py": "f44f80bee979c209b2dd968335255248a56767f739e881f902aed62c3a30a4f3",
+    "tests/test_margin_mark_authority_restoration.py": "142c7e58be6c5f8531d19b2a7136faf3c81275934a79e7bb4f2ff121654fa23c"
   }
 }

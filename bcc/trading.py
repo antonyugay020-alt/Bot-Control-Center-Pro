@@ -133,9 +133,20 @@ def available_margin(state):
         return -math.inf
     if type(held) not in (int, float) or not math.isfinite(held) or held < 0:
         return -math.inf
-    # Belt-and-suspenders validation: no persisted mark may silently become
-    # spendable collateral if the equity calculation is changed later.
+    # There is one authoritative collateral price per financial model.
+    # Cross/isolated USDT margin is valued using independently validated
+    # public Bybit mark-price and risk tiers (same source as liquidation).
+    # Executable orderbook prices are NOT collateral marks. A stale depth
+    # for an unrelated coin cannot invalidate an otherwise fully priced
+    # margin portfolio or silently supply a guessed liquidation value.
+    # Legacy/POLYMARKET accounts continue using their own strict quote check.
     for position in state["positions"].values():
+        if position.get("kind") != "POLYMARKET" and state.get("margin_model") == MODEL:
+            try:
+                snapshot(state, position["symbol"])
+            except (MarginUnavailable, KeyError, ValueError, TypeError):
+                return -math.inf
+            continue
         token = (position.get("token") if position.get("kind") == "POLYMARKET"
                  else position.get("symbol"))
         if token in state["marks"]:

@@ -48,7 +48,12 @@ def process_tick(cfg, store, engine, tick):
             # that remains younger than the generic TTL must not authorize
             # another section's PAPER collateral after its source has failed.
             state["marks"].pop(symbol, None)
-            state.get("margin_data", {}).pop(symbol, None)
+            # An unavailable executable book must revoke executable prices.
+            # It is NOT evidence that the independent public margin mark or
+            # risk tiers are invalid. MarginModel snapshot() still enforces
+            # strict 3-second freshness and rejects missing public inputs.
+            if state.get("margin_model") != MODEL:
+                state.get("margin_data", {}).pop(symbol, None)
             apply_funding(state, events, symbol, tick.rates, tick.funding_marks, now)
             # Preserve both independent market failures. With no book we
             # cannot trade, but losing the history error makes a multi-bot
@@ -103,12 +108,16 @@ def process_tick(cfg, store, engine, tick):
                 )
                 record_completed_exit(cfg, state, key, p, int(now * 1000))
         liquidation_breach = liquidations(state, events)
-        stale = [
+        # The MODEL portfolio is valued/liquidated exclusively on validated
+        # public mark-price data. Do not substitute another coin's executable
+        # depth freshness for portfolio solvency. Legacy financial models
+        # continue to require a fresh book for every existing exposure.
+        stale = ([
             p["symbol"]
             for p in state["positions"].values()
             if (not valid_position_mark(p, state["marks"].get(p["symbol"]))
                 or not quote_is_recent(state["marks"].get(p["symbol"])))
-        ]
+        ] if state.get("margin_model") != MODEL else [])
         if stale:
             state["_entry_blocked"] = (
                 "Нет свежих котировок открытых позиций: "
