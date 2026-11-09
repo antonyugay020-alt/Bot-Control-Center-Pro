@@ -56,7 +56,10 @@ class PublicRiskRefresher:
             if (age(symbol) < self.refresh_after or symbol in self.running
                     or self.retry_at.get(symbol, 0) > now):
                 continue
-            self.running[symbol] = self.executor.submit(self.source.risk_tiers, symbol)
+            getter = getattr(self.source, 'position_risk_tiers', None)
+            if not callable(getter):
+                getter = self.source.risk_tiers
+            self.running[symbol] = self.executor.submit(getter, symbol)
         self.stats['in_flight'] = len(self.running)
         self.stats['active'] = len(active)
         self.stats['tiers_near_expiry'] = sum(age(s) >= 240 for s in active)

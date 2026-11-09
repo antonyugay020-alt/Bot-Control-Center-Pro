@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_PUBLIC_MARK_RISK_DECOUPLING_WITH_REGRESSION_20261109_NOT_RELEASE",
+  "checkpoint": "BCC_SYSTEMIC_PUBLIC_MARK_PRIORITY_AND_QA_20261109_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -79,7 +79,7 @@
     "bcc/lifecycle.py": "b0e202a0dfecff75961377aecfc3b7370b14b07dbfac19eb89034584e221637c",
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
-    "bcc/market.py": "15860e61da1f22f1295eae96287412afa54834825d2e1cb11af4bcc109acd258",
+    "bcc/market.py": "8ebe0eae4db67e14706c6435fd5ee6d3d1a348ef225d10353baa1049bafe41c4",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
     "bcc/market_hub.py": "087a11770421786486f81b83e36c6684a048879a405f3b870fd200c7a2380bce",
@@ -404,7 +404,7 @@
     "tests/test_capital_headroom_19_positions.py": "024715bd7948906948a76880236160cb4d05f4bd0a58767c086aeffcaa4aa590",
     "tools/run_native_qt_shard.py": "883481d990e5762c593beb7f423e80e889dfbf4791b972b41688b5aa843d9c19",
     "tests/test_native_qt_shard_lifecycle.py": "ea57bfa6732ea15805085c0c9cf8d4f29016084070b2b5d7ef4fa8280d4a5dc1",
-    "bcc/public_risk_refresh.py": "956b4b13978ca9c5efb7cf432bc0309251591c7326753b402e9ee862ac8e3b2a",
-    "tests/test_public_market_pipeline_architecture.py": "1dd7938a4885ec42c59794a392bbe24fe6c8d3841e680f94776fc720fcdd14bd"
+    "bcc/public_risk_refresh.py": "cfda3ff8e49e611231e9f188498717e84f8cb69c8d74053e2d99fcf253556891",
+    "tests/test_public_market_pipeline_architecture.py": "21d19bead2c3045fe05eadd8846a64c1707e22ac7ed40a35b10cb4f7ae8b95f9"
   }
 }

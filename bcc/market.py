@@ -859,6 +859,19 @@ class PublicData:
             raise DataUnavailable("Устарели ступени риска Bybit")
         return dict(symbol=symbol, tiers=tiers, risk_at=risk_at)
 
+    def position_risk_tiers(self, symbol):
+        """Refresh exposed account's tiers using the public priority budget.
+
+        Never grant urgent admission to scanner risk-limit reads. The public
+        cache still enforces normal host-wide rate and policy restrictions.
+        """
+        previous = getattr(self._thread, 'position_mark', False)
+        self._thread.position_mark = True
+        try:
+            return self.risk_tiers(symbol)
+        finally:
+            self._thread.position_mark = previous
+
     def margin_snapshot(self, symbol):
         # New entries require both independently verified public sources.
         # Open positions refresh tiers on a separate bounded lifecycle.

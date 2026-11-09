@@ -247,3 +247,21 @@ def test_unverified_financial_model_forces_full_quote():
         assert calls == ['full']
     finally:
         scheduler.close()
+
+
+def test_position_risk_tier_refresh_preserves_urgent_public_budget(monkeypatch):
+    client, calls = http_transport(monkeypatch)
+    try:
+        witness = []
+        original = client.get
+        def wrapped(url, params=None, ttl=0):
+            witness.append(bool(getattr(client._thread, 'position_mark', False)))
+            return original(url, params, ttl)
+        monkeypatch.setattr(client,'get',wrapped)
+        client.risk_tiers('BTCUSDT')
+        assert witness == [False]
+        client.position_risk_tiers('BTCUSDT')
+        assert witness == [False,True]
+        assert not getattr(client._thread,'position_mark',False)
+    finally:
+        client.close()
