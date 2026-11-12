@@ -1,7 +1,7 @@
 {
   "baseline": "343c3b3c619ca68f7fc120c6072b4953dc6e1de8",
   "date": "2026-11-12",
-  "native_windows": "NOT_RUN",
+  "native_windows": "BLOCKED: Linux executor; mandatory identities verified only as Linux regression",
   "release_accepted": false,
   "cycles": [
     {
@@ -388,5 +388,284 @@
         }
       }
     ]
-  }
+  },
+  "final_verified_source_commit": "613fb7cadb32b2f73bbda823e8ace40ba99eabc7",
+  "final_verified_manifest_sha256": "9491d841c4ff407326d653afd782cd95978ae84542a3b3579ab72b00ca249fa9",
+  "final_source_files": 394,
+  "final_regression": {
+    "command": "QT_QPA_PLATFORM=offscreen /workspace/work/venv/bin/python -m tools.run_partitioned_tests --inventory /workspace/work/verified-inventory.json --output /workspace/work/verified-shards",
+    "platform": "Linux / Qt offscreen",
+    "clean_checkout": "/workspace/work/qa-final",
+    "status": "PASS",
+    "totals": {
+      "tests": 3533,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "exact_inventory_count": 3533,
+    "junit_sha256": "f3a322119fdb110c4fb11b14102b40f773da77d587387f76d995f356509889bb",
+    "inventory_sha256": "dee0a889482bb0cc8142a76459eb4ab5fd9c851ff372500283b56062ef248e6d",
+    "sum_shard_elapsed_seconds": 239.491,
+    "shards": [
+      {
+        "name": "shard_00",
+        "status": "PASS",
+        "seconds": 5.752,
+        "timeout": 360,
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_01",
+        "status": "PASS",
+        "seconds": 64.196,
+        "timeout": 360,
+        "totals": {
+          "tests": 588,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_02",
+        "status": "PASS",
+        "seconds": 55.228,
+        "timeout": 360,
+        "totals": {
+          "tests": 588,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_03",
+        "status": "PASS",
+        "seconds": 32.779,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_04",
+        "status": "PASS",
+        "seconds": 28.87,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_05",
+        "status": "PASS",
+        "seconds": 24.862,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_06",
+        "status": "PASS",
+        "seconds": 16.17,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_07",
+        "status": "PASS",
+        "seconds": 11.634,
+        "timeout": 600,
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ],
+    "mandatory_case_identities": 29,
+    "mandatory_case_identity_errors": [],
+    "native_os_certified": false,
+    "remaining_test_services": []
+  },
+  "final_gui": {
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "qt_platform": "offscreen",
+    "native_windows": false,
+    "checks": [
+      {
+        "strategy": "VELES",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "POLYMARKET",
+        "pages": 7,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "PUMP_DUMP",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "GRID",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "EMA",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "MACD",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "BOLLINGER",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "EMA_RSI_VOLUME",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      }
+    ],
+    "test_data": "Isolated bot configurations; no fabricated market data or trades",
+    "screen": {
+      "width": 800,
+      "height": 800
+    },
+    "operator_cycles": [
+      {
+        "strategy": "VELES",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      },
+      {
+        "strategy": "GRID",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      },
+      {
+        "strategy": "PUMP_DUMP",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      },
+      {
+        "strategy": "POLYMARKET",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      }
+    ],
+    "all_bots_monitor": "PASS",
+    "all_bots_monitor_rows": 20,
+    "all_bots_monitor_strategies": [
+      "BOLLINGER",
+      "EMA",
+      "EMA_RSI_VOLUME",
+      "GRID",
+      "MACD",
+      "POLYMARKET",
+      "PUMP_DUMP",
+      "VELES"
+    ],
+    "coin_picker": [
+      {
+        "theme": "dark",
+        "minimum_contrast": 8.62,
+        "status": "PASS"
+      },
+      {
+        "theme": "light",
+        "minimum_contrast": 8.62,
+        "status": "PASS"
+      }
+    ],
+    "poly_coin_catalog": "PASS",
+    "status": "PASS"
+  },
+  "final_native_preflight": {
+    "app_version": "17.0.9-INTEGRATED-ARCH-WIP",
+    "at": "2026-11-12T18:41:07.698566+00:00",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "source_sha256": null,
+    "steps": [],
+    "release_ready": false,
+    "manual_acceptance": "PENDING: follow ACCEPTANCE_WINDOWS_RU.md; automated tests do not replace it",
+    "status": "BLOCKED",
+    "error": "Требуется настоящий Windows Qt; offscreen не считается нативной проверкой"
+  },
+  "independent_review": "PENDING",
+  "documentation_update": "Final checkpoint/evidence and source manifest resealed after execution; all executable inputs match tested commit."
 }
