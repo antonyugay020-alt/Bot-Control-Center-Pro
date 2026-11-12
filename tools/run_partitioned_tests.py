@@ -20,6 +20,9 @@ if str(ROOT) not in sys.path:
 from tools.process_guard import run_logged_command
 from tools.verify_windows import read_test_totals, verify_complete_test_inventory
 from bcc.runtime_paths import python_environment
+from tools.qa_budgets import REGRESSION_GROUPS, REGRESSION_SHARD_TIMEOUT, RESOURCE_REPLAY_TIMEOUT
+
+RESOURCE_REPLAY_MODULE = 'test_veles_resource_scaled_accounts_replay.py'
 
 
 # Qt belongs to the mandatory Windows inventory. Linux can explicitly
@@ -32,7 +35,7 @@ HEADLESS_QT_FILES = frozenset({
 })
 
 
-def partitions(inventory, groups=6, *, excluded=()):
+def partitions(inventory, groups=REGRESSION_GROUPS, *, excluded=()):
     data = json.loads(Path(inventory).read_text(encoding='utf-8'))
     if data.get('schema') != 1 or not isinstance(data.get('cases'), list):
         raise ValueError('Invalid test inventory')
@@ -62,7 +65,7 @@ def partitions(inventory, groups=6, *, excluded=()):
         raise ValueError('Test file inventory differs: ' + repr((set(modules)-actual, actual-set(modules))))
     # One high-volume SQLite replay has a separate wall clock budget. Keep it
     # in the inventory and actually execute it; never silently exclude it.
-    costly = 'test_veles_resource_scaled_accounts_replay.py'
+    costly = RESOURCE_REPLAY_MODULE
     # OS-backed replay is sensitive to inherited pytest fixtures and process
     # handles. Run this whole module in its own disposable pytest process,
     # never in the same shard as unrelated tests. The exact test inventory is
@@ -147,7 +150,8 @@ def combine_junit(paths, output):
     return read_test_totals(output)
 
 
-def run(inventory, output, *, shard_timeout=360, heavy_timeout=600, headless=False):
+def run(inventory, output, *, shard_timeout=REGRESSION_SHARD_TIMEOUT,
+        heavy_timeout=RESOURCE_REPLAY_TIMEOUT, headless=False):
     if headless and os.name == 'nt':
         raise ValueError('Headless test exclusions are forbidden in native Windows QA')
     output = Path(output).resolve()
@@ -161,7 +165,7 @@ def run(inventory, output, *, shard_timeout=360, heavy_timeout=600, headless=Fal
     all_good = True
     for idx, files in enumerate(schedule):
         name = f'shard_{idx:02d}'
-        budget = heavy_timeout if 'test_veles_resource_scaled_accounts_replay.py' in files else shard_timeout
+        budget = heavy_timeout if RESOURCE_REPLAY_MODULE in files else shard_timeout
         xml = output / (name + '.xml')
         log = output / (name + '.log')
         args = [sys.executable, '-X', 'faulthandler', '-m', 'pytest', '-vv',

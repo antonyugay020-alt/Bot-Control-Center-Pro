@@ -60,6 +60,22 @@
       "failures": [],
       "skipped": 0,
       "junit_sha256": "be68a579fab2eac479c06d2cc8b8fb9115ab26fb89389788868de2b895eff933"
+    },
+    {
+      "name": "qa-budget-red",
+      "actual_testcases": 3,
+      "declared_tests": 3,
+      "failures": [
+        "tests.test_r611_windows_timeout_budget::test_native_outer_budget_covers_all_scheduled_isolated_shards"
+      ],
+      "junit_sha256": "26c784be56419fcbf2af33afb94ae7661a04d41f201502a4d82916b51b78b884"
+    },
+    {
+      "name": "qa-budget-green",
+      "actual_testcases": 17,
+      "declared_tests": 17,
+      "failures": [],
+      "junit_sha256": "017d54d988e9ca78ab8ba0e866fb8ba72ddcf571f3a238380d75eb8d06d83d49"
     }
   ],
   "clean_source_commit": "0dc030006a08308707bb06979dc28e80426bdef4",

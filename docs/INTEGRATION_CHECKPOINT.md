@@ -30,3 +30,9 @@ Source commit `0dc030006a08308707bb06979dc28e80426bdef4` was cloned locally with
 Clean-checkout GUI check **PASS**, Qt offscreen / native_windows=false, eight strategy editor/deposit workflows, four operator cycles and 20-row monitor. Read-only live provider probe: **Bybit HTTP 403 RESTRICTED**, **Binance HTTP 451 RESTRICTED**, Gamma/CLOB **PASS**. No source bypass or real orders. Native Windows verifier returned **2 / BLOCKED** on Linux.
 
 Next exact step after this test-contract commit: fresh local clone, collect all tests, execute the production partitioned QA runner without headless exclusions, verify every case appears exactly once across all eight shards, including the renamed resource replay in its own heavy-budget shard. Persist those final results; Windows GUI/live-cycle/independent-review gates remain pending.
+
+## Windows nested-watchdog budget correction
+
+While running the real isolated QA pipeline from clean source `08e9a16`, a new regression proved its outer test-stage timeout (2850s) was shorter than the eight sequential inner limits (seven regular/process shards at 360s plus resource replay at 600s = 3120s), before report overhead. The shared QA budget now derives from the same six-group/regular/resource constants as the runner and reserves 90s for reporting: test stage 3210s, overall automated budget 3690s. No individual shard or trade freshness constraint was relaxed. The resource replay module name is centralized across scheduling and timeout selection.
+
+`qa-budget-red.xml`: **1 failed / 2 passed** reproducing 2850 < 3120+60. `qa-budget-green.xml`: **17 passed** (2.03s), including outer launcher sharing and isolated-shard inventory checks. Final exact-source clean pipeline run remains pending this budget commit. Earlier partial/completed runs must retain their source identity and not certify this newer source automatically.
