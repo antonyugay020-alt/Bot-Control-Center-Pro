@@ -22,3 +22,11 @@ Linux / Python 3.12.14 / SQLite 3.53.1 / PySide6 6.12.0 / pytest 9.2.0; virtuale
 The previous session's 3495-test pass and Qt/public-source checks predate this resumed source and are historical only. Full clean checkout verification is the next exact step: clone this committed branch locally into `/workspace/work/clean-acceptance`, verify the entire manifest, execute the complete pytest inventory and GUI check there, then persist exact results and source hashes.
 
 Native Windows clean-unpack Modern Qt E2E, live market cycles and independent review remain **NOT CERTIFIED**. Only Linux is attached. No paid Actions, releases/builds, model-provider spending, credentials or real trading. Commits use `[skip ci]`. Prior detailed portfolio evidence remains in `docs/PORTFOLIO_REGRESSION_20261107.json` and `docs/REGRESSION_20261107.json`.
+
+## Clean checkout / resource-contract follow-up
+
+Source commit `0dc030006a08308707bb06979dc28e80426bdef4` was cloned locally with independent Git objects into `/workspace/work/clean-acceptance`. All **394 source files** verified against the sealed manifest. Complete inventory collected **3532 cases**. Full pytest (`clean-full.xml`) completed **3531 passed / 1 failed**, 227.97s. Failure was an older W2 negative test still rejecting concurrency 13 despite the preserved resource-scaling contract. Replaced that obsolete input with -1; explicit real class/service tests still require positive 13/29 to succeed. The acceptance checker was not weakened.
+
+Clean-checkout GUI check **PASS**, Qt offscreen / native_windows=false, eight strategy editor/deposit workflows, four operator cycles and 20-row monitor. Read-only live provider probe: **Bybit HTTP 403 RESTRICTED**, **Binance HTTP 451 RESTRICTED**, Gamma/CLOB **PASS**. No source bypass or real orders. Native Windows verifier returned **2 / BLOCKED** on Linux.
+
+Next exact step after this test-contract commit: fresh local clone, collect all tests, execute the production partitioned QA runner without headless exclusions, verify every case appears exactly once across all eight shards, including the renamed resource replay in its own heavy-budget shard. Persist those final results; Windows GUI/live-cycle/independent-review gates remain pending.
