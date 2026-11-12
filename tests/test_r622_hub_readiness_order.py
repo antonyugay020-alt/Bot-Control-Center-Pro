@@ -29,12 +29,15 @@ def test_child_writes_authenticated_receipt_before_processing_slow_queue(tmp_pat
         def __init__(self, cache, *, max_workers=1):
             assert cache == str(tmp_path / 'cache.sqlite')
             assert max_workers == 6
+        def acquire_leadership(self, *, lifetime):
+            return 'epoch' if self.registry.claim_leader(self.owner, lifetime=lifetime) else None
         def poll_nonblocking(self):
             # This stands in for a network queue that could block for a long
             # time. In the old service dispatched its blocking batch BEFORE the receipt.
             calls.append('market-requests')
             assert json.loads(receipt.read_text(encoding='utf-8')) == {
                 'pid': os.getpid(), 'token': token,
+                'leader_owner': 'owned-by-test',
             }
             raise Finished
         def close(self):
@@ -65,6 +68,8 @@ def test_child_never_claims_readiness_while_leader_lease_is_denied(tmp_path, mon
         registry = Registry()
         def __init__(self, cache, *, max_workers=1):
             assert max_workers == 6
+        def acquire_leadership(self, *, lifetime):
+            return 'epoch' if self.registry.claim_leader(self.owner, lifetime=lifetime) else None
         def poll_nonblocking(self):
             pytest.fail('Never fetch data without leadership')
         def close(self):

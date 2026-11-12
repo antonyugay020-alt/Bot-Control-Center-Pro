@@ -13,7 +13,7 @@ from pathlib import Path
 import sqlite3
 
 from .config import number
-from .storage import BotBusy, BotLock, Store, atomic_json, load_json
+from .storage import BotBusy, BotLock, Store, atomic_json, load_json, iter_paper_accounts
 from .margin import (
     MODEL,
     MarginUnavailable,
@@ -32,7 +32,10 @@ def policy_path(root):
 def validate_policy(policy):
     if not isinstance(policy, dict) or set(policy) != set(DEFAULT_POLICY):
         raise ValueError("Неверная конфигурация общего риск-менеджера")
-    number(policy["max_positions"], 0, 1_000_000, "Общий лимит позиций", integer=True)
+    # Zero disables the optional policy; positive values are user-selected,
+    # not restricted by an unrelated software-wide position ceiling.
+    if type(policy["max_positions"]) is not int or policy["max_positions"] < 0:
+        raise ValueError("Общий лимит позиций должен быть целым неотрицательным числом")
     number(policy["max_committed_usdt"], 0, 1e12, "Общий лимит обеспечения PAPER")
     return deepcopy(policy)
 
@@ -95,14 +98,10 @@ def allocation_reason(state, committed, slots=1):
 
 def portfolio_snapshot(root, exclude=None, *, require_prices=False):
     slots, committed = 0, 0.0
-    for path in sorted((Path(root) / "MY_BOTS").glob("*/*/paper.sqlite")):
-        if exclude is not None and path == exclude:
+    for folder in iter_paper_accounts(root):
+        if exclude is not None and folder / 'paper.sqlite' == exclude:
             continue
-        if path.is_symlink() or any(
-            p.is_symlink() for p in (path.parent, path.parent.parent)
-        ):
-            raise ValueError("Ссылка вместо PAPER-счёта")
-        account = Store(path.parent).read(include_charts=False)
+        account = Store(folder).read(include_charts=False)
         if require_prices and account.get("margin_model") == MODEL:
             error = margin_status(account)
             if error:

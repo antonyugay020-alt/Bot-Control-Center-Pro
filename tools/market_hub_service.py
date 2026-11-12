@@ -29,8 +29,8 @@ def main():
         p.error('--idle-exit must be 0..86400 seconds')
     if not .02 <= args.poll <= 5:
         p.error('--poll must be 0.02..5 seconds')
-    if not 1 <= args.concurrency <= 12:
-        p.error('--concurrency must be 1..12')
+    if args.concurrency < 1:
+        p.error('--concurrency must be a positive integer')
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
@@ -54,14 +54,19 @@ def main():
                     # bounded SQLite contention policy. A brief writer lock
                     # must not kill the service before it can acknowledge
                     # readiness; no readiness receipt is emitted without a lease.
-                    if not hub.registry.claim_leader(hub.owner, lifetime=120):
+                    if not hub.acquire_leadership(lifetime=120):
                         stop.wait(args.poll)
                         continue
                     if args.ready_file:
                         from pathlib import Path
                         from bcc.storage import atomic_json
+                        # Bind the readiness challenge to this exact Hub lease
+                        # incarnation. A PID alone can be reused after a crash;
+                        # the supervisor must persist and later revoke only
+                        # this owner's generation, never a successor's lease.
                         atomic_json(Path(args.ready_file), {
                             'pid': os.getpid(), 'token': args.ready_token,
+                            'leader_owner': hub.owner,
                         })
                     print('Market Hub leader lease acquired', flush=True)
                     ready_logged = True

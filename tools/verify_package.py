@@ -6,6 +6,7 @@ venvs, logs and test workspaces are not part of the verified source snapshot.
 import argparse
 import hashlib
 import json
+import os
 import re
 from pathlib import Path, PurePosixPath
 
@@ -18,7 +19,7 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 REQUIRED_FILES = (
     'tools/ai_dev_pipeline.py', 'tools/windows_ai_launcher.py', 'AI_SETUP_WINDOWS.bat',
     'AI_CYCLE_WINDOWS.bat', 'AI_USE_EXISTING_API_WINDOWS.bat', 'AI_DEVELOPMENT_RU.md', 'BCC_AI_MISSION_RU.md',
-    ".gitattributes", "app.py", "launch.pyw", "BUILD_INFO.json", "requirements.txt",
+    ".gitattributes", "README.md", "app.py", "launch.pyw", "BUILD_INFO.json", "requirements.txt",
     "requirements-dev.txt", "START.bat", "START_DIAGNOSTIC.bat", "TEST_START.bat", "REPORT_NOW.bat", "INSTALL.bat",
     "VALIDATE_WINDOWS.bat", "CHECK_WINDOWS.bat",
     "tools/start_windows_check.ps1", "tools/windows_check.py",
@@ -35,6 +36,97 @@ REQUIRED_FILES = (
     "tools/acceptance_session.py",
     "tools/qa_locale.py",
 )
+
+
+
+# Both the source sealer and the unpack verifier use this exact executable
+# inventory. Otherwise a new launcher or CI workflow can silently disappear
+# from the archive before the verifier ever sees it.
+EXECUTABLE_SUFFIXES = frozenset({".py", ".pyw", ".bat", ".cmd", ".ps1"})
+AUTOMATION_SUFFIXES = frozenset({".yml", ".yaml"})
+EXCLUDED_SOURCE_DIRS = frozenset({
+    ".git", ".ai_work", ".venv", "venv", "__pycache__", ".pytest_cache",
+    "check_workspaces", "node_modules",
+})
+
+
+def executable_sources(root):
+    """Enumerate executable sources and CI definitions from an actual tree."""
+    root = Path(root).resolve()
+    for path in root.rglob("*"):
+        if not path.is_file() and not path.is_symlink():
+            continue
+        relative = path.relative_to(root)
+        if any(part in EXCLUDED_SOURCE_DIRS for part in relative.parts):
+            continue
+        name = relative.as_posix()
+        if (path.suffix.lower() in EXECUTABLE_SUFFIXES
+                or (name.startswith(".github/workflows/")
+                    and path.suffix.lower() in AUTOMATION_SUFFIXES)):
+            yield name, path
+
+
+# A sealed source snapshot must cover *every* distributed file, not only
+# Python/batch entrypoints. An unmanifested JSON strategy override, native
+# library, stylesheet or text policy can otherwise change behavior after QA.
+# Runtime state is separate from immutable source; only explicit QA workspaces
+# and generated evidence are exempt from this inventory.
+RUNTIME_ROOT_DIRS = frozenset({"verification_reports", ".check_venv", "MY_BOTS"})
+
+# Runtime secrets and account databases are NEVER source assets, even when
+# someone accidentally places them under the checkout. Refuse the package
+# rather than silently adding their contents to a shareable ZIP.
+PRIVATE_SOURCE_NAMES = frozenset({
+    ".git-credentials", "client_secret.json", "credentials.json",
+    "token.json", "service_account.json", "id_rsa", "id_ed25519",
+})
+PRIVATE_SOURCE_SUFFIXES = frozenset({
+    ".pem", ".key", ".p12", ".pfx", ".kdbx",
+    ".sqlite", ".sqlite3", ".db",
+})
+
+
+def _private_source_file(name):
+    filename = Path(name).name.lower()
+    return (
+        filename in PRIVATE_SOURCE_NAMES
+        or (filename.startswith(".env")
+            and filename not in (".env.example", ".env.sample", ".env.template"))
+        or any(filename.endswith(suffix) for suffix in PRIVATE_SOURCE_SUFFIXES)
+        or filename.endswith((".sqlite-wal", ".sqlite-shm", ".db-wal", ".db-shm"))
+    )
+
+
+def source_inventory(root):
+    """Yield every immutable source file or symlink, pruning runtime trees."""
+    root = Path(root).resolve()
+    for current, directories, filenames in os.walk(root, topdown=True, followlinks=False):
+        parent = Path(current)
+        retained = []
+        for dirname in directories:
+            if dirname in EXCLUDED_SOURCE_DIRS or (
+                    parent == root and dirname in RUNTIME_ROOT_DIRS):
+                continue
+            candidate = parent / dirname
+            if candidate.is_symlink():
+                # Never follow an untrusted directory alias. It is still a
+                # source-tree entry and must fail sealing or verification.
+                yield candidate.relative_to(root).as_posix(), candidate
+            else:
+                retained.append(dirname)
+        directories[:] = retained
+        for filename in filenames:
+            candidate = parent / filename
+            if _private_source_file(filename):
+                raise SourceIntegrityError(
+                    "Закрытые данные не могут входить в исходный пакет: "
+                    + candidate.relative_to(root).as_posix())
+            if parent == root and filename == "SHA256_MANIFEST.json":
+                continue  # Manifest is fingerprinted separately (no recursion).
+            if (parent == root and filename.startswith("BCC_VALIDATION_RESULTS_")
+                    and filename.endswith(".zip")):
+                continue  # Generated QA evidence, never distributed as source.
+            yield candidate.relative_to(root).as_posix(), candidate
 
 
 
@@ -77,25 +169,18 @@ def verify(root=ROOT):
         if actual != digest:
             raise SourceIntegrityError("Не совпадает SHA-256: " + key)
         checked.add(key)
-    # Seal all executable entrypoints and automation definitions, not just
-    # previously known names. A new launcher, PowerShell script, Python module
-    # or CI workflow must never bypass the manifest through an unlisted path.
-    # Generated paths are excluded; no application code should live there.
-    executable_suffixes = {".py", ".pyw", ".bat", ".cmd", ".ps1"}
-    automation_dirs = {".github/workflows"}
-    excluded_dirs = {".git", ".ai_work", ".venv", "venv", "__pycache__",
-                     ".pytest_cache", "check_workspaces", "node_modules"}
-    for path in root.rglob("*"):
-        if not path.is_file() and not path.is_symlink():
-            continue
-        relative = path.relative_to(root)
-        if any(part in excluded_dirs for part in relative.parts):
-            continue
-        rel = relative.as_posix()
-        is_automation = any(rel.startswith(folder + "/") for folder in automation_dirs)
-        if path.suffix.lower() in executable_suffixes or (is_automation and path.suffix.lower() in {".yml", ".yaml"}):
-            if rel not in checked:
+    # Exact package membership is part of the acceptance fingerprint.
+    # Executables are only a subset: unsealed configs, native modules, policy
+    # files and assets must not be able to influence the checked application.
+    for rel, path in source_inventory(root):
+        if path.is_symlink():
+            raise SourceIntegrityError("Незарегистрированная ссылка: " + rel)
+        if rel not in checked:
+            if (path.suffix.lower() in EXECUTABLE_SUFFIXES or
+                    (rel.startswith(".github/workflows/")
+                     and path.suffix.lower() in AUTOMATION_SUFFIXES)):
                 raise SourceIntegrityError("Незарегистрированный исполняемый файл: " + rel)
+            raise SourceIntegrityError("Незарегистрированный файл исходников: " + rel)
     for required in REQUIRED_FILES:
         if required not in checked:
             raise SourceIntegrityError("Неучтён обязательный файл: " + required)

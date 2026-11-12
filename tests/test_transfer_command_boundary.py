@@ -1,5 +1,7 @@
 """Real account/registry transfer races, with no worker or trading API calls."""
 import threading
+import json
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -111,8 +113,26 @@ def test_all_origins_remain_fenced_until_batch_finishes(tmp_path, monkeypatch, p
 def test_duplicate_origins_and_reverse_batches_do_not_deadlock(tmp_path):
     owner, originals, archive = setup_batch(tmp_path)
     reversed_archive = tmp_path / 'reversed.zip'
-    # Repeated entries are separate intended copies but one local origin lease.
-    owner.export_bots(list(reversed(originals)) + [originals[0]], reversed_archive)
+    owner.export_bots(list(reversed(originals)), reversed_archive)
+    # Simulate a valid external archive with two intended copies of one
+    # origin; import must acquire that origin's gate once, in canonical order.
+    with zipfile.ZipFile(reversed_archive, 'a') as stream:
+        manifest = json.loads(stream.read('manifest.json'))
+        original = manifest['bots'][0]
+        copied = {**original, 'prefix': 'bot_0002'}
+        for name in stream.namelist():
+            if name.startswith(original['prefix'] + '/'):
+                stream.writestr(copied['prefix'] + name[len(original['prefix']):], stream.read(name))
+        manifest['bots'].append(copied)
+    # Rewrite rather than append manifest.json: duplicate ZIP members are
+    # correctly rejected by production admission.
+    replacement = tmp_path / 'replacement.zip'
+    with zipfile.ZipFile(reversed_archive) as source, zipfile.ZipFile(replacement, 'w') as dest:
+        for name in source.namelist():
+            if name != 'manifest.json':
+                dest.writestr(name, source.read(name))
+        dest.writestr('manifest.json', json.dumps(manifest))
+    replacement.replace(reversed_archive)
     other = Supervisor(Repository(owner.repo.root))
     with ThreadPoolExecutor(max_workers=2) as pool:
         first = pool.submit(owner.import_bots, archive)

@@ -11,31 +11,46 @@ from bcc.hub_supervisor import ensure_hub
 from tools import run_partitioned_tests
 
 
-def test_real_service_receipt_reaches_parent_without_wal_probe(tmp_path, monkeypatch):
-    """Parent validates child receipt even if SQLite readiness reads are denied."""
+@pytest.mark.parametrize('permanent', [False, True])
+def test_real_service_receipt_requires_live_lease_after_wal_contention(tmp_path, monkeypatch, permanent):
+    """Retry transient probes; a receipt alone cannot certify readiness."""
     import bcc.hub_supervisor as supervisor
     from bcc.market_hub import HubRegistry
     original = HubRegistry._connect
-    real_read = json.loads
-    # Registry initialization is allowed, but the parent's post-spawn probe
-    # deliberately fails. A valid child proof must be sufficient for startup.
+    probes = []
     def no_parent_probe(self):
-        if supervisor.os.getpid() == parent_pid and spawned[0]:
-            raise OSError('simulated WAL probe contention')
+        if supervisor.os.getpid() == parent_pid and spawned:
+            probes.append(1)
+            if permanent or len(probes) <= 3:
+                raise OSError('simulated WAL probe contention')
         return original(self)
     parent_pid = supervisor.os.getpid()
-    spawned = [False]
+    spawned = []
     spawn = supervisor._spawn_hub
     def mark_spawn(*args, **kwargs):
         child = spawn(*args, **kwargs)
-        spawned[0] = True
+        spawned.append(child)
         return child
     monkeypatch.setattr(supervisor, '_spawn_hub', mark_spawn)
     monkeypatch.setattr(HubRegistry, '_connect', no_parent_probe)
     pid = None
     try:
-        pid = ensure_hub(tmp_path, timeout=5)
-        assert isinstance(pid, int) and pid > 0
+        if permanent:
+            with pytest.raises(supervisor.HubUnavailable, match='did not become ready'):
+                ensure_hub(tmp_path, timeout=1)
+            assert spawned[0].poll() is not None
+            record = json.loads((tmp_path / 'market_hub_process.json').read_text(encoding='utf-8'))
+            assert record['leader_owner'].startswith(str(record['pid']) + ':')
+            # SQLite is unavailable to parent cleanup too. Keep the exact
+            # owner witness until a later start can revoke it safely.
+            monkeypatch.setattr(HubRegistry, '_connect', original)
+            pid = ensure_hub(tmp_path, timeout=5)
+            recovered = json.loads((tmp_path / 'market_hub_process.json').read_text(encoding='utf-8'))
+            assert recovered['leader_owner'] != record['leader_owner']
+        else:
+            pid = ensure_hub(tmp_path, timeout=5)
+            assert isinstance(pid, int) and pid > 0
+            assert len(probes) >= 4
         assert not list(tmp_path.glob('.market_hub_ready_*.json'))
     finally:
         if pid:
@@ -48,19 +63,19 @@ def test_real_service_receipt_reaches_parent_without_wal_probe(tmp_path, monkeyp
 def test_partitions_require_complete_file_inventory(tmp_path, monkeypatch):
     root = tmp_path / 'src'
     (root / 'tests').mkdir(parents=True)
-    for file in ('test_alpha.py', 'test_beta.py', 'test_veles_800_accounts_replay.py'):
+    for file in ('test_alpha.py', 'test_beta.py', 'test_veles_resource_scaled_accounts_replay.py'):
         (root / 'tests' / file).write_text('pass', encoding='utf-8')
     monkeypatch.setattr(run_partitioned_tests, 'ROOT', root)
     inventory = tmp_path / 'inventory.json'
     inventory.write_text(json.dumps({'schema': 1, 'cases': [
         ['tests.test_alpha', 'test_one'],
         ['tests.test_beta', 'test_two'],
-        ['tests.test_veles_800_accounts_replay', 'test_many'],
+        ['tests.test_veles_resource_scaled_accounts_replay', 'test_many'],
     ]}), encoding='utf-8')
     groups = run_partitioned_tests.partitions(inventory, groups=2)
     assert len(groups) == 3
-    assert groups[-1] == ['test_veles_800_accounts_replay.py']
-    assert sorted(sum(groups, [])) == ['test_alpha.py', 'test_beta.py', 'test_veles_800_accounts_replay.py']
+    assert groups[-1] == ['test_veles_resource_scaled_accounts_replay.py']
+    assert sorted(sum(groups, [])) == ['test_alpha.py', 'test_beta.py', 'test_veles_resource_scaled_accounts_replay.py']
     (root / 'tests' / 'test_missing.py').write_text('pass', encoding='utf-8')
     with pytest.raises(ValueError, match='differs'):
         run_partitioned_tests.partitions(inventory, groups=2)

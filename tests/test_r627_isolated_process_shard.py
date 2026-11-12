@@ -8,7 +8,7 @@ def test_process_replay_gets_its_own_bounded_shard(tmp_path, monkeypatch):
     tests = root / 'tests'
     tests.mkdir(parents=True)
     files = ('test_alpha.py', 'test_beta.py', 'test_process.py',
-             'test_veles_800_accounts_replay.py')
+             'test_veles_resource_scaled_accounts_replay.py')
     for filename in files:
         (tests / filename).write_text('def test_ok(): pass\n', encoding='utf-8')
     inventory = tmp_path / 'inventory.json'
@@ -18,7 +18,7 @@ def test_process_replay_gets_its_own_bounded_shard(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, 'ROOT', root)
     shards = runner.partitions(inventory, groups=2)
     assert shards[0] == ['test_process.py']
-    assert shards[-1] == ['test_veles_800_accounts_replay.py']
+    assert shards[-1] == ['test_veles_resource_scaled_accounts_replay.py']
     assert sorted(file for shard in shards for file in shard) == sorted(files)
     assert all('test_process.py' not in shard for shard in shards[1:])
 

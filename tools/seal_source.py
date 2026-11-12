@@ -10,7 +10,7 @@ import json
 import tempfile
 import zipfile
 from pathlib import Path
-from tools.verify_package import REQUIRED_FILES, verify
+from tools.verify_package import REQUIRED_FILES, verify, source_inventory
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRYPOINTS = (
@@ -29,7 +29,7 @@ ENTRYPOINTS = (
     'INTEGRATION_REVIEW_RU.md', 'REQUIREMENTS_MATRIX.json',
     'ACCEPTANCE_WINDOWS_RU.md', 'ARCHITECTURE_ACTUAL_STATUS_RU.md',
     'ARCHITECTURE_TARGET_UNIVERSAL_RU.md', 'BUILD_INFO.json',
-    'CHECK_WINDOWS.bat', 'INSTALL.bat', 'README_RU.md',
+    'CHECK_WINDOWS.bat', 'INSTALL.bat', 'README.md', 'README_RU.md',
     'RECOVERY_RU.md', 'REPORT_NOW.bat', 'REQUIREMENTS_RU.md',
     'VALIDATION_STATUS.json',
     'START.bat', 'START_DIAGNOSTIC.bat', 'START_HERE_VISUAL_RU.md', 'STATUS_RU.md',
@@ -43,12 +43,9 @@ def source_paths(root):
     """Enumerate tracked executable content, not transient filesystem debris."""
     root = Path(root).resolve()
     names = set(ENTRYPOINTS) | set(REQUIRED_FILES)
-    for folder in ('bcc', 'tests', 'tools'):
-        for path in (root / folder).rglob('*.py'):
-            rel = path.relative_to(root)
-            if any(part.startswith('.') or part == '__pycache__' for part in rel.parts):
-                continue
-            names.add(rel.as_posix())
+    # The verifier uses this same complete inventory. New data/config,
+    # native library and documentation files are sealed alongside executables.
+    names.update(name for name, _ in source_inventory(root))
     for name in sorted(names):
         path = root / name
         if not path.is_file() or path.is_symlink() or any(

@@ -11,9 +11,9 @@ import uuid
 import sqlite3
 import time
 import threading
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from urllib.parse import urlparse
 
 from .data_cache import PublicCache, CacheBusy
 
@@ -24,10 +24,104 @@ class HubRegistry:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init()
 
+    @staticmethod
+    def _boot_epoch():
+        # Use the same independent OS-boot witness as the provider-denial
+        # fence. If unavailable, do not speculate that a lease is stale.
+        return PublicCache._boot_epoch()
+
+    @staticmethod
+    def _same_boot(recorded, current):
+        # A missing witness (legacy row or unavailable psutil) cannot prove a
+        # reboot. Retain the ordinary bounded wall-clock lease in that case.
+        return not (recorded and current and abs(recorded - current) > 60)
+
+    @contextmanager
     def _connect(self):
+        """Bounded ownership of each SQLite handle, including native Windows.
+
+        sqlite3.Connection.__exit__ commits or rolls back but DOES NOT close.
+        The Hub registry makes short-lived cross-process calls for every
+        heartbeat, subscription and poll; leaking those connections can keep
+        WAL and DB handles live after the Qt supervisor shuts down.
+        """
         db = sqlite3.connect(self.path, timeout=1.0, isolation_level=None)
-        db.execute('PRAGMA busy_timeout=1000')
-        return db
+        try:
+            db.execute('PRAGMA busy_timeout=1000')
+            with db:
+                yield db
+        finally:
+            db.close()
+
+    @staticmethod
+    def _index_matches(db, name, columns):
+        """Verify index ownership AND ordered columns, not merely its name."""
+        row = db.execute(
+            "SELECT tbl_name FROM sqlite_master WHERE type='index' AND name=?",
+            (name,),
+        ).fetchone()
+        # Same columns do not make a UNIQUE or partial index equivalent:
+        # uniqueness rejects unrelated subscriptions sharing a deadline;
+        # a predicate can omit the very expired rows maintenance must prune.
+        shape = next((item for item in db.execute(
+            "PRAGMA index_list(hub_subscriptions)"
+        ) if item[1] == name), None)
+        return bool(row and row[0] == 'hub_subscriptions' and shape
+                    and not shape[2] and not shape[4] and
+                    tuple(item[0] for item in db.execute(
+                        'SELECT name FROM pragma_index_info(?) ORDER BY seqno',
+                        (name,),
+                    )) == tuple(columns))
+
+    @staticmethod
+    def _schema_current(db):
+        """Read-only fast path for already migrated multi-worker databases.
+
+        Thousands of independent workers can open the same Hub registry at
+        startup. Taking BEGIN IMMEDIATE for every schema inspection serializes
+        otherwise independent readers behind the producer's writer lock.
+        A complete inventory (columns, indices, and token backfill) is the
+        admission condition; legacy or partially migrated schemas still take
+        the atomic writer-locked migration path below.
+        """
+        tables = {row[0] for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name IN ('hub_subscriptions','hub_leader')"
+        )}
+        if tables != {'hub_subscriptions', 'hub_leader'}:
+            return False
+        subscriptions = {row[1]: row for row in db.execute(
+            'PRAGMA table_info(hub_subscriptions)'
+        )}
+        leaders = {row[1]: row for row in db.execute(
+            'PRAGMA table_info(hub_leader)'
+        )}
+        if not {
+            'k', 'url', 'params', 'active_until', 'next_due',
+            'last_error', 'priority_until', 'subscription_token'
+        } <= subscriptions.keys():
+            return False
+        if not {'singleton', 'owner', 'expires', 'lease_token', 'boot_epoch'} <= leaders.keys():
+            return False
+        # Columns without their primary-key contract can appear valid while
+        # ON CONFLICT updates silently fail or admit duplicate leaders.
+        if ({name: row[5] for name, row in subscriptions.items() if row[5]} != {'k': 1}
+                or {name: row[5] for name, row in leaders.items() if row[5]} != {'singleton': 1}):
+            return False
+        for name in ('url', 'params', 'active_until', 'next_due',
+                     'last_error', 'priority_until', 'subscription_token'):
+            if subscriptions[name][3] != 1:
+                return False
+        for name in ('owner', 'expires', 'lease_token', 'boot_epoch'):
+            if leaders[name][3] != 1:
+                return False
+        if not (HubRegistry._index_matches(db, 'hub_due', ('next_due', 'active_until'))
+                and HubRegistry._index_matches(db, 'hub_expiry', ('active_until',))):
+            return False
+        return db.execute(
+            "SELECT 1 FROM hub_subscriptions "
+            "WHERE subscription_token='' LIMIT 1"
+        ).fetchone() is None
 
     def _init(self):
         with self._connect() as db:
@@ -39,63 +133,194 @@ class HubRegistry:
                 mode = db.execute('PRAGMA journal_mode=WAL').fetchone()[0]
                 if mode.lower() != 'wal':
                     raise sqlite3.OperationalError('Market Hub requires SQLite WAL mode')
+            # Existing migrated databases need no writer transaction just
+            # to register another independent PAPER worker. The read-only
+            # preflight can coexist with a producer's active SQLite writer.
+            if self._schema_current(db):
+                return
+            # Missing columns, indices or legacy tokens require migration.
+            # Recheck and apply DDL/backfill under ONE SQLite writer lock:
+            # concurrent processes may all observe the same old schema.
+            # WAL setup above must remain outside this transaction.
+            db.execute('BEGIN IMMEDIATE')
             db.execute('''CREATE TABLE IF NOT EXISTS hub_subscriptions(
               k TEXT PRIMARY KEY, url TEXT NOT NULL, params TEXT NOT NULL,
               active_until REAL NOT NULL, next_due REAL NOT NULL DEFAULT 0,
               last_error TEXT NOT NULL DEFAULT '',
-              priority_until REAL NOT NULL DEFAULT 0)''')
+              priority_until REAL NOT NULL DEFAULT 0,
+              subscription_token TEXT NOT NULL DEFAULT '')''')
             columns = {row[1] for row in db.execute('PRAGMA table_info(hub_subscriptions)')}
             if 'priority_until' not in columns:
                 db.execute('ALTER TABLE hub_subscriptions ADD COLUMN priority_until REAL NOT NULL DEFAULT 0')
-            db.execute('CREATE INDEX IF NOT EXISTS hub_due ON hub_subscriptions(next_due,active_until)')
-            db.execute("CREATE TABLE IF NOT EXISTS hub_leader(singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL, expires REAL NOT NULL)")
+            if 'subscription_token' not in columns:
+                db.execute("ALTER TABLE hub_subscriptions ADD COLUMN subscription_token TEXT NOT NULL DEFAULT ''")
+            # An interrupted legacy backfill is completed atomically here.
+            # Subsequent startups use the read-only fast path above.
+            if db.execute("SELECT 1 FROM hub_subscriptions WHERE subscription_token='' LIMIT 1").fetchone():
+                db.execute("UPDATE hub_subscriptions SET subscription_token=lower(hex(randomblob(16))) "
+                           "WHERE subscription_token=''")
+            # A named index is not proof of the queue/expiry access path.
+            # Repair malformed same-table indexes under the migration writer
+            # lock; never drop an index belonging to an unrelated table.
+            for name, columns in (
+                    ('hub_due', ('next_due', 'active_until')),
+                    ('hub_expiry', ('active_until',))):
+                existing = db.execute(
+                    "SELECT tbl_name FROM sqlite_master WHERE type='index' AND name=?",
+                    (name,),
+                ).fetchone()
+                if existing and existing[0] != 'hub_subscriptions':
+                    raise sqlite3.DatabaseError(
+                        'Market Hub schema integrity: index name owned by another table: ' + name
+                    )
+                if existing and not self._index_matches(db, name, columns):
+                    db.execute('DROP INDEX "' + name + '"')
+                db.execute('CREATE INDEX IF NOT EXISTS "' + name +
+                           '" ON hub_subscriptions(' + ','.join(columns) + ')')
+            db.execute("CREATE TABLE IF NOT EXISTS hub_leader(singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL, expires REAL NOT NULL, lease_token TEXT NOT NULL DEFAULT '', boot_epoch REAL NOT NULL DEFAULT 0)")
+            # Existing installations may have a live legacy leader row. The
+            # next admission mints a new token; no old producer can prove it.
+            leader_columns = {row[1] for row in db.execute('PRAGMA table_info(hub_leader)')}
+            if 'lease_token' not in leader_columns:
+                db.execute("ALTER TABLE hub_leader ADD COLUMN lease_token TEXT NOT NULL DEFAULT ''")
+            if 'boot_epoch' not in leader_columns:
+                db.execute("ALTER TABLE hub_leader ADD COLUMN boot_epoch REAL NOT NULL DEFAULT 0")
+            # Recheck the complete schema while holding the same writer lock.
+            # An incompatible primary key/NOT NULL contract cannot be safely
+            # repaired by additive ALTER TABLE: fail closed, rollback the DDL,
+            # and require an explicit migration rather than starting a Hub
+            # that will fail at runtime under fleet load.
+            if not self._schema_current(db):
+                raise sqlite3.DatabaseError(
+                    'Market Hub schema integrity check failed; refusing startup'
+                )
 
     def claim_leader(self, owner, *, lifetime=15):
         if not owner or not 1 <= lifetime <= 120:
             raise ValueError('Invalid hub lease')
-        now = time.time()
+        candidate = uuid.uuid4().hex
+        boot = self._boot_epoch()
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            db.execute("""INSERT INTO hub_leader(singleton,owner,expires) VALUES(1,?,?)
-              ON CONFLICT(singleton) DO UPDATE SET owner=excluded.owner,expires=excluded.expires
-              WHERE hub_leader.expires < ? OR hub_leader.owner = ?""",
-              (owner, now + lifetime, now, owner))
-            claimed = db.execute('SELECT owner FROM hub_leader WHERE singleton=1').fetchone()
+            # Sample the clock only AFTER acquiring SQLite's writer lock.
+            # A queued contender must not reclaim using a stale lease time.
+            now = time.time()
+            db.execute("""INSERT INTO hub_leader(singleton,owner,expires,lease_token,boot_epoch)
+              VALUES(1,?,?,?,?)
+              ON CONFLICT(singleton) DO UPDATE SET
+                owner=excluded.owner,expires=excluded.expires,
+                lease_token=CASE WHEN hub_leader.owner=excluded.owner
+                    AND hub_leader.expires>=? AND hub_leader.lease_token<>''
+                    AND (hub_leader.boot_epoch=0 OR ?=0
+                         OR abs(hub_leader.boot_epoch-?)<=60)
+                    THEN hub_leader.lease_token ELSE excluded.lease_token END,
+                boot_epoch=CASE WHEN excluded.boot_epoch>0
+                    THEN excluded.boot_epoch ELSE hub_leader.boot_epoch END
+              WHERE hub_leader.expires < ? OR hub_leader.owner = ?
+                 OR (hub_leader.boot_epoch>0 AND ?>0
+                     AND abs(hub_leader.boot_epoch-?)>60)""",
+              (owner, now + lifetime, candidate, boot,
+               now, boot, boot, now, owner, boot, boot))
+            claimed = db.execute(
+                'SELECT owner,expires,lease_token,boot_epoch FROM hub_leader WHERE singleton=1'
+            ).fetchone()
             db.commit()
-        return bool(claimed and claimed[0] == owner)
+        return bool(claimed and claimed[0] == owner
+                    and claimed[1] >= now and claimed[2]
+                    and self._same_boot(claimed[3], boot))
 
-    def renew_leader(self, owner, *, lifetime=120):
-        if not owner or not 1 <= lifetime <= 120:
-            raise ValueError('Invalid hub lease')
-        now = time.time()
+    def live_leader(self):
+        """Only an unexpired leader from this OS boot can certify readiness.
+
+        A SQLite file survives reboot while its owner process does not. A
+        future wall-clock expiry from the previous boot must not prevent a
+        new producer from starting, nor authenticate a stale readiness file.
+        """
         with self._connect() as db:
-            cursor = db.execute("UPDATE hub_leader SET expires=? WHERE singleton=1 AND owner=? AND expires>=?", (now+lifetime,owner,now))
+            row = db.execute(
+                'SELECT owner,expires,lease_token,boot_epoch FROM hub_leader '
+                'WHERE singleton=1'
+            ).fetchone()
+        if (row and type(row[1]) in (int, float) and math.isfinite(row[1])
+                and row[1] > time.time() and row[2]
+                and self._same_boot(row[3], self._boot_epoch())):
+            return row
+        return None
+
+    def leader_token(self, owner):
+        """Opaque generation of the current unexpired same-boot lease."""
+        with self._connect() as db:
+            row = db.execute(
+                'SELECT lease_token,boot_epoch FROM hub_leader WHERE singleton=1 '
+                'AND owner=? AND expires>=? AND lease_token<>\'\'',
+                (owner, time.time()),
+            ).fetchone()
+        return row[0] if row and self._same_boot(row[1], self._boot_epoch()) else None
+
+    def renew_leader(self, owner, *, token, lifetime=120):
+        # A stale process cannot renew an expired or previous-boot generation,
+        # even if the wall clock makes its old expiry appear to be in the future.
+        if (not owner or not isinstance(token, str) or not token
+                or not 1 <= lifetime <= 120):
+            raise ValueError('Invalid hub lease')
+        boot = self._boot_epoch()
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            now = time.time()
+            cursor = db.execute(
+                "UPDATE hub_leader SET expires=? WHERE singleton=1 "
+                "AND owner=? AND expires>=? AND lease_token=? "
+                "AND (boot_epoch=0 OR ?=0 OR abs(boot_epoch-?)<=60)",
+                (now + lifetime, owner, now, token, boot, boot),
+            )
             return cursor.rowcount == 1
 
-    def release_leader(self, owner):
+    def release_leader(self, owner, *, token):
+        # A delayed shutdown from an earlier epoch must not revoke the lease
+        # now held by a successor with the same logical producer identity.
+        if not owner or not isinstance(token, str) or not token:
+            raise ValueError('Invalid hub lease')
         with self._connect() as db:
-            db.execute('DELETE FROM hub_leader WHERE singleton=1 AND owner=?', (owner,))
+            cursor = db.execute(
+                'DELETE FROM hub_leader WHERE singleton=1 '
+                'AND owner=? AND lease_token=?',
+                (owner, token),
+            )
+            return cursor.rowcount == 1
 
-    def finish_owned(self, key, delay, owner, error=''):
+    def finish_owned(self, key, delay, owner, error='', *, token, subscription_token):
         """Acknowledge only while this producer still holds an unexpired lease.
 
         The ownership check and subscription update share one SQLite writer
         transaction so a replacement producer cannot be raced by an old one.
         """
-        now = time.time()
+        if (not isinstance(token, str) or not token
+                or not isinstance(subscription_token, str) or not subscription_token):
+            raise ValueError('Hub completion requires leader and subscription fencing tokens')
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
+            # Both leader and subscription expiry are checked against the
+            # instant the SQLite writer lock is held, not queue-entry time.
+            now = time.time()
+            boot = self._boot_epoch()
             valid = db.execute(
-                'SELECT 1 FROM hub_leader WHERE singleton=1 AND owner=? AND expires>=?',
-                (owner, now),
+                'SELECT 1 FROM hub_leader WHERE singleton=1 AND owner=? '
+                'AND expires>=? AND lease_token=? '
+                'AND (boot_epoch=0 OR ?=0 OR abs(boot_epoch-?)<=60)',
+                (owner, now, token, boot, boot),
             ).fetchone()
             if not valid:
                 db.rollback()
                 return False
-            db.execute('UPDATE hub_subscriptions SET next_due=?,last_error=? WHERE k=?',
-                       (now + delay, str(error)[:300], key))
+            # A revived/pruned-and-recreated subscriber has a new incarnation,
+            # even when the same producer still owns the leader lease.
+            updated = db.execute(
+                'UPDATE hub_subscriptions SET next_due=?,last_error=? '
+                'WHERE k=? AND subscription_token=? AND active_until>?',
+                (now + delay, str(error)[:300], key, subscription_token, now),
+            )
             db.commit()
-        return True
+        return updated.rowcount == 1
 
     @staticmethod
     def identity(url, params):
@@ -117,30 +342,62 @@ class HubRegistry:
         if type(priority) is not bool:
             raise ValueError('Hub priority flag must be boolean')
         from .market import PublicData
-        parsed = urlparse(url)
-        if (parsed.scheme != 'https' or parsed.hostname not in PublicData.HOSTS
-                or parsed.username is not None or parsed.password is not None
-                or parsed.fragment):
-            raise ValueError('Hub accepts only credential-free public HTTPS sources')
-        if not isinstance(params, (dict, type(None))):
-            raise ValueError('Hub params must be a JSON object')
+        PublicData.validated_public_request(url, params)
         key, encoded = self.identity(url, params)
-        now = time.time()
+        generation = uuid.uuid4().hex
         with self._connect() as db:
-            db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until)
-              VALUES(?,?,?,?,0,?) ON CONFLICT(k) DO UPDATE SET
-              active_until=excluded.active_until,
-              priority_until=max(hub_subscriptions.priority_until,excluded.priority_until),
+            db.execute('BEGIN IMMEDIATE')
+            # A subscription may expire while waiting on a fleet-wide writer.
+            # Refresh its incarnation and TTL from transaction admission.
+            now = time.time()
+            db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until,subscription_token)
+              VALUES(?,?,?,?,0,?,?) ON CONFLICT(k) DO UPDATE SET
+              active_until=max(hub_subscriptions.active_until,excluded.active_until),
+              subscription_token=CASE WHEN hub_subscriptions.active_until<=?
+                             OR hub_subscriptions.params<>excluded.params
+                             OR hub_subscriptions.url<>excluded.url
+                             THEN excluded.subscription_token
+                             ELSE hub_subscriptions.subscription_token END,
+              priority_until=CASE WHEN hub_subscriptions.active_until<=?
+                             THEN excluded.priority_until
+                             ELSE max(hub_subscriptions.priority_until,excluded.priority_until) END,
               params=excluded.params,
               url=excluded.url,
-              next_due=CASE WHEN hub_subscriptions.params<>excluded.params
+              next_due=CASE WHEN hub_subscriptions.active_until<=?
+                            OR hub_subscriptions.params<>excluded.params
                             OR hub_subscriptions.url<>excluded.url
                             THEN 0 ELSE hub_subscriptions.next_due END,
-              last_error=CASE WHEN hub_subscriptions.params<>excluded.params
+              last_error=CASE WHEN hub_subscriptions.active_until<=?
+                              OR hub_subscriptions.params<>excluded.params
                               OR hub_subscriptions.url<>excluded.url
                               THEN '' ELSE hub_subscriptions.last_error END''',
-              (key, url, encoded, now + lifetime, now + min(lifetime * 0.75, 90) if priority else 0))
+              (key, url, encoded, now + lifetime,
+               now + min(lifetime * 0.75, 90) if priority else 0,
+               generation, now, now, now, now))
         return key
+
+    def prune_expired(self, *, retention=3600, batch=256):
+        """Bounded garbage collection of abandoned market subscriptions.
+
+        The grace interval protects subscribers across short restarts and
+        clock adjustments. A bounded SQL batch avoids locking the SQLite
+        writer for an unbounded fleet-size delete; repeated producer polls
+        eventually reclaim the backlog. Never prune an active subscription.
+        """
+        if (type(retention) not in (int, float) or not math.isfinite(retention)
+                or not 60 <= retention <= 86400
+                or type(batch) is not int or not 1 <= batch <= 1024):
+            raise ValueError('Invalid Hub retention or cleanup batch')
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            cutoff = time.time() - retention
+            cursor = db.execute(
+                'DELETE FROM hub_subscriptions WHERE k IN ('
+                'SELECT k FROM hub_subscriptions WHERE active_until<? '
+                'ORDER BY active_until,k LIMIT ?)',
+                (cutoff, batch),
+            )
+            return cursor.rowcount
 
     def has_active_subscriptions(self):
         """Read-only liveness probe for the independent producer lifecycle.
@@ -149,15 +406,19 @@ class HubRegistry:
         longer renew, so the hub may retire after their leases expire.
         """
         with self._connect() as db:
+            now = time.time()
             return db.execute(
                 'SELECT 1 FROM hub_subscriptions WHERE active_until>? LIMIT 1',
-                (time.time(),),
+                (now,),
             ).fetchone() is not None
 
-    def due(self, limit=32, *, reserve_regular=0, exclude=(), include_priority=False):
+    def due(self, limit=32, *, reserve_regular=0, exclude=(), include_priority=False,
+            include_generation=False):
         # Urgent position marks first, reserve slots for scans.
 
         # Urgency belongs to a short renewable lease, not a permanent flag.
+        if type(include_generation) is not bool:
+            raise ValueError('Hub generation flag must be boolean')
         if type(limit) is not int or limit < 1:
             raise ValueError('Invalid due batch limit')
         if type(reserve_regular) is not int or not 0 <= reserve_regular < limit:
@@ -169,51 +430,64 @@ class HubRegistry:
         if any(type(key) is not str for key in exclude) or len(exclude) > 64:
             raise ValueError('Invalid in-flight Hub exclusion keys')
         skip_sql = (' AND k NOT IN (' + ','.join('?' for _ in exclude) + ')') if exclude else ''
-        now = time.time()
         with self._connect() as db:
-            urgent = db.execute('''SELECT k,url,params FROM hub_subscriptions
+            now = time.time()
+            urgent = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
               ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, limit-reserve_regular)).fetchall()
-            regular = db.execute('''SELECT k,url,params FROM hub_subscriptions
+            regular = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until<=?''' + skip_sql +
               ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, limit-len(urgent))).fetchall()
             rows = [(row, True) for row in urgent] + [(row, False) for row in regular]
             if len(rows) < limit and len(urgent) == limit-reserve_regular:
-                more = db.execute('''SELECT k,url,params FROM hub_subscriptions
+                more = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
                   WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
                   ' ORDER BY next_due,k LIMIT ? OFFSET ?',
                   (now,now,now,*exclude,limit-len(rows),len(urgent))).fetchall()
                 rows.extend((row, True) for row in more)
+        # Older Hub databases can contain subscriptions admitted before the
+        # shared public-route policy existed. Revalidate at dequeue as well as
+        # at registration; invalid rows must not consume producer HTTP slots.
+        from .market import PublicData
         valid = []
-        for (key, url, raw_params), is_urgent in rows:
+        for (key, url, raw_params, generation), is_urgent in rows:
             try:
                 params = json.loads(raw_params, parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
-                if not isinstance(params, (dict, type(None))):
-                    raise ValueError('Subscription params must be a JSON object')
-                if self.identity(url, params)[0] != key:
-                    raise ValueError('Subscription identity differs from persisted data')
+                PublicData.validated_public_request(url, params)
+                if self.identity(url, params)[0] != key or not generation:
+                    raise ValueError('Subscription identity or generation differs from persisted data')
             except (ValueError, TypeError, UnicodeError):
                 with self._connect() as db:
                     db.execute('UPDATE hub_subscriptions SET last_error=?, next_due=? '
-                               'WHERE k=? AND params=?',
-                               ('Invalid persisted subscription params',
-                                time.time() + 60, key, raw_params))
+                               'WHERE k=? AND params=? AND subscription_token=?',
+                               ('Invalid persisted public subscription',
+                                time.time() + 60, key, raw_params, generation))
                 continue
-            valid.append((key, url, params, is_urgent) if include_priority else (key, url, params))
+            row = (key, url, params)
+            if include_priority:
+                row += (is_urgent,)
+            if include_generation:
+                row += (generation,)
+            valid.append(row)
         return valid
 
     def finish(self, key, delay, error=''):
-        with self._connect() as db:
-            db.execute('UPDATE hub_subscriptions SET next_due=?,last_error=? WHERE k=?',
-                       (time.time() + delay, str(error)[:300], key))
+        """Legacy unfenced completion is deliberately unavailable.
+
+        Only finish_owned may mutate producer acknowledgements. Otherwise an
+        obsolete worker or producer could bypass the lease-generation barrier.
+        """
+        raise RuntimeError('Unfenced Market Data Hub completion is forbidden')
 
 
 class MarketDataHub:
     """Single producer intended to run as one managed service process."""
     def __init__(self, cache_path, source=None, *, max_workers=1):
         from .market import PublicData
-        if type(max_workers) is not int or not 1 <= max_workers <= 12:
-            raise ValueError('Hub producer concurrency must be 1..12')
+        if type(max_workers) is not int or max_workers < 1:
+            raise ValueError('Hub producer concurrency must be a positive integer')
+        # Provider request quotas remain enforced separately; the operator's
+        # concurrency setting is a resource budget, not a fixed software cap.
         self.max_workers = max_workers
         # One bounded pool for the whole lifetime of this independent Hub.
         # A new pool per poll would constantly churn threads on large scans.
@@ -226,19 +500,83 @@ class MarketDataHub:
         self._inflight = {}
         self._leader_check_due = 0.0
         self._leader_held = False
+        self._leader_token = None
+        self._prune_due = 0.0
         self.lease_renew_interval = 5.0
         self.source = source or PublicData()
         if self.source.shared is None:
             self.source.shared = PublicCache(cache_path)
 
+    def acquire_leadership(self, *, lifetime=120):
+        """Single admission path for service readiness and every producer mode.
+
+        The token must be retained before the service announces readiness,
+        otherwise an early shutdown cannot release its own lease safely.
+        """
+        if not self.registry.claim_leader(self.owner, lifetime=lifetime):
+            self._leader_token = None
+            self._leader_held = False
+            return None
+        token = self.registry.leader_token(self.owner)
+        self._leader_token = token
+        self._leader_held = bool(token)
+        return token
+
+    def _maintain_registry(self):
+        """Only the admitted leader performs bounded subscription cleanup."""
+        now = time.monotonic()
+        if now >= self._prune_due:
+            self.registry.prune_expired()
+            self._prune_due = now + 30.0
+
+    def _fetch_public(self, url, params, *, urgent):
+        """Preserve subscriber priority across ALL Hub producer modes.
+
+        PublicData checks its thread-local position_mark before reserving the
+        shared Bybit request budget. A priority queue alone cannot protect
+        open PAPER positions if the producer drops that mark at the HTTP
+        boundary. Always restore the worker-thread context, including errors.
+        """
+        context = getattr(self.source, '_thread', None)
+        previous = getattr(context, 'position_mark', False) if context is not None else False
+        if context is not None:
+            context.position_mark = bool(urgent)
+        try:
+            return self.source.get(url, params=params)
+        finally:
+            if context is not None:
+                context.position_mark = previous
+
+    def _acknowledge(self, key, delay, error, *, token, generation):
+        """Classify a fenced acknowledgement without confusing subscriber churn
+        with loss of producer leadership.
+
+        A subscriber can expire, be pruned or re-register under a new
+        incarnation while its old HTTP request is in flight. Its stale
+        completion must be discarded, but the same leader must continue
+        servicing unrelated subscriptions. Only actual leadership loss stops
+        the producer. Every successful acknowledgement is still checked in
+        the same SQLite transaction as the two fencing tokens.
+        """
+        if self.registry.finish_owned(
+                key, delay, self.owner, error, token=token,
+                subscription_token=generation):
+            return "acknowledged"
+        if self.registry.leader_token(self.owner) == token:
+            return "stale_subscription"
+        return "lost_leader"
+
     def run_once(self, limit=32):
         if self.max_workers > 1:
             return self._run_parallel(limit)
-        if not self.registry.claim_leader(self.owner, lifetime=120):
+        token = self.acquire_leadership()
+        if not token:
             return []
+        self._maintain_registry()
         results = []
-        for key, url, params in self.registry.due(limit):
-            if not self.registry.renew_leader(self.owner, lifetime=120):
+        for key, url, params, urgent, generation in self.registry.due(
+                limit, include_priority=True, include_generation=True):
+            if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
             delay = 120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0)
             stop_renewal = threading.Event()
@@ -249,7 +587,7 @@ class MarketDataHub:
                 # Another hub must not take ownership just because HTTP is slow.
                 while not stop_renewal.wait(self.lease_renew_interval):
                     try:
-                        if not self.registry.renew_leader(self.owner, lifetime=120):
+                        if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                             lease_lost.set()
                             return
                     except sqlite3.Error:
@@ -261,7 +599,7 @@ class MarketDataHub:
             heartbeat.start()
             error = None
             try:
-                self.source.get(url, params=params)
+                self._fetch_public(url, params, urgent=urgent)
             except Exception as exc:
                 error = exc
             finally:
@@ -270,16 +608,17 @@ class MarketDataHub:
             # A stale producer must not publish subscription completion after
             # ownership transfer. Cache writes inside source.get are protected
             # separately by PublicCache's per-request ownership lease.
-            if lease_lost.is_set() or not self.registry.renew_leader(self.owner, lifetime=120):
+            if lease_lost.is_set() or not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
-            if error is None:
-                if not self.registry.finish_owned(key, delay, self.owner):
-                    break
-                results.append((key, True))
-            else:
-                if not self.registry.finish_owned(key, 2.0, self.owner, str(error)):
-                    break
-                results.append((key, False))
+            outcome = self._acknowledge(
+                key, 2.0 if error is not None else delay,
+                str(error) if error is not None else "",
+                token=token, generation=generation,
+            )
+            if outcome == "lost_leader":
+                break
+            if outcome == "acknowledged":
+                results.append((key, error is None))
         return results
 
     def _run_parallel(self, limit):
@@ -290,10 +629,16 @@ class MarketDataHub:
         thread acknowledges completed subscriptions. Fetch concurrency is
         bounded independently of the much larger registered symbol count.
         """
-        if not self.registry.claim_leader(self.owner, lifetime=120):
+        token = self.acquire_leadership()
+        if not token:
             return []
-        due = self.registry.due(min(limit, self.max_workers),
-                                reserve_regular=1 if self.max_workers > 1 else 0)
+        self._maintain_registry()
+        batch = min(limit, self.max_workers)
+        # A one-request batch has no second lane to reserve. Keep the
+        # scheduler's reservation strictly below the actual batch size.
+        due = self.registry.due(batch,
+                                reserve_regular=1 if batch > 1 else 0,
+                                include_priority=True, include_generation=True)
         if not due:
             return []
         stop = threading.Event()
@@ -302,7 +647,7 @@ class MarketDataHub:
         def keep_leader():
             while not stop.wait(self.lease_renew_interval):
                 try:
-                    if not self.registry.renew_leader(self.owner, lifetime=120):
+                    if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                         lost.set()
                         return
                 except sqlite3.Error:
@@ -310,12 +655,12 @@ class MarketDataHub:
                     return
 
         def fetch(request):
-            key, url, params = request
+            key, url, params, urgent, generation = request
             try:
-                self.source.get(url, params=params)
-                return key, url, None
+                self._fetch_public(url, params, urgent=urgent)
+                return key, url, generation, None
             except Exception as exc:
-                return key, url, exc
+                return key, url, generation, exc
 
         keeper = threading.Thread(target=keep_leader, name='hub-lease-renewal', daemon=True)
         keeper.start()
@@ -323,18 +668,22 @@ class MarketDataHub:
         try:
             futures = [self._pool.submit(fetch, request) for request in due]
             for future in as_completed(futures):
-                key, url, error = future.result()
-                if lost.is_set() or not self.registry.renew_leader(self.owner, lifetime=120):
+                key, url, generation, error = future.result()
+                if lost.is_set() or not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                     lost.set()
                     break
                 delay = 120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0)
                 if error is not None:
                     delay = 2.0
-                if not self.registry.finish_owned(key, delay, self.owner,
-                                                 str(error) if error is not None else ''):
+                outcome = self._acknowledge(
+                    key, delay, str(error) if error is not None else "",
+                    token=token, generation=generation,
+                )
+                if outcome == "lost_leader":
                     lost.set()
                     break
-                results.append((key, error is None))
+                if outcome == "acknowledged":
+                    results.append((key, error is None))
         finally:
             stop.set()
             keeper.join(timeout=2)
@@ -353,33 +702,45 @@ class MarketDataHub:
             return self.run_once()
         now = time.monotonic()
         if now >= self._leader_check_due:
-            self._leader_held = (
-                self.registry.renew_leader(self.owner, lifetime=120)
+            held = (
+                self.registry.renew_leader(self.owner, token=self._leader_token, lifetime=120)
                 if self._leader_held
-                else self.registry.claim_leader(self.owner, lifetime=120)
+                else self.acquire_leadership()
             )
+            self._leader_token = self.registry.leader_token(self.owner) if held else None
+            self._leader_held = bool(self._leader_token)
             self._leader_check_due = now + 1.0
         if not self._leader_held:
             # Do not publish from a superseded producer. Running HTTP cannot
             # always be cancelled; its single-flight cache lease is separate.
             return []
 
+        self._maintain_registry()
         results = []
-        for key, (future, url, is_urgent) in list(self._inflight.items()):
+        for key, (future, url, is_urgent, launched_token, generation) in list(self._inflight.items()):
             if not future.done():
                 continue
             del self._inflight[key]
+            # A task launched under an earlier lease must not acknowledge
+            # subscriptions after the producer loses and regains leadership.
+            # Keep it accounted for until completion to bound HTTP concurrency.
+            if launched_token != self._leader_token:
+                continue
             try:
                 error = future.result()
             except Exception as exc:
                 error = exc
             delay = (2.0 if error is not None else
                      120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0))
-            if not self.registry.finish_owned(key, delay, self.owner,
-                                             str(error) if error is not None else ''):
+            outcome = self._acknowledge(
+                key, delay, str(error) if error is not None else "",
+                token=launched_token, generation=generation,
+            )
+            if outcome == "lost_leader":
                 self._leader_held = False
                 return results
-            results.append((key, error is None))
+            if outcome == "acknowledged":
+                results.append((key, error is None))
 
         free = self.max_workers - len(self._inflight)
         if free <= 0:
@@ -390,12 +751,13 @@ class MarketDataHub:
         available = self.registry.due(
             limit=self.max_workers, reserve_regular=1,
             exclude=tuple(self._inflight), include_priority=True,
+            include_generation=True,
         )
         regular_inflight = sum(not item[2] for item in self._inflight.values())
         urgent_inflight = len(self._inflight) - regular_inflight
         urgent_available = any(item[3] for item in available)
         regular_available = any(not item[3] for item in available)
-        for key, url, params, is_urgent in available:
+        for key, url, params, is_urgent, generation in available:
             if free <= 0:
                 break
             if (is_urgent and regular_available and regular_inflight == 0
@@ -409,22 +771,13 @@ class MarketDataHub:
             if not is_urgent and regular_inflight >= self.max_workers - 1:
                 continue
             def fetch(request_url=url, request_params=params, urgent=is_urgent):
-                # The producer, not the consumer, reserves the exchange GET
-                # budget. Carry the trusted subscription urgency across this
-                # boundary, on the producer's own thread-local context only.
-                context = getattr(self.source, '_thread', None)
-                previous = getattr(context, 'position_mark', False) if context is not None else False
-                if context is not None:
-                    context.position_mark = bool(urgent)
                 try:
-                    self.source.get(request_url, params=request_params)
+                    self._fetch_public(request_url, request_params, urgent=urgent)
                     return None
                 except Exception as exc:
                     return exc
-                finally:
-                    if context is not None:
-                        context.position_mark = previous
-            self._inflight[key] = (self._pool.submit(fetch), url, is_urgent)
+            self._inflight[key] = (self._pool.submit(fetch), url, is_urgent,
+                                   self._leader_token, generation)
             urgent_inflight += bool(is_urgent)
             regular_inflight += not is_urgent
             free -= 1
@@ -433,5 +786,8 @@ class MarketDataHub:
     def close(self):
         if self._pool is not None:
             self._pool.shutdown(wait=True, cancel_futures=True)
-        self.registry.release_leader(self.owner)
+        if self._leader_token:
+            self.registry.release_leader(self.owner, token=self._leader_token)
+            self._leader_token = None
+            self._leader_held = False
         self.source.close()

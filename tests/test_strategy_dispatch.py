@@ -1,23 +1,11 @@
 import threading
-import time
 import unittest
+import pytest
 
 from bcc.strategy_dispatch import DispatchBusy, StrategyDispatcher
 
 
 class StrategyDispatcherTests(unittest.TestCase):
-    def test_800_keys_no_loss(self):
-        with StrategyDispatcher(workers=12, maximum_pending=800) as hub:
-            futures = [hub.submit('bot-' + str(i), lambda n=i: n * 3) for i in range(800)]
-            results = hub.collect()
-            while len(results) < 800:
-                time.sleep(.001)
-                results.extend(hub.collect())
-            self.assertEqual({key: value for key, value, error in results},
-                             {'bot-' + str(i): i * 3 for i in range(800)})
-            self.assertTrue(all(error is None for _, _, error in results))
-            self.assertEqual(len(futures), 800)
-
     def test_bounded_and_no_overlap(self):
         gate = threading.Event()
         with StrategyDispatcher(workers=1, maximum_pending=2) as hub:
@@ -47,3 +35,18 @@ class StrategyDispatcherTests(unittest.TestCase):
         hub.close()
         with self.assertRaises(DispatchBusy):
             hub.submit('a', lambda: 1)
+
+
+@pytest.mark.parametrize('owner_count,threads', [(3, 1), (83, 4), (521, 19)])
+def test_fleet_size_is_independent_of_thread_budget(owner_count, threads):
+    # These are varied workloads, never production fleet or thread ceilings.
+    with StrategyDispatcher(workers=threads) as hub:
+        futures = [hub.submit('bot-' + str(i), lambda n=i: n * 3)
+                   for i in range(owner_count)]
+        for future in futures:
+            future.result(timeout=15)
+        results = hub.collect()
+        assert {key: value for key, value, error in results} == {
+            'bot-' + str(i): i * 3 for i in range(owner_count)}
+        assert all(error is None for _, _, error in results)
+        assert len(futures) == owner_count

@@ -1,0 +1,671 @@
+{
+  "baseline": "343c3b3c619ca68f7fc120c6072b4953dc6e1de8",
+  "date": "2026-11-12",
+  "native_windows": "BLOCKED: Linux executor; mandatory identities verified only as Linux regression",
+  "release_accepted": false,
+  "cycles": [
+    {
+      "name": "resumed-red",
+      "actual_testcases": 8,
+      "declared_tests": 8,
+      "failures": [
+        {
+          "case": "tests.test_coordinator_connection_lifetime::test_control_connection_commits_or_rolls_back_then_always_closes[False]",
+          "message": "Failed: DID NOT RAISE ProgrammingError"
+        },
+        {
+          "case": "tests.test_coordinator_connection_lifetime::test_control_connection_commits_or_rolls_back_then_always_closes[True]",
+          "message": "Failed: DID NOT RAISE ProgrammingError"
+        },
+        {
+          "case": "tests.test_coordinator_connection_lifetime::test_control_and_ledger_fences_leave_no_handles_for_windows_teardown",
+          "message": "Failed: DID NOT RAISE ProgrammingError"
+        },
+        {
+          "case": "tests.test_coordinator_connection_lifetime::test_production_sqlite_connections_never_rely_on_context_exit_to_close",
+          "message": "AssertionError: coordination.py:34: SQLite context does not close its handle\nassert not (True and 'sqlite3' == 'sqlite3'\n +  where True = isinstance(<ast.Name object at 0x7fe45f75ca10>, <class 'ast.Name'>)\n +    where <ast.Name object at 0x7fe45f75ca10> = <ast.Attribute object at 0x7fe45f75ca90>.value\n +      where <ast.Attribute object at 0x7fe45f75ca90> = <ast.Call object at 0x7fe45f75cad0>.func\n[+5 more lines; full report in element text]"
+        },
+        {
+          "case": "tests.test_hub_resource_service_boundary::test_service_accepts_resource_budget_and_releases_its_lease[13]",
+          "message": "AssertionError: usage: market_hub_service.py [-h] --cache CACHE [--ready-file READY_FILE]\n                               [--ready-token READY_TOKEN] [--poll POLL]\n                               [--concurrency CONCURRENCY]\n                               [--idle-exit IDLE_EXIT]\n  market_hub_service.py: error: --concurrency must be 1..12\n  \nassert 2 == 0\n[+1 more line; full report in element text]"
+        },
+        {
+          "case": "tests.test_hub_resource_service_boundary::test_service_accepts_resource_budget_and_releases_its_lease[29]",
+          "message": "AssertionError: usage: market_hub_service.py [-h] --cache CACHE [--ready-file READY_FILE]\n                               [--ready-token READY_TOKEN] [--poll POLL]\n                               [--concurrency CONCURRENCY]\n                               [--idle-exit IDLE_EXIT]\n  market_hub_service.py: error: --concurrency must be 1..12\n  \nassert 2 == 0\n[+1 more line; full report in element text]"
+        }
+      ],
+      "skipped": 0,
+      "junit_sha256": "a87288d07c996d7fef7d2cc3eb77c2e418cf6b754166130b9a6c21eec8e289b0"
+    },
+    {
+      "name": "resumed-target",
+      "actual_testcases": 146,
+      "declared_tests": 146,
+      "failures": [],
+      "skipped": 0,
+      "junit_sha256": "c645da8d9766cee695f55ea87bb0328f945fc71e274a5d09262ca8dd74f46be2"
+    },
+    {
+      "name": "resumed-integration",
+      "actual_testcases": 47,
+      "declared_tests": 50,
+      "failures": [],
+      "skipped": 0,
+      "junit_sha256": "c638e2a4c9bc6fa179129bcf27a820355881693c646805bece7bc3fa6aaaa5de"
+    },
+    {
+      "name": "resumed-integrated-final",
+      "actual_testcases": 155,
+      "declared_tests": 155,
+      "failures": [],
+      "skipped": 0,
+      "junit_sha256": "be68a579fab2eac479c06d2cc8b8fb9115ab26fb89389788868de2b895eff933"
+    },
+    {
+      "name": "qa-budget-red",
+      "actual_testcases": 3,
+      "declared_tests": 3,
+      "failures": [
+        "tests.test_r611_windows_timeout_budget::test_native_outer_budget_covers_all_scheduled_isolated_shards"
+      ],
+      "junit_sha256": "26c784be56419fcbf2af33afb94ae7661a04d41f201502a4d82916b51b78b884"
+    },
+    {
+      "name": "qa-budget-green",
+      "actual_testcases": 17,
+      "declared_tests": 17,
+      "failures": [],
+      "junit_sha256": "017d54d988e9ca78ab8ba0e866fb8ba72ddcf571f3a238380d75eb8d06d83d49"
+    },
+    {
+      "name": "final-driver-target",
+      "actual_testcases": 125,
+      "failures": [],
+      "junit_sha256": "9aa8eab05955f3e6bcd3e46c7a047ab3d6b36c169720df4fc5c9b0d15fd1c8f4"
+    }
+  ],
+  "clean_source_commit": "0dc030006a08308707bb06979dc28e80426bdef4",
+  "clean_source_manifest_sha256": "92a0765675edc687eeef0fd6c210e83656ec00e9ace080bb1be0279613ddda94",
+  "clean_full": {
+    "tests": 3532,
+    "passed": 3531,
+    "failed": [
+      "tests.test_w2_market_data_architecture::test_invalid_concurrency_is_rejected"
+    ],
+    "seconds": 227.97,
+    "junit_sha256": "ee8a8db9e5dbd90c6e5f1b4746055863e68d2a8ad2bda6391d53812626e9c452"
+  },
+  "clean_gui": {
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "qt_platform": "offscreen",
+    "native_windows": false,
+    "checks": [
+      {
+        "strategy": "VELES",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "POLYMARKET",
+        "pages": 7,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "PUMP_DUMP",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "GRID",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "EMA",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "MACD",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "BOLLINGER",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "EMA_RSI_VOLUME",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      }
+    ],
+    "test_data": "Isolated bot configurations; no fabricated market data or trades",
+    "screen": {
+      "width": 800,
+      "height": 800
+    },
+    "operator_cycles": [
+      {
+        "strategy": "VELES",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      },
+      {
+        "strategy": "GRID",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      },
+      {
+        "strategy": "PUMP_DUMP",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      },
+      {
+        "strategy": "POLYMARKET",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      }
+    ],
+    "all_bots_monitor": "PASS",
+    "all_bots_monitor_rows": 20,
+    "all_bots_monitor_strategies": [
+      "BOLLINGER",
+      "EMA",
+      "EMA_RSI_VOLUME",
+      "GRID",
+      "MACD",
+      "POLYMARKET",
+      "PUMP_DUMP",
+      "VELES"
+    ],
+    "coin_picker": [
+      {
+        "theme": "dark",
+        "minimum_contrast": 8.62,
+        "status": "PASS"
+      },
+      {
+        "theme": "light",
+        "minimum_contrast": 8.62,
+        "status": "PASS"
+      }
+    ],
+    "poly_coin_catalog": "PASS",
+    "status": "PASS"
+  },
+  "public_probe": {
+    "at": "2026-11-12T18:23:34.862634+00:00",
+    "read_only": true,
+    "all_available": false,
+    "checks": [
+      {
+        "source": "Bybit USDT Futures",
+        "status": "RESTRICTED",
+        "error": "api.bybit.com: HTTP 403: публичный источник отклонил доступ; торговые решения заблокированы",
+        "restriction": {
+          "host": "api.bybit.com",
+          "http_status": 403
+        }
+      },
+      {
+        "source": "Polymarket Gamma + CLOB",
+        "status": "PASS"
+      },
+      {
+        "source": "Binance spot impulse",
+        "status": "RESTRICTED",
+        "error": "api.binance.com: HTTP 451: публичный источник отклонил доступ; торговые решения заблокированы",
+        "restriction": {
+          "host": "api.binance.com",
+          "http_status": 451
+        }
+      }
+    ]
+  },
+  "native_preflight": {
+    "app_version": "17.0.9-INTEGRATED-ARCH-WIP",
+    "at": "2026-11-12T18:23:37.448556+00:00",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "source_sha256": null,
+    "steps": [],
+    "release_ready": false,
+    "manual_acceptance": "PENDING: follow ACCEPTANCE_WINDOWS_RU.md; automated tests do not replace it",
+    "status": "BLOCKED",
+    "error": "Требуется настоящий Windows Qt; offscreen не считается нативной проверкой"
+  },
+  "first_sharded": {
+    "source": "08e9a16",
+    "status": "FAIL",
+    "totals": {
+      "tests": 3532,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "inventory_count": 3532,
+    "shards": [
+      {
+        "name": "shard_00",
+        "status": "PASS",
+        "seconds": 5.995,
+        "timeout": 360,
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_01",
+        "status": "PASS",
+        "seconds": 61.135,
+        "timeout": 360,
+        "totals": {
+          "tests": 588,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_02",
+        "status": "PASS",
+        "seconds": 51.738,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_03",
+        "status": "PASS",
+        "seconds": 32.106,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_04",
+        "status": "PASS",
+        "seconds": 27.716,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_05",
+        "status": "FAIL",
+        "seconds": 21.651,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 1,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_06",
+        "status": "PASS",
+        "seconds": 23.556,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_07",
+        "status": "PASS",
+        "seconds": 10.647,
+        "timeout": 600,
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ]
+  },
+  "final_verified_source_commit": "613fb7cadb32b2f73bbda823e8ace40ba99eabc7",
+  "final_verified_manifest_sha256": "9491d841c4ff407326d653afd782cd95978ae84542a3b3579ab72b00ca249fa9",
+  "final_source_files": 394,
+  "final_regression": {
+    "command": "QT_QPA_PLATFORM=offscreen /workspace/work/venv/bin/python -m tools.run_partitioned_tests --inventory /workspace/work/verified-inventory.json --output /workspace/work/verified-shards",
+    "platform": "Linux / Qt offscreen",
+    "clean_checkout": "/workspace/work/qa-final",
+    "status": "PASS",
+    "totals": {
+      "tests": 3533,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "exact_inventory_count": 3533,
+    "junit_sha256": "f3a322119fdb110c4fb11b14102b40f773da77d587387f76d995f356509889bb",
+    "inventory_sha256": "dee0a889482bb0cc8142a76459eb4ab5fd9c851ff372500283b56062ef248e6d",
+    "sum_shard_elapsed_seconds": 239.491,
+    "shards": [
+      {
+        "name": "shard_00",
+        "status": "PASS",
+        "seconds": 5.752,
+        "timeout": 360,
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_01",
+        "status": "PASS",
+        "seconds": 64.196,
+        "timeout": 360,
+        "totals": {
+          "tests": 588,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_02",
+        "status": "PASS",
+        "seconds": 55.228,
+        "timeout": 360,
+        "totals": {
+          "tests": 588,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_03",
+        "status": "PASS",
+        "seconds": 32.779,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_04",
+        "status": "PASS",
+        "seconds": 28.87,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_05",
+        "status": "PASS",
+        "seconds": 24.862,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_06",
+        "status": "PASS",
+        "seconds": 16.17,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_07",
+        "status": "PASS",
+        "seconds": 11.634,
+        "timeout": 600,
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ],
+    "mandatory_case_identities": 29,
+    "mandatory_case_identity_errors": [],
+    "native_os_certified": false,
+    "remaining_test_services": []
+  },
+  "final_gui": {
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "qt_platform": "offscreen",
+    "native_windows": false,
+    "checks": [
+      {
+        "strategy": "VELES",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "POLYMARKET",
+        "pages": 7,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "PUMP_DUMP",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "GRID",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "EMA",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "MACD",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "BOLLINGER",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      },
+      {
+        "strategy": "EMA_RSI_VOLUME",
+        "pages": 6,
+        "created_and_reopened": "PASS",
+        "edited_and_reopened": "PASS",
+        "deposit_adjustment_with_ledger": "PASS",
+        "status": "PASS"
+      }
+    ],
+    "test_data": "Isolated bot configurations; no fabricated market data or trades",
+    "screen": {
+      "width": 800,
+      "height": 800
+    },
+    "operator_cycles": [
+      {
+        "strategy": "VELES",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      },
+      {
+        "strategy": "GRID",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      },
+      {
+        "strategy": "PUMP_DUMP",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      },
+      {
+        "strategy": "POLYMARKET",
+        "copy": "PASS",
+        "transfer": "PASS",
+        "csv_history": "PASS",
+        "command_revoke": "PASS",
+        "delete_and_copy_isolation": "PASS",
+        "paper_ledger_audit": "PASS",
+        "command_scope": "INTENT_ONLY_NOT_WORKER_E2E"
+      }
+    ],
+    "all_bots_monitor": "PASS",
+    "all_bots_monitor_rows": 20,
+    "all_bots_monitor_strategies": [
+      "BOLLINGER",
+      "EMA",
+      "EMA_RSI_VOLUME",
+      "GRID",
+      "MACD",
+      "POLYMARKET",
+      "PUMP_DUMP",
+      "VELES"
+    ],
+    "coin_picker": [
+      {
+        "theme": "dark",
+        "minimum_contrast": 8.62,
+        "status": "PASS"
+      },
+      {
+        "theme": "light",
+        "minimum_contrast": 8.62,
+        "status": "PASS"
+      }
+    ],
+    "poly_coin_catalog": "PASS",
+    "status": "PASS"
+  },
+  "final_native_preflight": {
+    "app_version": "17.0.9-INTEGRATED-ARCH-WIP",
+    "at": "2026-11-12T18:41:07.698566+00:00",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "source_sha256": null,
+    "steps": [],
+    "release_ready": false,
+    "manual_acceptance": "PENDING: follow ACCEPTANCE_WINDOWS_RU.md; automated tests do not replace it",
+    "status": "BLOCKED",
+    "error": "Требуется настоящий Windows Qt; offscreen не считается нативной проверкой"
+  },
+  "independent_review": "PENDING",
+  "documentation_update": "Final checkpoint/evidence and source manifest resealed after execution; all executable inputs match tested commit."
+}

@@ -42,7 +42,7 @@ from .supervisor import Supervisor
 from .market_clock import quote_is_recent
 from .position_report import position_mark_pnl
 from .preferences import DEFAULT_PREFERENCES, normalize_preferences
-from .storage import Repository, Store, atomic_json, load_json
+from .storage import Repository, Store, atomic_json, load_json, read_paper_state
 from .flow_layout import FlowLayout
 from .trading import (
     available_margin,
@@ -541,6 +541,7 @@ class MainWindow(QMainWindow):
         self.rows = []
         total_cash = 0
         count = 0
+        unavailable_accounts = 0
         self.title.setText(STRATEGY_NAMES.get(selected, "Все боты"))
         inventory = self.repo.list()
         for folder, cfg in inventory:
@@ -568,11 +569,7 @@ class MainWindow(QMainWindow):
                     status = display_market_status(status, process)
                 if cfg.get("invalid"):
                     raise ValueError(cfg["invalid"])
-                state = (
-                    Store(folder).read(include_charts=False)
-                    if (folder / "paper.sqlite").exists()
-                    else None
-                )
+                state = read_paper_state(folder)
                 cash = state["cash"] if state else cfg["capital"]
                 positions = len(state["positions"]) if state else 0
                 pnl = state.get("realized", 0) if state else 0
@@ -588,6 +585,7 @@ class MainWindow(QMainWindow):
                     f"{pnl:+.2f}",
                 ]
             except Exception as e:
+                unavailable_accounts += 1
                 row = [
                     cfg["name"],
                     cfg["strategy"],
@@ -610,8 +608,10 @@ class MainWindow(QMainWindow):
         if current and not any(folder == current for folder, _ in self.rows):
             self.current = None
         self.render_tree(inventory)
+        position_total = str(count) if not unavailable_accounts else '—'
+        cash_total = f'{total_cash:,.2f} USDT' if not unavailable_accounts else '— (неполные данные)'
         self.metrics.setText(
-            f"Ботов: {len(rows)}     Открытых позиций: {count}     Денежный баланс: {total_cash:,.2f} USDT"
+            f"Ботов: {len(rows)}     Открытых позиций: {position_total}     Денежный баланс: {cash_total}"
         )
         self.refresh_details()
 
@@ -706,7 +706,8 @@ class MainWindow(QMainWindow):
             folder = self.selected()
             cfg, _ = self.repo.load(folder)
             self.close_positions_button.setVisible(cfg["strategy"] != "POLYMARKET")
-            if not (folder / "paper.sqlite").exists():
+            state = read_paper_state(folder)
+            if state is None:
                 for t in tables:
                     t.setRowCount(0)
                 self.logs.clear()
@@ -715,7 +716,6 @@ class MainWindow(QMainWindow):
                 )
                 return
             store = Store(folder)
-            state = store.read(include_charts=False)
             self.monitor_state = state
             chosen = self.chart_symbol.currentText()
             symbols = store.chart_symbols()
@@ -1073,8 +1073,8 @@ class MainWindow(QMainWindow):
                     "at": previous.get("heartbeat"),
                 }
             source += " · действующего процесса нет"
-        if (path / "paper.sqlite").exists():
-            state = Store(path).read(include_charts=False)
+        state = read_paper_state(path)
+        if state is not None:
             documents["Управление выполнением"] = {
                 "draining": state["strategy"].get("draining", False),
                 "finish_on_close": state["strategy"].get("finish_on_close", False),
@@ -1369,8 +1369,8 @@ class MainWindow(QMainWindow):
                     (
                         "max_positions",
                         "Позиции и ожидающие сетки: общий лимит (0 — без лимита)",
-                        "int",
-                        (0, 1_000_000),
+                        "text",
+                        None,
                     ),
                     (
                         "max_committed_usdt",
@@ -1390,7 +1390,12 @@ class MainWindow(QMainWindow):
                 )
             )
             if confirm_dialog(editor, "Общий риск-менеджер", self):
-                self.supervisor.save_shared_risk_policy(editor.value_data())
+                policy = editor.value_data()
+                raw = policy["max_positions"].strip()
+                if not raw.isascii() or not raw.isdecimal():
+                    raise ValueError("Общий лимит позиций: введите целое число от 0 (без лимита)")
+                policy["max_positions"] = int(raw)
+                self.supervisor.save_shared_risk_policy(policy)
 
         self.execute(action)
 

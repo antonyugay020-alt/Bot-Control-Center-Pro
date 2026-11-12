@@ -101,7 +101,8 @@ def test_priority_budget_flows_through_actual_hub_publicdata_and_cache(tmp_path,
             pass
         def json(self):
             return {'result': 'book', 'symbol': 'OPEN'}
-    def get(self, url, params=None, timeout=None):
+    def get(self, url, params=None, timeout=None, *, allow_redirects):
+        assert allow_redirects is False
         requests_seen.append(params['symbol'])
         return Response()
     monkeypatch.setattr(requests.Session, 'get', get)

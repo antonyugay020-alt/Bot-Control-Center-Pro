@@ -32,6 +32,7 @@ def test_one_time_secret_is_stdin_only_and_removed_after_success(tmp_path, monke
 
 
 def test_one_time_secret_retained_after_login_failure(tmp_path,monkeypatch):
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path/'local'))
     monkeypatch.setattr(p,'WORK',tmp_path/'.ai_work')
     p.WORK.mkdir()
     bootstrap=p._one_time_api_key_path()

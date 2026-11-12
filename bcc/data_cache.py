@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 import sqlite3
 import threading
 import time
@@ -11,7 +12,16 @@ from pathlib import Path
 
 
 class CacheBusy(RuntimeError):
-    pass
+    """SQLite contention, shared rate budget, or a competing request lease."""
+
+
+class ProviderDenied(RuntimeError):
+    """A structured policy fence, distinct from retryable cache contention."""
+
+    def __init__(self, host, http_status):
+        self.host = host
+        self.http_status = int(http_status)
+        super().__init__(f"Источник отклонил публичный доступ: {host} (HTTP {http_status})")
 
 
 class PublicCache:
@@ -49,16 +59,74 @@ class PublicCache:
                     mode = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]
                     if mode.lower() != "wal":
                         raise CacheBusy("Не удалось включить совместный доступ к кэшу")
-                db.executescript(
-                    "CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY,value TEXT NOT NULL,until REAL NOT NULL);"
-                    "CREATE TABLE IF NOT EXISTS lease(k TEXT PRIMARY KEY,owner TEXT NOT NULL,until REAL NOT NULL);"
-                    "CREATE TABLE IF NOT EXISTS cooldown(host TEXT PRIMARY KEY,until REAL NOT NULL);"
+                # BEGIN IMMEDIATE is essential for concurrent Windows worker
+                # startups. executescript() implicitly COMMITs an open SQLite
+                # transaction, leaving CREATE/ALTER and column discovery
+                # unprotected against another process running the migration.
+                # Keep WAL setup outside the write transaction, then apply the
+                # entire schema upgrade atomically with individual statements.
+                db.execute("BEGIN IMMEDIATE")
+                for statement in (
+                    "CREATE TABLE IF NOT EXISTS cache("
+                    "k TEXT PRIMARY KEY,value TEXT NOT NULL,until REAL NOT NULL,"
+                    "host TEXT NOT NULL DEFAULT '')",
+                    "CREATE TABLE IF NOT EXISTS lease("
+                    "k TEXT PRIMARY KEY,owner TEXT NOT NULL,until REAL NOT NULL)",
+                    "CREATE TABLE IF NOT EXISTS cooldown("
+                    "host TEXT PRIMARY KEY,until REAL NOT NULL)",
                     "CREATE TABLE IF NOT EXISTS provider_denial("
-                    "host TEXT PRIMARY KEY,status INTEGER NOT NULL,until_mono REAL NOT NULL);"
-                    "CREATE TABLE IF NOT EXISTS request_budget(host TEXT PRIMARY KEY,slot INTEGER NOT NULL,count INTEGER NOT NULL);"
-                    "CREATE INDEX IF NOT EXISTS cache_until ON cache(until);"
-                    "CREATE INDEX IF NOT EXISTS lease_until ON lease(until);"
-                )
+                    "host TEXT PRIMARY KEY,status INTEGER NOT NULL,until_mono REAL NOT NULL,"
+                    "recorded_mono REAL NOT NULL DEFAULT 0,until_utc REAL NOT NULL DEFAULT 0,"
+                    "boot_epoch REAL NOT NULL DEFAULT 0)",
+                    "CREATE TABLE IF NOT EXISTS request_budget("
+                    "host TEXT PRIMARY KEY,slot INTEGER NOT NULL,count INTEGER NOT NULL)",
+                    "CREATE INDEX IF NOT EXISTS cache_until ON cache(until)",
+                    "CREATE INDEX IF NOT EXISTS lease_until ON lease(until)",
+                ):
+                    db.execute(statement)
+                # The previous cache schema did not record provider ownership
+                # for each response. Legacy rows have an empty host and must
+                # never be admitted as verified host-specific market data.
+                cache_columns = {
+                    row[1] for row in db.execute("PRAGMA table_info(cache)")
+                }
+                if "host" not in cache_columns:
+                    db.execute(
+                        "ALTER TABLE cache ADD COLUMN host TEXT NOT NULL DEFAULT ''"
+                    )
+                db.execute("CREATE INDEX IF NOT EXISTS cache_host ON cache(host)")
+                # An existing shared cache can have the original three-column
+                # provider_denial table. Migrate in place, preserving active
+                # refusals across upgrades and independently running workers.
+                columns = {
+                    row[1] for row in db.execute("PRAGMA table_info(provider_denial)")
+                }
+                if "recorded_mono" not in columns:
+                    db.execute(
+                        "ALTER TABLE provider_denial ADD COLUMN "
+                        "recorded_mono REAL NOT NULL DEFAULT 0"
+                    )
+                if "until_utc" not in columns:
+                    db.execute(
+                        "ALTER TABLE provider_denial ADD COLUMN "
+                        "until_utc REAL NOT NULL DEFAULT 0"
+                    )
+                if "boot_epoch" not in columns:
+                    db.execute("ALTER TABLE provider_denial ADD COLUMN "
+                               "boot_epoch REAL NOT NULL DEFAULT 0")
+                # Old rows only had monotonic deadlines. Conservatively carry
+                # their remaining refusal into the new UTC fallback, bounded
+                # by the maximum supported 403/451 policy interval (3600s).
+                # Without this, a restart immediately after upgrading could
+                # discard a refusal or retain a previous boot's uptime forever.
+                if "recorded_mono" not in columns or "until_utc" not in columns:
+                    db.execute(
+                        "UPDATE provider_denial SET recorded_mono=?, "
+                        "until_utc=? + min(3600,max(0,until_mono-?)) "
+                        "WHERE recorded_mono=0 AND until_utc=0",
+                        (time.monotonic(), time.time(), time.monotonic()),
+                    )
+                db.commit()
             self._ready = True
 
     @contextmanager
@@ -101,14 +169,35 @@ class PublicCache:
                 self._ready = False
 
     @staticmethod
+    def _boot_epoch():
+        """Independent OS boot witness; uptime alone cannot prove a reboot."""
+        try:
+            import psutil
+            value = float(psutil.boot_time())
+            return value if math.isfinite(value) and value > 0 else 0.0
+        except (ImportError, OSError, ValueError, AttributeError):
+            return 0.0
+
+    @staticmethod
     def _denied(db, host):
         row = db.execute(
-            "SELECT status,until_mono FROM provider_denial WHERE host=?", (host,)
+            "SELECT status,until_mono,recorded_mono,until_utc,boot_epoch "
+            "FROM provider_denial WHERE host=?", (host,)
         ).fetchone()
-        return int(row[0]) if row and time.monotonic() < row[1] else None
+        if row is None:
+            return None
+        now_mono = time.monotonic()
+        boot = PublicCache._boot_epoch()
+        # A later reboot may already have MORE uptime than the previous
+        # recorded_mono, so the old monotonic-reset heuristic is insufficient.
+        rebooted = bool(row[4] and boot and abs(row[4] - boot) > 60)
+        # Rows migrated from the legacy schema have no boot witness.
+        if rebooted or (row[2] and now_mono < row[2]):
+            return int(row[0]) if time.time() < row[3] else None
+        return int(row[0]) if now_mono < row[1] else None
 
     def denied_status(self, host):
-        """Share policy refusals across processes; do not use wall-clock expiry."""
+        """Share policy refusals across workers, with restart-aware expiry."""
         self._ensure_schema()
         with self.db() as db:
             return self._denied(db, host)
@@ -118,9 +207,12 @@ class PublicCache:
         # A public response already cached inside its validated TTL does not
         # consume exchange request budget. A remote cooldown must prevent new
         # HTTP requests, not invalidate data that was fetched before it.
-        if PublicCache._denied(db, host) is not None:
-            raise CacheBusy("Источник отклонил публичный доступ: " + host)
-        row = db.execute("SELECT value,until FROM cache WHERE k=?", (key,)).fetchone()
+        status = PublicCache._denied(db, host)
+        if status is not None:
+            raise ProviderDenied(host, status)
+        row = db.execute(
+            "SELECT value,until FROM cache WHERE k=? AND host=?", (key, host)
+        ).fetchone()
         if row and row[1] > now:
             return row[0]
         cooldown = db.execute(
@@ -137,11 +229,12 @@ class PublicCache:
         ).hexdigest()
         self._ensure_schema()
         with self.db() as db:
-            if self._denied(db, host) is not None:
-                raise CacheBusy("Источник отклонил публичный доступ: " + host)
+            status = self._denied(db, host)
+            if status is not None:
+                raise ProviderDenied(host, status)
             row = db.execute(
-                "SELECT value FROM cache WHERE k=? AND until>?",
-                (key, time.time()),
+                "SELECT value FROM cache WHERE k=? AND host=? AND until>?",
+                (key, host, time.time()),
             ).fetchone()
         return json.loads(row[0]) if row else None
 
@@ -192,10 +285,86 @@ class PublicCache:
             db.commit()
         return key, owner, None
 
+    def _store_denial(self, db, host, cooldown, denial_status):
+        """Atomically fence a provider and invalidate only its cached data.
+
+        Called inside a SQLite BEGIN IMMEDIATE transaction, independently of
+        whether an HTTP request still owns its short-lived cache lease.
+        """
+        if (type(host) is not str or not host
+                or type(denial_status) is not int or denial_status not in (403, 451)
+                or type(cooldown) not in (int, float)
+                or not math.isfinite(cooldown) or not 0 < cooldown <= 3600):
+            raise ValueError("Invalid public-provider denial")
+        db.execute("DELETE FROM cache WHERE host=?", (host,))
+        # Reconcile under the same SQLite write transaction.
+        # Monotonic deadlines cannot be compared across boots.
+        if self._denied(db, host) is None:
+            db.execute("DELETE FROM provider_denial WHERE host=?", (host,))
+        previous = db.execute(
+            "SELECT status,until_mono,recorded_mono,until_utc,boot_epoch "
+            "FROM provider_denial WHERE host=?", (host,)
+        ).fetchone()
+        now_mono = time.monotonic()
+        now_utc = time.time()
+        boot = self._boot_epoch()
+        deadline_mono = now_mono + cooldown
+        deadline_utc = now_utc + cooldown
+        status = denial_status
+        if previous is not None:
+            if previous[0] == 451:
+                status = 451
+            deadline_utc = max(deadline_utc, previous[3])
+            same_boot = (
+                bool(boot and previous[4] and abs(boot - previous[4]) <= 60)
+                or (not boot and not previous[4]
+                    and now_mono >= previous[2])
+            )
+            if same_boot:
+                deadline_mono = max(deadline_mono, previous[1])
+            else:
+                deadline_mono = now_mono + max(
+                    cooldown, max(0, previous[3] - now_utc)
+                )
+        db.execute(
+            "INSERT OR REPLACE INTO provider_denial("
+            "host,status,until_mono,recorded_mono,until_utc,boot_epoch"
+            ") VALUES(?,?,?,?,?,?)",
+            (host, status, deadline_mono, now_mono, deadline_utc, boot),
+        )
+
+    def record_http_denial(self, key, owner, host, *, cooldown, denial_status):
+        """Publish a real HTTP 403/451 even if its request lease has expired.
+
+        The caller must have observed the upstream response. Request leases
+        fence successful cache writes, not authoritative host-wide refusals.
+        Releasing the old request must never delete a successor's lease.
+        """
+        if (type(key) is not str or len(key) != 64
+                or any(ch not in "0123456789abcdef" for ch in key)
+                or type(owner) is not str or not owner):
+            raise ValueError("Invalid observed HTTP request identity")
+        self._ensure_schema()
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._store_denial(db, host, cooldown, denial_status)
+            db.execute(
+                "INSERT INTO cooldown VALUES(?,?) "
+                "ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)",
+                (host, time.time() + cooldown),
+            )
+            db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
+            db.commit()
+
     def finish(self, key, owner, host, value=None, ttl=0, cooldown=0,
                denial_status=None):
+        """Return True only when this lease published its value to shared cache.
+
+        A replaced lease or provider denial may discard a 200 HTTP response;
+        callers must never treat that uncommitted payload as PAPER market data.
+        """
         if owner is None:
-            return
+            return False
         # Serialization may be expensive for a long candle history. It must not
         # run while blocking every other bot's short write transaction.
         encoded = (
@@ -204,36 +373,35 @@ class PublicCache:
             else None
         )
         self._ensure_schema()
+        published = False
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT owner FROM lease WHERE k=?", (key,)).fetchone()
-            if row and row[0] == owner:
-                if encoded is not None:
+            row = db.execute("SELECT owner,until FROM lease WHERE k=?", (key,)).fetchone()
+            # A matching owner is insufficient after its 20-second HTTP lease
+            # expires. A stalled response must not acquire a fresh cache TTL
+            # just because no replacement worker has claimed the key yet.
+            if row and row[0] == owner and row[1] > time.time():
+                # A second in-flight GET may complete after another request
+                # from the same host was rejected. Never publish that older
+                # response into the shared cache while the policy fence holds.
+                if encoded is not None and self._denied(db, host) is None:
                     db.execute(
-                        "INSERT OR REPLACE INTO cache VALUES(?,?,?)",
-                        (key, encoded, time.time() + ttl),
+                        "INSERT OR REPLACE INTO cache(k,value,until,host) "
+                        "VALUES(?,?,?,?)",
+                        (key, encoded, time.time() + ttl, host),
                     )
+                    published = True
                 if cooldown:
                     db.execute(
                         "INSERT INTO cooldown VALUES(?,?) ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)",
                         (host, time.time() + cooldown),
                     )
                 if denial_status is not None:
-                    if denial_status not in (403, 451) or cooldown <= 0:
-                        raise ValueError("Invalid public-provider denial")
-                    # Atomic with lease release: another worker cannot read a
-                    # cached response or reserve a request after the refusal.
-                    db.execute(
-                        "INSERT INTO provider_denial(host,status,until_mono) VALUES(?,?,?) "
-                        "ON CONFLICT(host) DO UPDATE SET "
-                        "status=CASE WHEN excluded.until_mono>until_mono "
-                        "THEN excluded.status ELSE status END,"
-                        "until_mono=max(until_mono,excluded.until_mono)",
-                        (host, denial_status, time.monotonic() + cooldown),
-                    )
+                    self._store_denial(db, host, cooldown, denial_status)
                 db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
                 if time.monotonic() >= self._next_cleanup:
                     db.execute("DELETE FROM cache WHERE until<?", (time.time() - 120,))
                     db.execute("DELETE FROM lease WHERE until<?", (time.time(),))
                     self._next_cleanup = time.monotonic() + 30
                 db.commit()
+        return published

@@ -21,7 +21,7 @@ from .config import STRATEGY_NAMES
 from .liquidation import status as liquidation_status
 from .market_clock import quote_is_recent
 from .position_report import position_mark_pnl
-from .storage import Store
+from .storage import Store, read_paper_state
 from .trading import available_margin, equity, position_unrealized
 from .widgets import button, dialog_size, label
 
@@ -37,8 +37,8 @@ def snapshot_all(repo, life, include_stopped=False, include_history=False):
             row["process"] = life.active_snapshot(folder)
             if cfg.get("invalid"):
                 raise ValueError(cfg["invalid"])
-            if (folder / "paper.sqlite").exists():
-                row["state"] = Store(folder).read(include_charts=False)
+            row["state"] = read_paper_state(folder)
+            if row['state'] is not None:
                 if include_history:
                     row["history"] = Store(folder).history(100)
             if row["status"] == "Остановлен":
@@ -334,6 +334,7 @@ class RunningBotsWindow(QDialog):
         )
         active = sum(r["status"] in ACTIVE for r in records)
         open_count = sum(len(r["state"]["positions"]) for r in records if r["state"])
+        unavailable = any(r['state'] is None and r['error'] for r in records)
         errors = 0
         issues = []
         for record in self.records:
@@ -376,8 +377,8 @@ class RunningBotsWindow(QDialog):
                     number(state["cash"] if state else None),
                     number(None if unknown else value),
                     number(available_margin(state) if state and not unknown else None),
-                    len(state["positions"]) if state else 0,
-                    len(state["pending"]) if state else 0,
+                    len(state["positions"]) if state else ('—' if record['error'] else 0),
+                    len(state["pending"]) if state else ('—' if record['error'] else 0),
                     number(state.get("realized", 0) if state else None, True),
                     number(upnl, True),
                     number(state.get("max_drawdown", 0) if state else None),
@@ -466,7 +467,7 @@ class RunningBotsWindow(QDialog):
             [e["id"] for e, _ in executions[:1000]],
         )
         self.summary.setText(
-            f"Работающих: {active} · Позиций: {open_count} · Показано ботов: {len(rows)} · Ошибок / heartbeat: {errors}"
+            f"Работающих: {active} · Позиций: {'—' if unavailable else open_count} · Показано ботов: {len(rows)} · Ошибок / heartbeat: {errors}"
         )
         self.updated.setText(
             "Обновлено: "

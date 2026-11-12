@@ -5,6 +5,7 @@ is deliberately independent of the GUI lifetime and is recovered at next start.
 """
 import errno
 import json
+import logging
 import math
 import os
 import sqlite3
@@ -140,6 +141,41 @@ def _hub_startup_details(root, proc):
     return 'pid={} exit={} last_log={}'.format(proc.pid, proc.poll(), repr(tail[-2000:]))
 
 
+def _revoke_dead_owner(registry, record):
+    """Revoke only the proven dead producer's exact SQLite lease generation.
+
+    A PID prefix is not a generation: after Windows PID reuse a different,
+    healthy Hub can own the same numeric PID. Legacy PID-only records cannot
+    safely authorize early revocation and must wait for natural lease expiry.
+    """
+    pid = record.get('pid')
+    owner = record.get('leader_owner')
+    if (type(pid) is not int or pid <= 0 or type(owner) is not str
+            or not owner.startswith(str(pid) + ':')
+            or len(owner.split(':', 1)[1]) != 32
+            or any(ch not in '0123456789abcdef' for ch in owner.split(':', 1)[1])):
+        return False
+    with registry._connect() as db:
+        cursor = db.execute('DELETE FROM hub_leader WHERE owner=?', (owner,))
+        return cursor.rowcount == 1
+
+
+def _recorded_process_dead(record):
+    """Only OS evidence of death/reuse authorizes exact-owner revocation."""
+    pid, created = record.get('pid'), record.get('created')
+    if (type(pid) is not int or pid <= 0
+            or type(created) not in (int, float) or not math.isfinite(created)):
+        return False
+    try:
+        process = psutil.Process(pid)
+        return (process.status() == psutil.STATUS_ZOMBIE
+                or abs(process.create_time() - created) >= .05)
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
+        return True
+    except (OSError, psutil.Error, ValueError):
+        return False
+
+
 def ensure_hub(repo_root, *, timeout=8):
     root = Path(repo_root).resolve()
     cache = root / 'market_cache.sqlite'
@@ -157,21 +193,23 @@ def ensure_hub(repo_root, *, timeout=8):
         if not isinstance(record, dict):
             record = {}
         if _matches(record, cache):
+            if record.get('startup_failed'):
+                raise HubUnavailable('Market Data Hub previous startup failed; process exit is unconfirmed')
             # A matching PID only proves process identity, not that the
             # producer still owns a fresh leader lease or serves data. Never
             # silently hand a worker a dead/hung hub endpoint.
             try:
                 registry = HubRegistry(cache)
-                with registry._connect() as db:
-                    leader = db.execute(
-                        'SELECT owner, expires FROM hub_leader WHERE singleton=1'
-                    ).fetchone()
-                if (leader and type(leader[0]) is str and
-                        leader[0].split(':', 1)[0] == str(record['pid']) and
-                        type(leader[1]) in (int, float) and
-                        math.isfinite(leader[1]) and leader[1] > time.time()):
+                leader = registry.live_leader()
+                expected_owner = record.get('leader_owner')
+                owner_matches = (leader and type(leader[0]) is str and (
+                    leader[0] == expected_owner if type(expected_owner) is str
+                    else leader[0].startswith(str(record['pid']) + ':')))
+                if (owner_matches and type(leader[1]) in (int, float) and
+                        math.isfinite(leader[1]) and leader[1] > time.time()
+                        and type(leader[2]) is str and bool(leader[2])):
                     return record['pid']
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError, sqlite3.Error) as exc:
                 raise HubUnavailable('Market Data Hub leadership check failed') from exc
             raise HubUnavailable(
                 'Market Data Hub process exists but has no valid leadership lease'
@@ -180,30 +218,20 @@ def ensure_hub(repo_root, *, timeout=8):
         # only if its recorded PID and creation time no longer identify a live
         # producer. Never revoke a live but slow Hub's lease.
         if record.get('pid') and not _matches(record, cache):
-            try:
-                old = psutil.Process(record['pid'])
-                dead = old.status() == psutil.STATUS_ZOMBIE or abs(old.create_time() - record['created']) >= .05
-            except (psutil.NoSuchProcess, psutil.ZombieProcess):
-                dead = True
-            except (psutil.AccessDenied, KeyError, TypeError, ValueError):
-                dead = False
-            if dead:
+            if _recorded_process_dead(record):
                 registry = HubRegistry(cache)
-                with registry._connect() as db:
-                    db.execute('DELETE FROM hub_leader WHERE owner LIKE ?', (str(record['pid']) + ':%',))
+                _revoke_dead_owner(registry, record)
         # If the PID file was lost/corrupted while an old producer still
         # holds leadership, do not overwrite its identity with a speculative
         # second Hub. A live database lease is not enough to authorize using
         # that process: its creation time and command must also be proven.
         # A dead verified predecessor's lease was revoked above.
         registry = HubRegistry(cache)
-        with registry._connect() as db:
-            leader = db.execute(
-                'SELECT owner, expires FROM hub_leader WHERE singleton=1'
-            ).fetchone()
-        if (leader and isinstance(leader[0], str)
-                and type(leader[1]) in (int, float)
-                and math.isfinite(leader[1]) and leader[1] > time.time()):
+        # A future expiry written before an OS reboot is not a live Hub.
+        # Use the same boot-aware lease admission as producer renewals and
+        # readiness, rather than treating wall-clock TTL as process identity.
+        leader = registry.live_leader()
+        if leader and isinstance(leader[0], str):
             raise HubUnavailable(
                 'Market Data Hub has an active leader but its process identity '
                 'cannot be verified; refusing to replace it'
@@ -230,6 +258,7 @@ def ensure_hub(repo_root, *, timeout=8):
                                     creationflags=flags,
                                     start_new_session=os.name != 'nt')
         verified_child = None
+        verified_owner = None
         try:
             created = psutil.Process(proc.pid).create_time()
             atomic_json(record_path, {'pid': proc.pid, 'created': created})
@@ -248,7 +277,8 @@ def ensure_hub(repo_root, *, timeout=8):
                 try:
                     proof = json.loads(ready_path.read_text(encoding='utf-8'))
                     if (type(proof) is dict and proof.get('token') == challenge
-                            and type(proof.get('pid')) is int):
+                            and type(proof.get('pid')) is int
+                            and type(proof.get('leader_owner')) is str):
                         service_pid = proof['pid']
                         if service_pid == proc.pid:
                             service_created = psutil.Process(service_pid).create_time()
@@ -258,13 +288,33 @@ def ensure_hub(repo_root, *, timeout=8):
                                 service_pid, cache, ready_path, challenge, spawned_at)
                             valid = service_created is not None
                         if valid:
+                            owner = proof['leader_owner']
+                            # Authenticate both the OS process and the actual
+                            # live SQLite lease before advertising readiness.
+                            # A stale receipt cannot certify a different Hub.
+                            if not owner.startswith(str(service_pid) + ':'):
+                                time.sleep(.1)
+                                continue
+                            # OS identity and the unique launch challenge
+                            # already prove this is our child. Track it for
+                            # cleanup even if SQLite remains unavailable and
+                            # readiness is never authorized (Windows redirector).
                             verified_child = (service_pid, service_created)
-                            if service_pid != proc.pid:
-                                atomic_json(record_path, {
-                                    'pid': service_pid, 'created': service_created,
-                                })
+                            verified_owner = owner
+                            lease = registry.live_leader()
+                            if not (lease and lease[0] == owner
+                                    and type(lease[1]) in (int, float)
+                                    and math.isfinite(lease[1])
+                                    and lease[1] > time.time()
+                                    and type(lease[2]) is str and bool(lease[2])):
+                                time.sleep(.1)
+                                continue
+                            atomic_json(record_path, {
+                                'pid': service_pid, 'created': service_created,
+                                'leader_owner': owner,
+                            })
                             return service_pid
-                except (OSError, ValueError, TypeError, psutil.Error):
+                except (OSError, ValueError, TypeError, sqlite3.Error, psutil.Error):
                     pass
                 if proc.poll() is not None and proc.returncode != 0:
                     raise HubUnavailable('Market Data Hub launcher failed: ' + _hub_startup_details(root, proc))
@@ -288,6 +338,7 @@ def ensure_hub(repo_root, *, timeout=8):
                     try:
                         if abs(owned.create_time() - verified_child[1]) < .05:
                             owned.kill()
+                            owned.wait(timeout=3)
                     except psutil.Error:
                         pass
                 except (OSError, psutil.Error):
@@ -301,7 +352,32 @@ def ensure_hub(repo_root, *, timeout=8):
                     proc.wait(timeout=3)
                 except ProcessLookupError:
                     pass
-            record_path.unlink(missing_ok=True)
+            retain_record = False
+            if verified_child is not None and verified_owner is not None:
+                recovery = {
+                    'pid': verified_child[0], 'created': verified_child[1],
+                    'leader_owner': verified_owner, 'startup_failed': True,
+                }
+                retain_record = True
+                if _recorded_process_dead(recovery):
+                    try:
+                        # TerminateProcess/SIGKILL bypasses Hub.close(). The
+                        # startup challenge and OS death prove which exact
+                        # owner may be revoked; never delete by PID prefix.
+                        _revoke_dead_owner(registry, recovery)
+                        retain_record = False
+                    except (OSError, ValueError, sqlite3.Error):
+                        # Parent SQLite may still be locked. The next start
+                        # must retain this witness instead of waiting for an
+                        # orphaned 120-second lease with no known owner.
+                        pass
+                if retain_record:
+                    try:
+                        atomic_json(record_path, recovery)
+                    except OSError as exc:
+                        logging.warning('Hub recovery record write failed: %s', type(exc).__name__)
+            if not retain_record:
+                record_path.unlink(missing_ok=True)
             raise
         finally:
             # Receipt is an ephemeral, non-secret handshake artifact; never

@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+import pytest
 
 from bcc import process_os as psutil
 
@@ -33,6 +34,12 @@ def test_redirected_hub_identifies_actual_service_and_persists_real_pid(tmp_path
         pid = ensure_hub(tmp_path, timeout=8)
         record = json.loads((tmp_path / 'market_hub_process.json').read_text(encoding="utf-8"))
         assert record['pid'] == pid
+        assert record['leader_owner'].startswith(str(pid) + ':')
+        from bcc.market_hub import HubRegistry
+        registry = HubRegistry(tmp_path / 'market_cache.sqlite')
+        with registry._connect() as db:
+            lease = db.execute('SELECT owner,expires FROM hub_leader WHERE singleton=1').fetchone()
+        assert lease[0] == record['leader_owner'] and lease[1] > time.time()
         assert _matches(record, tmp_path / 'market_cache.sqlite')
         assert pid != launchers[0].pid
 
@@ -89,3 +96,81 @@ def test_redirected_hub_rejects_wrong_token_or_incorrect_paths(tmp_path):
     finally:
         proc.terminate()
         proc.wait(timeout=5)
+
+
+@pytest.mark.parametrize('abrupt', [False, True])
+def test_redirected_child_is_reaped_when_lease_readiness_cannot_be_verified(tmp_path, monkeypatch, abrupt):
+    """OS ownership permits cleanup, but does not replace SQLite admission."""
+    import sqlite3
+    import pytest
+    import bcc.hub_supervisor as supervisor
+    from bcc.market_hub import HubRegistry
+
+    children, launchers, authenticated = [], [], []
+    original_verify = supervisor._verified_redirected_hub_pid
+    original_leader = HubRegistry.live_leader
+    process_type = type(psutil.Process(__import__('os').getpid()))
+    original_terminate = process_type.terminate
+
+    def terminate(process):
+        # Model Windows TerminateProcess on Linux: no Python finally blocks
+        # run, so the old producer cannot release its own SQLite lease.
+        if abrupt and any(pid == process.pid for pid, _ in authenticated):
+            return process.kill()
+        return original_terminate(process)
+
+    def redirector(args, **kwargs):
+        children.append(subprocess.Popen(args, **kwargs))
+        launchers.append(subprocess.Popen([sys.executable, '-c', 'pass'], **kwargs))
+        return launchers[-1]
+
+    def verify(*args):
+        created = original_verify(*args)
+        if created is not None:
+            authenticated.append((args[0], created))
+        return created
+
+    def unavailable(self):
+        if children:
+            raise sqlite3.OperationalError('simulated parent WAL contention')
+        return original_leader(self)
+
+    monkeypatch.setattr(supervisor, '_spawn_hub', redirector)
+    monkeypatch.setattr(supervisor, '_verified_redirected_hub_pid', verify)
+    monkeypatch.setattr(HubRegistry, 'live_leader', unavailable)
+    monkeypatch.setattr(process_type, 'terminate', terminate)
+    try:
+        with pytest.raises(supervisor.HubUnavailable, match='did not become ready'):
+            ensure_hub(tmp_path, timeout=1)
+        assert authenticated, 'The real child receipt was never authenticated'
+        pid, created = authenticated[-1]
+        try:
+            child = psutil.Process(pid)
+            assert child.create_time() != created or child.status() == psutil.STATUS_ZOMBIE
+        except psutil.NoSuchProcess:
+            pass
+        assert not (tmp_path / 'market_hub_process.json').exists()
+        assert not list(tmp_path.glob('.market_hub_ready_*.json'))
+        monkeypatch.setattr(HubRegistry, 'live_leader', original_leader)
+        # Recovery must work immediately, without waiting 120 seconds for
+        # the dead startup's persisted lease to expire.
+        recovered = ensure_hub(tmp_path, timeout=3)
+        record = json.loads((tmp_path / 'market_hub_process.json').read_text(encoding='utf-8'))
+        assert (recovered, record['created']) != (pid, created)
+        assert record['pid'] == recovered
+        assert _matches(record, tmp_path / 'market_cache.sqlite')
+        assert ensure_hub(tmp_path, timeout=3) == recovered
+    finally:
+        # This test owns these launches even when testing a broken supervisor.
+        for pid, created in set(authenticated):
+            try:
+                child = psutil.Process(pid)
+                if child.create_time() == created and child.status() != psutil.STATUS_ZOMBIE:
+                    child.terminate()
+                    child.wait(timeout=5)
+            except psutil.NoSuchProcess:
+                pass
+        for child in children + launchers:
+            if child.poll() is None:
+                child.terminate()
+            child.wait(timeout=5)

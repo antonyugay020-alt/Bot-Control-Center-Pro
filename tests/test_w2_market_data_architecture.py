@@ -73,7 +73,7 @@ def test_concurrent_producer_does_not_ack_after_leader_is_revoked(tmp_path):
         worker = threading.Thread(target=lambda: results.extend(hub.run_once(limit=4)))
         worker.start()
         assert entered.wait(3)
-        registry.release_leader(hub.owner)
+        registry.release_leader(hub.owner, token=registry.leader_token(hub.owner))
         assert registry.claim_leader('new-owner', lifetime=120)
         gate.set()
         worker.join(5)
@@ -162,7 +162,8 @@ def test_report_includes_queue_backlog_not_private_market_payload(tmp_path):
 
 
 def test_invalid_concurrency_is_rejected(tmp_path):
-    for value in (0, 13, 1.5, True):
+    # Positive operator-selected budgets above the former cap are valid.
+    for value in (0, -1, 1.5, True):
         with pytest.raises(ValueError):
             MarketDataHub(tmp_path / 'market_cache.sqlite', max_workers=value)
 

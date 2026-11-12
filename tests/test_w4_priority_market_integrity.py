@@ -23,7 +23,8 @@ def test_priority_migrates_existing_w3_hub_schema(tmp_path):
             active_until REAL NOT NULL, next_due REAL NOT NULL DEFAULT 0,
             last_error TEXT NOT NULL DEFAULT '')''')
     reg = HubRegistry(path)
-    cols = {x[1] for x in reg._connect().execute('PRAGMA table_info(hub_subscriptions)')}
+    with reg._connect() as db:
+        cols = {x[1] for x in db.execute('PRAGMA table_info(hub_subscriptions)')}
     assert 'priority_until' in cols
     key = reg.subscribe(URL, {'symbol': 'BTCUSDT'}, priority=True)
     with reg._connect() as db:

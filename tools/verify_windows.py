@@ -111,6 +111,7 @@ def read_test_totals(junit):
 REQUIRED_NATIVE_QT_MODULES = frozenset({
     "test_qt", "test_poly_indicator_qt", "test_veles_hierarchy_qt",
     "test_wizard_visual_qt", "test_settings_tree_contrast",
+    "test_portfolio_recovery_qt",
 })
 # Merely finding test_qt in JUnit is not enough to prove that a real Qt
 # dashboard button drove a worker to Stop/Restart with preserved state.
@@ -127,6 +128,28 @@ REQUIRED_PAPER_CYCLE_CASES = frozenset({
     ("test_paper_complete_recovery_acceptance", "test_veles_full_close_open_close_on_one_sqlite_ledger"),
     ("test_process", "test_process_stop_restart_force_and_recovery"),
 })
+
+# Each parametrized identity is mandatory: one successful strategy cannot
+# substitute for the other engines or their cross-account recovery boundary.
+CORE_INTEGRATION_STRATEGIES = ('VELES', 'GRID', 'PUMP_DUMP', 'POLYMARKET')
+REQUIRED_INTEGRATION_CASES = frozenset(
+    [('test_market_fleet_recovery_e2e',
+      f'test_hub_restart_preserves_strategy_risk_monitor_and_closed_ledger[{strategy}]')
+     for strategy in CORE_INTEGRATION_STRATEGIES]
+    + [('test_portfolio_recovery_qt',
+        f'test_qt_balance_details_and_reopened_window_share_recovery_boundary[{strategy}]')
+       for strategy in CORE_INTEGRATION_STRATEGIES]
+    + [('test_portfolio_recovery_integration',
+        'test_missing_published_ledger_blocks_all_strategy_admission_and_restores_exactly'
+        f'[{consumer}-{supplier}]')
+       for consumer in CORE_INTEGRATION_STRATEGIES for supplier in CORE_INTEGRATION_STRATEGIES]
+    + [('test_coordinator_connection_lifetime', name) for name in (
+        'test_control_connection_commits_or_rolls_back_then_always_closes[False]',
+        'test_control_connection_commits_or_rolls_back_then_always_closes[True]',
+        'test_control_and_ledger_fences_leave_no_handles_for_windows_teardown')]
+    + [('test_hub_resource_service_boundary',
+        f'test_service_accepts_resource_budget_and_releases_its_lease[{workers}]') for workers in (13, 29)]
+)
 
 ALLOWED_WINDOWS_SKIPS = frozenset({
     ("test_r611_qa_process_integrity", "test_timeout_kills_descendant_process_group"),
@@ -147,6 +170,7 @@ def native_test_evidence_problems(junit):
     root = ET.parse(junit).getroot()
     suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
     seen, seen_cases, skipped, ids, errors = set(), set(), [], set(), []
+    executed_exact = set()
     for suite in suites:
         for case in suite.findall("testcase"):
             module = (case.get("classname") or "").rsplit(".", 1)[-1]
@@ -164,6 +188,7 @@ def native_test_evidence_problems(junit):
                 if module in REQUIRED_NATIVE_QT_MODULES:
                     seen.add(module)
                 seen_cases.add((module, test_name))
+                executed_exact.add(key)
     missing_cases = REQUIRED_NATIVE_QT_CASES - seen_cases
     if missing_cases:
         errors.append("Qt: missing executed dashboard lifecycle E2E: " + repr(sorted(missing_cases)))
@@ -172,6 +197,10 @@ def native_test_evidence_problems(junit):
         errors.append("PAPER: missing completed trade/recovery evidence: "
                       + repr(sorted(missing_paper)))
     missing = REQUIRED_NATIVE_QT_MODULES - seen
+    missing_integration = REQUIRED_INTEGRATION_CASES - executed_exact
+    if missing_integration:
+        errors.append('Integrated fleet: missing executed recovery cases: '
+                      + repr(sorted(missing_integration)))
     if missing:
         errors.append("Qt: missing executed native test modules: " + ", ".join(sorted(missing)))
     return errors

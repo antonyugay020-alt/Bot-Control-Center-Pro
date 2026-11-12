@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .data_cache import CacheBusy, PublicCache
+from .data_cache import CacheBusy, ProviderDenied, PublicCache
 from .market_clock import book_is_fresh, clock, market_now, observed_quote, utc_bounds
 
 
@@ -139,6 +139,156 @@ class PublicData:
         "api.binance.com",
     }
 
+    # This is the sole URL admission contract for both direct worker reads
+    # and durable Hub subscriptions. A host allowlist alone is insufficient:
+    # it permits private GET routes, alternate ports and query credentials.
+    PUBLIC_PATHS = {
+        "api.bybit.com": frozenset({
+            "/v5/market/tickers", "/v5/market/orderbook",
+            "/v5/market/instruments-info", "/v5/market/risk-limit",
+            "/v5/market/kline", "/v5/market/mark-price-kline",
+            "/v5/market/funding/history",
+        }),
+        "gamma-api.polymarket.com": frozenset({"/markets"}),
+        "clob.polymarket.com": frozenset({"/book"}),
+        "data-api.polymarket.com": frozenset({"/v2/tokens"}),
+        "api.binance.com": frozenset({
+            "/api/v3/time", "/api/v3/klines", "/api/v3/ticker/price",
+        }),
+    }
+
+
+    # Exact route-bound public query schemas. Host and path checks alone do
+    # not prevent a caller from persisting an API key under an arbitrary
+    # innocuous-looking query name in the shared Hub subscription database.
+    # Keep this mapping aligned with the concrete read-only adapters below.
+    PUBLIC_QUERY_FIELDS = {
+        "api.bybit.com": {
+            "/v5/market/tickers": frozenset({"category", "symbol"}),
+            "/v5/market/orderbook": frozenset({"category", "symbol", "limit"}),
+            "/v5/market/instruments-info": frozenset({"category", "symbol", "limit", "cursor"}),
+            "/v5/market/risk-limit": frozenset({"category", "symbol", "cursor"}),
+            "/v5/market/kline": frozenset({"category", "symbol", "interval", "start", "end", "limit"}),
+            "/v5/market/mark-price-kline": frozenset({"category", "symbol", "interval", "start", "end", "limit"}),
+            "/v5/market/funding/history": frozenset({"category", "symbol", "startTime", "endTime", "limit"}),
+        },
+        "gamma-api.polymarket.com": {
+            "/markets": frozenset({
+                "slug", "active", "closed", "limit", "offset",
+                "end_date_min", "end_date_max",
+            }),
+        },
+        "clob.polymarket.com": {"/book": frozenset({"token_id"})},
+        "data-api.polymarket.com": {"/v2/tokens": frozenset({"token_id"})},
+        "api.binance.com": {
+            "/api/v3/time": frozenset(),
+            "/api/v3/klines": frozenset({"symbol", "interval", "startTime", "endTime", "limit"}),
+            "/api/v3/ticker/price": frozenset({"symbol"}),
+        },
+    }
+    _INTEGER_QUERY_NAMES = frozenset({
+        "limit", "offset", "start", "end", "startTime", "endTime",
+    })
+    _TEXT_QUERY_PATTERNS = {
+        "category": r"linear",
+        "symbol": r"[A-Z0-9_]{1,40}",
+        "interval": r"[A-Za-z0-9]{1,8}",
+        "cursor": r"[A-Za-z0-9_+./=:%-]{1,1024}",
+        "slug": r"[a-z0-9-]{1,256}",
+        "token_id": r"[A-Za-z0-9_-]{1,256}",
+        "active": r"(?:true|false)",
+        "closed": r"(?:true|false)",
+    }
+
+    @classmethod
+    def validated_public_host(cls, url):
+        """Reject private/ambiguous routes before any cache or Hub side effect.
+
+        Public query arguments must be supplied separately as `params`; the
+        complete URL is persisted by the Hub, so embedded query credentials
+        must never be admitted. The network authority is an exact HTTPS host
+        without userinfo or an alternate port, even when DNS matches.
+        """
+        if (type(url) is not str or url != url.strip()
+                or any(ord(ch) < 32 or ord(ch) == 127 for ch in url)):
+            raise ValueError("Непубличный источник или закрытые данные в URL")
+        try:
+            parsed = urlparse(url)
+            host = parsed.hostname
+        except ValueError as exc:
+            raise ValueError("Непубличный источник или закрытые данные в URL") from exc
+        path = parsed.path
+        if (parsed.scheme != "https" or host not in cls.HOSTS
+                or parsed.netloc != host or parsed.query or parsed.fragment
+                or parsed.params or not path or "%" in path or "\\" in path
+                or "//" in path or any(part in (".", "..") for part in path.split("/"))):
+            raise ValueError("Непубличный источник или закрытые данные в URL")
+        allowed = cls.PUBLIC_PATHS[host]
+        if host == "clob.polymarket.com" and path.startswith("/clob-markets/"):
+            valid_route = re.fullmatch(r"/clob-markets/[A-Za-z0-9_-]{1,128}", path) is not None
+        else:
+            valid_route = path in allowed
+        if not valid_route:
+            raise ValueError("Маршрут не относится к разрешённым публичным GET")
+        return host
+
+    # The Hub stores public GET arguments durably. Never allow a caller to
+    # smuggle credentials into that registry (or send them in direct mode).
+    # Public outcome identifiers are named token_id and are NOT auth tokens.
+    _PRIVATE_QUERY_NAMES = frozenset({
+        "apikey", "apisecret", "secret", "clientsecret", "privatekey",
+        "accesskey", "accesstoken", "refreshtoken", "authorization",
+        "auth", "password", "passphrase", "signature", "sign",
+        "cookie", "session", "bearer", "jwt", "token",
+    })
+
+    @classmethod
+    def validated_public_request(cls, url, params):
+        """One route-specific admission before HTTP, Hub enqueue and dequeue.
+
+        Only public query keys actually used by the read-only adapters may
+        enter the durable subscription registry. Values have bounded,
+        type-specific shapes; no caller-provided query names or arbitrary
+        strings are logged on rejection.
+        """
+        host = cls.validated_public_host(url)
+        path = urlparse(url).path
+        allowed = cls.PUBLIC_QUERY_FIELDS[host].get(path)
+        if allowed is None:
+            # Only the validated, single-segment public CLOB metadata route
+            # is dynamic. It never accepts query parameters.
+            if host == "clob.polymarket.com" and path.startswith("/clob-markets/"):
+                allowed = frozenset()
+            else:
+                raise ValueError("Неизвестная схема публичного GET")
+        if params is None:
+            return host
+        if type(params) is not dict or len(params) > len(allowed):
+            raise ValueError("Недопустимые параметры публичного GET")
+        for name, value in params.items():
+            if type(name) is not str or name not in allowed:
+                raise ValueError("Непубличный параметр GET")
+            if name in cls._INTEGER_QUERY_NAMES:
+                if (type(value) is not int or value < (0 if name == "offset" else 1)
+                        or value > (1000000 if name == "offset" else
+                                    1000 if name == "limit" else 2 ** 63 - 1)):
+                    raise ValueError("Недопустимое значение публичного GET")
+            elif name in ("end_date_min", "end_date_max"):
+                if type(value) is not str or len(value) > 40:
+                    raise ValueError("Недопустимое значение публичного GET")
+                try:
+                    stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                except ValueError as exc:
+                    raise ValueError("Недопустимое значение публичного GET") from exc
+                if stamp.tzinfo is None:
+                    raise ValueError("Недопустимое значение публичного GET")
+            else:
+                pattern = cls._TEXT_QUERY_PATTERNS.get(name)
+                if (type(value) is not str or pattern is None
+                        or re.fullmatch(pattern, value) is None):
+                    raise ValueError("Недопустимое значение публичного GET")
+        return host
+
     def __init__(self):
         self._thread = threading.local()
         self._sessions = []
@@ -187,8 +337,7 @@ class PublicData:
         deadline = time.monotonic() + 1.5
         while True:
             try:
-                self.shared.finish(*args, **kwargs)
-                return
+                return self.shared.finish(*args, **kwargs)
             except CacheBusy as exc:
                 if time.monotonic() >= deadline or self.stop_event.is_set():
                     # Failed publication remains unavailable to PAPER workers;
@@ -197,8 +346,28 @@ class PublicData:
                         if time.monotonic() >= self._cache_warning_at:
                             logging.warning("PUBLIC_CACHE: %s", exc)
                             self._cache_warning_at = time.monotonic() + 30
-                    return
+                    return False
                 self.stop_event.wait(.05)
+
+    def _record_shared_denial(self, key, owner, host, cooldown, status):
+        """Durably publish observed HTTP refusal independently of lease age.
+
+        SQLite contention is retried without repeating the provider request.
+        An uncommitted refusal is an explicit fail-closed error, not success.
+        """
+        deadline = time.monotonic() + 2.0
+        while True:
+            try:
+                self.shared.record_http_denial(
+                    key, owner, host, cooldown=cooldown, denial_status=status
+                )
+                return
+            except CacheBusy as exc:
+                if time.monotonic() >= deadline:
+                    raise DataUnavailable(
+                        "Общий кэш: запрет публичного источника не сохранён " + host
+                    ) from exc
+                time.sleep(.05)
 
     def _position_critical_request(self, url, params):
         # An existing position requires BOTH instrument metadata and the
@@ -214,6 +383,25 @@ class PublicData:
             and bool(params.get('symbol'))
             or '/tickers' in url and params.get('category') == 'linear'))
 
+    def _assert_provider_allowed(self, host):
+        """One admission contract for direct GET, Hub reads and post-HTTP use."""
+        with self._lock:
+            denial = self._access_denials.get(host)
+            if denial is not None:
+                expires, http_status = denial
+                if time.monotonic() < expires:
+                    raise SourceAccessDenied(host, http_status)
+                del self._access_denials[host]
+        if isinstance(self.shared, PublicCache):
+            try:
+                status = self.shared.denied_status(host)
+            except CacheBusy as exc:
+                raise DataUnavailable(
+                    "Общий кэш: невозможно проверить запрет источника " + host
+                ) from exc
+            if status is not None:
+                raise SourceAccessDenied(host, status)
+
     def get(self, url, params=None, ttl=0):
         began = time.monotonic()
 
@@ -228,32 +416,9 @@ class PublicData:
 
         if self.stop_event.is_set():
             raise DataUnavailable("Получение данных остановлено")
-        parsed = urlparse(url)
-        host = parsed.hostname
-        if (host not in self.HOSTS or parsed.scheme != "https" or
-                parsed.username is not None or parsed.password is not None or
-                parsed.fragment):
-            raise ValueError("Непубличный источник или закрытые данные в URL")
-        # Denied provider access is an admission fence, not only an HTTP
-        # request error. Check before Market Data Hub subscriptions or cache
-        # reads so stale shared data cannot bypass a provider's 403/451.
-        with self._lock:
-            denial = self._access_denials.get(host)
-            if denial is not None:
-                expires, http_status = denial
-                if time.monotonic() < expires:
-                    raise SourceAccessDenied(host, http_status)
-                del self._access_denials[host]
-        # A provider refusal is global to all consumers of this shared
-        # market cache, not just the worker that received HTTP 403/451.
-        # Test this fence before a Hub subscription OR any in-memory hit.
-        if isinstance(self.shared, PublicCache):
-            try:
-                status = self.shared.denied_status(host)
-            except CacheBusy as exc:
-                raise DataUnavailable("Общий запрет источника недоступен: " + host) from exc
-            if status is not None:
-                raise SourceAccessDenied(host, status)
+        host = self.validated_public_request(url, params)
+        # A refusal is a fleet-wide admission fence, not a retryable cache miss.
+        self._assert_provider_allowed(host)
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.
         # Registration is refreshed by actual demand, not by a synthetic scan.
         if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
@@ -284,6 +449,8 @@ class PublicData:
             while not self.stop_event.is_set():
                 try:
                     cached = self.shared.read_fresh(url, params, host)
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as exc:
                     # A transient SQLite reader/writer conflict is not a
                     # failed upstream market request. Retry within the same
@@ -301,7 +468,11 @@ class PublicData:
         now = time.time()
         key = (url, json.dumps(params, sort_keys=True))
         with self._lock:
-            if ttl > 0 and key in self.cache and 0 <= now - self.cache[key][0] <= ttl:
+            # Shared-cache workers have one authoritative cache. A private
+            # in-memory copy cannot be invalidated by another worker's 403/451,
+            # so it must never bypass the shared host-scoped policy fence.
+            if (self.shared is None and ttl > 0 and key in self.cache
+                    and 0 <= now - self.cache[key][0] <= ttl):
                 return received(self.cache[key][1], "memory_cache")
         if now < self.cooldowns.get(host, 0):
             # A local exchange cooldown must deny NEW requests, not a fresh
@@ -310,6 +481,8 @@ class PublicData:
             if self.shared:
                 try:
                     cached = self.shared.read_fresh(url, params, host)
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as exc:
                     raise DataUnavailable(str(exc)) from exc
                 if cached is not None:
@@ -335,6 +508,8 @@ class PublicData:
                     shared_key, owner, cached = self.shared.begin(
                         url, params, host, priority=is_position_critical)
                     break
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as e:
                     if (str(e) != "Данные уже запрашиваются другим ботом"
                             or time.monotonic() >= lease_deadline):
@@ -344,7 +519,20 @@ class PublicData:
             if owner is None:
                 return received(cached, "shared_cache")
         try:
-            response = self.session.get(url, params=params, timeout=(3, 8))
+            # The URL/route admission fence applies to the *entire* HTTP
+            # exchange, not only the first request. requests follows 3xx by
+            # default, potentially reaching an unapproved host/private route
+            # before this method sees the final status. No redirect is safe to
+            # follow automatically, including a redirect within the same host.
+            response = self.session.get(
+                url, params=params, timeout=(3, 8), allow_redirects=False
+            )
+            if 300 <= response.status_code < 400:
+                # 3xx is not an HTTPError in requests; accepting a JSON body
+                # here would publish unverified market data to all workers.
+                # Raise ValueError so the common failure path releases the
+                # cross-process request lease without caching a response.
+                raise ValueError("Публичный источник вернул перенаправление; переход запрещён")
             if response.status_code in (403, 451):
                 # Never evade a provider's geographic/policy restrictions with
                 # mirrors, other venues, cached prices, or silent retries.
@@ -364,9 +552,8 @@ class PublicData:
                         self.cooldowns.get(host, 0), time.time() + delay
                     )
                 if self.shared:
-                    self._finish_shared(
-                        shared_key, owner, host, cooldown=delay,
-                        denial_status=response.status_code,
+                    self._record_shared_denial(
+                        shared_key, owner, host, delay, response.status_code
                     )
                 raise SourceAccessDenied(host, response.status_code)
             if response.status_code in (418, 429):
@@ -407,15 +594,28 @@ class PublicData:
                 )
             )
             )
-            self._finish_shared(shared_key, owner, host, data, cache_ttl)
-        with self._lock:
-            self.cache[key] = (now, data)
-            if len(self.cache) > 1000:
-                self.cache = {
-                    k: v
-                    for k, v in self.cache.items()
-                    if now - v[0] < 600 or k[0] == "bars"
-                }
+            published = self._finish_shared(shared_key, owner, host, data, cache_ttl)
+        # Another in-flight request can receive a 403/451 while this HTTP
+        # request is completing. Its host-wide denial takes precedence over
+        # this otherwise successful response, even if our lease was valid.
+        self._assert_provider_allowed(host)
+        if self.shared is not None and not published:
+            # A 200 response is not proof of market admission: an obsolete
+            # singleflight owner or a locked shared SQLite writer can prevent
+            # atomic publication. The producer and direct workers both fail
+            # closed instead of trading on an uncommitted private snapshot.
+            raise DataUnavailable(
+                "Общий кэш: успешный HTTP-снимок не подтверждён транзакцией владельца"
+            )
+        if self.shared is None:
+            with self._lock:
+                self.cache[key] = (now, data)
+                if len(self.cache) > 1000:
+                    self.cache = {
+                        k: v
+                        for k, v in self.cache.items()
+                        if now - v[0] < 600 or k[0] == "bars"
+                    }
         return received(data, "http")
 
     def bybit(self, route, params):
