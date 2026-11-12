@@ -1,25 +1,11 @@
 import threading
 import unittest
+import pytest
 
 from bcc.strategy_dispatch import DispatchBusy, StrategyDispatcher
 
 
 class StrategyDispatcherTests(unittest.TestCase):
-    def test_fleet_size_is_independent_of_thread_budget(self):
-        # Workload sizes are test data, never a production fleet ceiling.
-        for owner_count, threads in ((3, 1), (83, 4), (521, 19)):
-            with self.subTest(owner_count=owner_count, threads=threads):
-                with StrategyDispatcher(workers=threads) as hub:
-                    futures = [hub.submit('bot-' + str(i), lambda n=i: n * 3)
-                               for i in range(owner_count)]
-                    for future in futures:
-                        future.result(timeout=15)
-                    results = hub.collect()
-                    self.assertEqual({key: value for key, value, error in results},
-                                     {'bot-' + str(i): i * 3 for i in range(owner_count)})
-                    self.assertTrue(all(error is None for _, _, error in results))
-                    self.assertEqual(len(futures), owner_count)
-
     def test_bounded_and_no_overlap(self):
         gate = threading.Event()
         with StrategyDispatcher(workers=1, maximum_pending=2) as hub:
@@ -49,3 +35,18 @@ class StrategyDispatcherTests(unittest.TestCase):
         hub.close()
         with self.assertRaises(DispatchBusy):
             hub.submit('a', lambda: 1)
+
+
+@pytest.mark.parametrize('owner_count,threads', [(3, 1), (83, 4), (521, 19)])
+def test_fleet_size_is_independent_of_thread_budget(owner_count, threads):
+    # These are varied workloads, never production fleet or thread ceilings.
+    with StrategyDispatcher(workers=threads) as hub:
+        futures = [hub.submit('bot-' + str(i), lambda n=i: n * 3)
+                   for i in range(owner_count)]
+        for future in futures:
+            future.result(timeout=15)
+        results = hub.collect()
+        assert {key: value for key, value, error in results} == {
+            'bot-' + str(i): i * 3 for i in range(owner_count)}
+        assert all(error is None for _, _, error in results)
+        assert len(futures) == owner_count

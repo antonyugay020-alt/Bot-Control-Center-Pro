@@ -144,9 +144,11 @@ def test_fleet_risk_and_monitor_observe_one_import_commit_boundary(tmp_path, mon
     owner = Supervisor(repo)
     source, cfg = account(repo, strategy, 'Published')
     advance(source, cfg)
+    neighbour, second = account(repo, STRATEGIES[(STRATEGIES.index(strategy) + 1) % len(STRATEGIES)], 'Other strategy')
+    advance(neighbour, second)
     expected = portfolio_snapshot(repo.root)
     archive = tmp_path / 'transfer.zip'
-    owner.export_bots([source], archive)
+    owner.export_bots([source, neighbour], archive)
     renamed, release = Event(), Event()
     publish = repo.publish
     def gated(staging):
@@ -160,16 +162,16 @@ def test_fleet_risk_and_monitor_observe_one_import_commit_boundary(tmp_path, mon
         try:
             assert renamed.wait(5)
             assert portfolio_snapshot(repo.root) == expected
-            assert len(snapshot_all(repo, Lifecycle(repo), include_stopped=True)) == 1
+            assert len(snapshot_all(repo, Lifecycle(repo), include_stopped=True)) == 2
         finally:
             release.set()
         imported = importing.result(timeout=10)
-    assert len(imported) == 1
+    assert len(imported) == 2
     slots, amount = portfolio_snapshot(repo.root)
     assert slots == 2 * expected[0] and amount == pytest.approx(2 * expected[1])
-    assert len(snapshot_all(repo, Lifecycle(repo), include_stopped=True)) == 2
-    Store(source).audit()
-    Store(imported[0]).audit()
+    assert len(snapshot_all(repo, Lifecycle(repo), include_stopped=True)) == 4
+    for folder in [source, neighbour, *imported]:
+        Store(folder).audit()
 
 
 @pytest.mark.parametrize('witness', ['paper-account.json', 'process.json'])

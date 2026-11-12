@@ -53,6 +53,11 @@ def fixture(output):
         )
     )
     total = len(ET.fromstring('<testsuite>' + cases + '</testsuite>').findall('testcase'))
+    cases += ''.join(
+        f'<testcase classname="tests.{module}" name="{name}" />'
+        for module, name in sorted(verifier().REQUIRED_INTEGRATION_CASES)
+    )
+    total += len(verifier().REQUIRED_INTEGRATION_CASES)
     xml = f'<testsuite tests="{total}" failures="0" errors="0" skipped="0">' + cases + '</testsuite>'
     (output / 'tests.xml').write_text(xml, encoding='utf-8')
     root = ET.fromstring(xml)
@@ -198,7 +203,7 @@ def test_native_dashboard_e2e_required_even_when_all_older_qt_modules_pass(tmp_p
     fixture(tmp_path)
     xml = tmp_path / 'tests.xml'
     root = ET.parse(xml).getroot()
-    assert len(root.findall('testcase')) == 555
+    assert failures(tmp_path) == []
     case = next(c for c in root.findall('testcase')
                 if c.get('classname') == 'tests.test_native_dashboard_workflow_qt')
     # A report whose Qt widgets passed but which skipped the actual Dashboard

@@ -62,7 +62,7 @@ def partitions(inventory, groups=6, *, excluded=()):
         raise ValueError('Test file inventory differs: ' + repr((set(modules)-actual, actual-set(modules))))
     # One high-volume SQLite replay has a separate wall clock budget. Keep it
     # in the inventory and actually execute it; never silently exclude it.
-    costly = 'test_veles_800_accounts_replay.py'
+    costly = 'test_veles_resource_scaled_accounts_replay.py'
     # OS-backed replay is sensitive to inherited pytest fixtures and process
     # handles. Run this whole module in its own disposable pytest process,
     # never in the same shard as unrelated tests. The exact test inventory is
@@ -161,7 +161,7 @@ def run(inventory, output, *, shard_timeout=360, heavy_timeout=600, headless=Fal
     all_good = True
     for idx, files in enumerate(schedule):
         name = f'shard_{idx:02d}'
-        budget = heavy_timeout if 'test_veles_800_accounts_replay.py' in files else shard_timeout
+        budget = heavy_timeout if 'test_veles_resource_scaled_accounts_replay.py' in files else shard_timeout
         xml = output / (name + '.xml')
         log = output / (name + '.log')
         args = [sys.executable, '-X', 'faulthandler', '-m', 'pytest', '-vv',

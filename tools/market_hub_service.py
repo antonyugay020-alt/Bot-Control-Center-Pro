@@ -29,8 +29,8 @@ def main():
         p.error('--idle-exit must be 0..86400 seconds')
     if not .02 <= args.poll <= 5:
         p.error('--poll must be 0.02..5 seconds')
-    if not 1 <= args.concurrency <= 12:
-        p.error('--concurrency must be 1..12')
+    if args.concurrency < 1:
+        p.error('--concurrency must be a positive integer')
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:

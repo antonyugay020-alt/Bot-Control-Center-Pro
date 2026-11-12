@@ -31,9 +31,15 @@ class Coordinator:
     @contextmanager
     def connection(self):
         # Never open an uninitialized DB for reading. Bootstrap is explicit.
-        with sqlite3.connect(self.path.resolve().as_uri() + '?mode=rw', timeout=15, isolation_level=None, uri=True) as db:
-            db.execute('PRAGMA busy_timeout=15000')
-            yield db
+        db = sqlite3.connect(self.path.resolve().as_uri() + '?mode=rw', timeout=15, isolation_level=None, uri=True)
+        try:
+            # Connection context commits/rolls back but does not close.
+            # Command/ledger fences must release OS handles deterministically.
+            with db:
+                db.execute('PRAGMA busy_timeout=15000')
+                yield db
+        finally:
+            db.close()
 
     def initialize(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)

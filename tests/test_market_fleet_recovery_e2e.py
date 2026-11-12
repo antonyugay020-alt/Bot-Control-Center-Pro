@@ -61,7 +61,7 @@ def _install_http_replay(feed_path):
                 result = {'list': [dict(symbol='BTCUSDT', markPrice=str(price))]}
             elif route == 'orderbook':
                 result = dict(s=symbol, ts=stamp, b=[[str(price-.01), '10000']], a=[[str(price+.01), '10000']])
-            elif route == 'funding/history':
+            elif route == 'history':
                 result = {'list': []}
             else:
                 raise AssertionError('Unlisted replay route: ' + url)
@@ -100,8 +100,9 @@ def decision(folder, cfg, client, depth=None):
     else:
         depth = depth or client.orderbook('BTCUSDT')
         rows = client.candles('BTCUSDT', 100)
+        rates = client.funding('BTCUSDT')
         engine = {'VELES': Veles, 'GRID': Grid, 'PUMP_DUMP': PumpDump}[cfg['strategy']]()
-        process_tick(cfg, store, engine, MarketTick('BTCUSDT', rows, depth, [], {}))
+        process_tick(cfg, store, engine, MarketTick('BTCUSDT', rows, depth, rates, {}))
 
 
 def fresh_depth(client, price):

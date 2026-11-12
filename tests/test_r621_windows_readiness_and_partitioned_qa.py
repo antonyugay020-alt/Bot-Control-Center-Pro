@@ -63,19 +63,19 @@ def test_real_service_receipt_requires_live_lease_after_wal_contention(tmp_path,
 def test_partitions_require_complete_file_inventory(tmp_path, monkeypatch):
     root = tmp_path / 'src'
     (root / 'tests').mkdir(parents=True)
-    for file in ('test_alpha.py', 'test_beta.py', 'test_veles_800_accounts_replay.py'):
+    for file in ('test_alpha.py', 'test_beta.py', 'test_veles_resource_scaled_accounts_replay.py'):
         (root / 'tests' / file).write_text('pass', encoding='utf-8')
     monkeypatch.setattr(run_partitioned_tests, 'ROOT', root)
     inventory = tmp_path / 'inventory.json'
     inventory.write_text(json.dumps({'schema': 1, 'cases': [
         ['tests.test_alpha', 'test_one'],
         ['tests.test_beta', 'test_two'],
-        ['tests.test_veles_800_accounts_replay', 'test_many'],
+        ['tests.test_veles_resource_scaled_accounts_replay', 'test_many'],
     ]}), encoding='utf-8')
     groups = run_partitioned_tests.partitions(inventory, groups=2)
     assert len(groups) == 3
-    assert groups[-1] == ['test_veles_800_accounts_replay.py']
-    assert sorted(sum(groups, [])) == ['test_alpha.py', 'test_beta.py', 'test_veles_800_accounts_replay.py']
+    assert groups[-1] == ['test_veles_resource_scaled_accounts_replay.py']
+    assert sorted(sum(groups, [])) == ['test_alpha.py', 'test_beta.py', 'test_veles_resource_scaled_accounts_replay.py']
     (root / 'tests' / 'test_missing.py').write_text('pass', encoding='utf-8')
     with pytest.raises(ValueError, match='differs'):
         run_partitioned_tests.partitions(inventory, groups=2)
