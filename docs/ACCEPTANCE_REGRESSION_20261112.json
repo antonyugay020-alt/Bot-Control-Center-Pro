@@ -76,6 +76,12 @@
       "declared_tests": 17,
       "failures": [],
       "junit_sha256": "017d54d988e9ca78ab8ba0e866fb8ba72ddcf571f3a238380d75eb8d06d83d49"
+    },
+    {
+      "name": "final-driver-target",
+      "actual_testcases": 125,
+      "failures": [],
+      "junit_sha256": "9aa8eab05955f3e6bcd3e46c7a047ab3d6b36c169720df4fc5c9b0d15fd1c8f4"
     }
   ],
   "clean_source_commit": "0dc030006a08308707bb06979dc28e80426bdef4",
@@ -273,5 +279,114 @@
     "manual_acceptance": "PENDING: follow ACCEPTANCE_WINDOWS_RU.md; automated tests do not replace it",
     "status": "BLOCKED",
     "error": "Требуется настоящий Windows Qt; offscreen не считается нативной проверкой"
+  },
+  "first_sharded": {
+    "source": "08e9a16",
+    "status": "FAIL",
+    "totals": {
+      "tests": 3532,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "inventory_count": 3532,
+    "shards": [
+      {
+        "name": "shard_00",
+        "status": "PASS",
+        "seconds": 5.995,
+        "timeout": 360,
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_01",
+        "status": "PASS",
+        "seconds": 61.135,
+        "timeout": 360,
+        "totals": {
+          "tests": 588,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_02",
+        "status": "PASS",
+        "seconds": 51.738,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_03",
+        "status": "PASS",
+        "seconds": 32.106,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_04",
+        "status": "PASS",
+        "seconds": 27.716,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_05",
+        "status": "FAIL",
+        "seconds": 21.651,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 1,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_06",
+        "status": "PASS",
+        "seconds": 23.556,
+        "timeout": 360,
+        "totals": {
+          "tests": 587,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_07",
+        "status": "PASS",
+        "seconds": 10.647,
+        "timeout": 600,
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ]
   }
 }

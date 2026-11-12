@@ -93,6 +93,21 @@ def _install_http_replay(feed_path):
 
 
 def decision(folder, cfg, client, depth=None):
+    # The real worker retries unavailable market admission on its next tick.
+    # A cached closed candle can cross a minute boundary between delivery and
+    # validation; never relabel it or weaken freshness just for replay timing.
+    deadline = time.monotonic() + 8
+    while True:
+        try:
+            return _decision_once(folder, cfg, client, depth)
+        except DataUnavailable:
+            if time.monotonic() >= deadline:
+                raise
+            depth = None  # Reacquire depth after waiting on candle delivery.
+            time.sleep(.05)
+
+
+def _decision_once(folder, cfg, client, depth=None):
     store = Store(folder)
     if cfg['strategy'] == 'POLYMARKET':
         with risk_transaction(store) as (state, events):
@@ -153,6 +168,15 @@ def test_hub_restart_preserves_strategy_risk_monitor_and_closed_ledger(tmp_path,
     monkeypatch.setenv('BCC_PUBLIC_CACHE', str(repo.root / 'market_cache.sqlite'))
     monkeypatch.setenv('BCC_MARKET_HUB_MODE', 'client')
     client = PolymarketData() if strategy == 'POLYMARKET' else PublicData()
+    stale_reads = []
+    if strategy == 'VELES':
+        candles = client.candles
+        def delayed_candle(*args, **kwargs):
+            stale_reads.append(1)
+            if len(stale_reads) == 1:
+                raise DataUnavailable('Synthetic candle expired before admission')
+            return candles(*args, **kwargs)
+        monkeypatch.setattr(client, 'candles', delayed_candle)
     record_path = repo.root / 'market_hub_process.json'
     registry = HubRegistry(repo.root / 'market_cache.sqlite')
     try:
@@ -165,6 +189,8 @@ def test_hub_restart_preserves_strategy_risk_monitor_and_closed_ledger(tmp_path,
                 break
         saved = Store(folder).read()
         assert saved['positions'], saved['diagnostics']
+        if strategy == 'VELES':
+            assert len(stale_reads) >= 2
         events = Store(folder).history()
         Store(folder).audit()
         slots = portfolio_snapshot(repo.root)[0]
@@ -208,7 +234,7 @@ def test_hub_restart_preserves_strategy_risk_monitor_and_closed_ledger(tmp_path,
                 reference._reference = (remote_now, remote_now, wall_now, time.monotonic())
             atomic_json(feed, frame)
             depth = fresh_depth(client, frame['price'])
-            deadline = time.monotonic() + 6
+            deadline = time.monotonic() + 12
             while Store(folder).read()['positions']:
                 try:
                     decision(folder, cfg, client, depth)
