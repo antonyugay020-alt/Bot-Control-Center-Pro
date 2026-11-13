@@ -364,7 +364,7 @@ class PolymarketMarketWS:
                     try:
                         socket.send("PING")
                     except Exception:
-                        self.disconnect()
+                        self.disconnect(generation=state["generation"])
                         try:
                             socket.close()
                         except Exception:
@@ -381,7 +381,7 @@ class PolymarketMarketWS:
             finally:
                 pulse_stop.set()
                 pulse.join(timeout=2)
-                self.disconnect()
+                self.disconnect(generation=state["generation"])
             self._stop.wait(retry_delay)
 
     def stop(self):
