@@ -91,8 +91,10 @@ class BybitQuoteStream:
                 finally:
                     raise StreamUnavailable("Bybit subscription send failed") from exc
 
-    def disconnect(self):
+    def disconnect(self, *, generation=None):
         with self._lock:
+            if generation is not None and generation != self._generation:
+                return False
             self._generation += 1
             self._connected = False
             self._socket = None
@@ -237,13 +239,13 @@ class BybitQuoteStream:
                 if not isinstance(payload, dict):
                     return
                 if payload.get("op") == "subscribe" and payload.get("success") is False:
-                    self.disconnect()
+                    self.disconnect(generation=state["generation"])
                     ws.close()
                     return
                 self.ingest(payload, generation=state["generation"])
 
             def on_close(ws, code, reason):
-                self.disconnect()
+                self.disconnect(generation=state["generation"])
 
             ws = websocket_app_factory(self.ENDPOINT, on_open=on_open,
                                        on_message=on_message, on_close=on_close)
@@ -252,7 +254,7 @@ class BybitQuoteStream:
             except Exception as exc:
                 logging.warning("Bybit public quote WS reconnect: %s", type(exc).__name__)
             finally:
-                self.disconnect()
+                self.disconnect(generation=state["generation"])
             self._stop.wait(retry_delay)
 
     def stop(self):
