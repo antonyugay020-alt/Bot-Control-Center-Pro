@@ -50,8 +50,10 @@ class PolymarketMarketWS:
         self._socket = None
         self._books.clear()
 
-    def disconnect(self):
+    def disconnect(self, *, generation=None):
         with self._lock:
+            if generation is not None and generation != self._generation:
+                return False
             self._invalidate()
 
     def connect(self, socket=None):
@@ -345,7 +347,7 @@ class PolymarketMarketWS:
                 self.ingest_message(raw, generation=state["generation"])
 
             def closed(socket, code, reason):
-                self.disconnect()
+                self.disconnect(generation=state["generation"])
 
             socket = websocket_app_factory(
                 self.ENDPOINT, on_open=opened,
