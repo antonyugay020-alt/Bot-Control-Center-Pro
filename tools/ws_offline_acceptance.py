@@ -32,8 +32,11 @@ NETWORK_FLAGS = (
 def require_isolated_checkout():
     if not (ROOT / ".git").exists():
         raise RuntimeError("QA requires an independent Git checkout")
-    if (ROOT / "MY_BOTS").exists():
-        raise RuntimeError("QA refuses any checkout containing MY_BOTS")
+    bots = ROOT / "MY_BOTS"
+    if bots.exists() and (
+            any(bots.rglob("process.json"))
+            or any(bots.rglob("*.sqlite"))):
+        raise RuntimeError("QA refuses a checkout containing bot runtime state")
     if (ROOT / "market_cache.sqlite").exists():
         raise RuntimeError("QA refuses a checkout containing live market cache")
     if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
@@ -83,6 +86,9 @@ def main(argv=None):
             env["PYTHONDONTWRITEBYTECODE"] = "1"
             env["BCC_QA_TEMP"] = temp
             for cycle in range(args.repeat):
+                # Alternate Python hash iteration order across clean test
+                # processes; each iteration is a fresh subprocess.
+                env["PYTHONHASHSEED"] = str((31337 + cycle * 104729) % (2 ** 32))
                 cmd = [sys.executable, "-m", "pytest", "-q", *tests]
                 process = subprocess.run(
                     cmd, cwd=str(ROOT), env=env, capture_output=True,
