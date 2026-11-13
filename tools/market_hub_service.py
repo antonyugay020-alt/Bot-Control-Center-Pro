@@ -1,5 +1,6 @@
 """Explicit experimental public-data producer. Does not trade or load keys."""
 import argparse
+import json
 import os
 import sys
 import traceback
@@ -117,6 +118,7 @@ def main():
         hub = MarketDataHub(args.cache, max_workers=args.concurrency)
     print('Market Hub cache initialized', flush=True)
     last_client = time.monotonic()
+    last_ws_health = 0.0
     ready_logged = False
     try:
         while not stop.is_set():
@@ -155,6 +157,28 @@ def main():
                     print('Market Hub leader lease acquired', flush=True)
                     ready_logged = True
                 hub.poll_nonblocking()
+                if ws_threads and time.monotonic() - last_ws_health >= 30:
+                    # Only aggregate public transport liveness and queue
+                    # pressure; no token ids, API keys or market payloads.
+                    states = {}
+                    for label, stream in (
+                        ("bybit_quotes", quote_stream),
+                        ("bybit_depth", book_stream),
+                        ("bybit_klines", kline_stream),
+                        ("clob_books", poly_stream),
+                        ("binance_trade", binance_stream),
+                    ):
+                        if stream is None:
+                            continue
+                        with stream._lock:
+                            states[label] = "connected" if stream._connected else "reconnecting"
+                    queue_stats = ws_updates.stats()
+                    print("Market Hub WS health: " +
+                          json.dumps({
+                              "streams": states,
+                              "queue": queue_stats,
+                          }, sort_keys=True), flush=True)
+                    last_ws_health = time.monotonic()
                 if ws_threads and not hub._leader_held:
                     raise RuntimeError("Bybit WebSocket producer lost Hub leader lease")
                 # A failed liveness probe is NOT permission to retire a
