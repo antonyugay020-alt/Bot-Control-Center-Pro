@@ -52,6 +52,12 @@ def process(argv, *, cwd=None, timeout=120, output: Path | None = None,
     argv = [str(x) for x in argv]
     child_input = ({'stdin': subprocess.DEVNULL} if input_text is None
                    else {'input': input_text})
+    # On native Windows, the subprocess may otherwise decode the UTF-8
+    # parent pipe using its locale code page (cp1251/cp1252). The prompt
+    # stays on stdin, never on the command line or in any log.
+    if input_text is not None:
+        env = dict(os.environ if env is None else env)
+        env['PYTHONIOENCODING'] = 'utf-8'
     try:
         if output is not None:
             output.parent.mkdir(parents=True, exist_ok=True)
