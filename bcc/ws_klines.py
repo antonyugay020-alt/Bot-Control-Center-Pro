@@ -88,8 +88,10 @@ class BybitKlineWS:
         self._socket = None
         self._candles.clear()
 
-    def disconnect(self):
+    def disconnect(self, *, generation=None):
         with self._lock:
+            if generation is not None and generation != self._generation:
+                return False
             self._invalidate()
 
     def connect(self, socket=None):
@@ -198,13 +200,13 @@ class BybitKlineWS:
                 if not isinstance(message, dict):
                     return
                 if message.get("op") == "subscribe" and message.get("success") is False:
-                    self.disconnect()
+                    self.disconnect(generation=state["generation"])
                     socket.close()
                     return
                 self.ingest(message, generation=state["generation"])
 
             def closed(socket, code, reason):
-                self.disconnect()
+                self.disconnect(generation=state["generation"])
 
             socket = websocket_app_factory(
                 self.ENDPOINT, on_open=opened, on_message=received,
@@ -215,7 +217,7 @@ class BybitKlineWS:
                 logging.warning("Bybit minute kline WS reconnect: %s",
                                 type(exc).__name__)
             finally:
-                self.disconnect()
+                self.disconnect(generation=state["generation"])
             self._stop.wait(retry_delay)
 
     def stop(self):
