@@ -1323,7 +1323,6 @@ class PolymarketData(PublicData):
 
     def impulse(self, coin, start, now):
         # Signal source is Binance spot; settlement never uses this price.
-        clock.ensure()
         rows = self.get(
             "https://api.binance.com/api/v3/klines",
             {
@@ -1347,6 +1346,9 @@ class PolymarketData(PublicData):
         if not isinstance(ticker, dict) or ticker.get("symbol") != coin + "USDT":
             raise DataUnavailable("Котировка другой торговой пары Binance")
         if ticker.get("_bcc_ws_binance") is True:
+            # Existing REST-only strategies retain their old clock contract;
+            # the new streaming path must prove its independent trading UTC.
+            clock.ensure()
             try:
                 stamp = float(ticker["_ws_timestamp"])
             except (KeyError, ValueError, TypeError, OverflowError) as exc:
