@@ -565,6 +565,72 @@ class MarketDataHub:
             self.registry.prune_expired()
             self._prune_due = now + 30.0
 
+    def publish_ws_event(self, kind, symbol):
+        """Publish one verified stream event without a per-symbol GET poll.
+
+        An independent SQL transaction checks leader, active subscription,
+        provider fence and cache publication as one atomic decision.
+        """
+        from .ws_quotes import StreamUnavailable
+        if not self._leader_held or not self._leader_token:
+            return False
+        if kind == "tickers":
+            stream = getattr(self.source, "_quote_stream", None)
+            url = "https://api.bybit.com/v5/market/tickers"
+            params = {"category": "linear", "symbol": symbol}
+        elif kind == "depth50":
+            stream = getattr(self.source, "_orderbook_stream", None)
+            url = "https://api.bybit.com/v5/market/orderbook"
+            params = {"category": "linear", "symbol": symbol, "limit": 50}
+        else:
+            raise ValueError("unknown WS publication channel")
+        if stream is None:
+            return False
+        try:
+            if kind == "tickers":
+                bid, ask, at = stream.quote(symbol)
+                if (not all(math.isfinite(x) for x in (bid, ask, at))
+                        or bid <= 0 or ask <= 0 or bid > ask
+                        or not -5 <= time.time() - at <= 2):
+                    return False
+                value = {
+                    "retCode": 0, "retMsg": "OK", "_bcc_ws_quote": True,
+                    "time": int(at * 1000),
+                    "result": {"list": [{
+                        "symbol": symbol,
+                        "bid1Price": str(bid), "ask1Price": str(ask),
+                    }]},
+                }
+                ttl = .35
+            else:
+                book = stream.get_orderbook(symbol)
+                stamp = book["ts"]
+                if (not math.isfinite(stamp) or
+                        not -.5 <= time.time() - stamp <= 3):
+                    return False
+                value = {
+                    "retCode": 0, "retMsg": "OK", "_bcc_ws_book": True,
+                    "time": int(stamp * 1000),
+                    "result": {
+                        "s": symbol, "ts": int(stamp * 1000),
+                        "b": [[str(p), str(q)] for p, q in book["bids"]],
+                        "a": [[str(p), str(q)] for p, q in book["asks"]],
+                        "u": book["u"], "seq": book["seq"],
+                    },
+                }
+                ttl = .2
+        except (StreamUnavailable, ValueError, KeyError, TypeError):
+            return False
+        from .data_cache import CacheBusy
+        try:
+            return self.source.shared.publish_websocket(
+                url, params, "api.bybit.com", value, ttl=ttl,
+                leader_owner=self.owner, leader_token=self._leader_token,
+            )
+        except CacheBusy:
+            # Queue worker may retry a newer event on the next receipt.
+            return False
+
     def subscribe_active_websockets(self):
         """Pre-register every demanded symbol on the shared WS producers."""
         if self._leader_token is None:
