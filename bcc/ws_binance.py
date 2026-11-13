@@ -10,6 +10,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+from .ws_dispatch import ReconnectBackoff
 from .ws_quotes import StreamUnavailable
 
 _SYMBOL = re.compile(r"[A-Z0-9]{2,24}USDT\Z")
@@ -141,6 +142,7 @@ class BinanceTradeWS:
         if websocket_app_factory is None:
             from websocket import WebSocketApp
             websocket_app_factory = WebSocketApp
+        reconnect = ReconnectBackoff(base=retry_delay)
         self._stop.clear()
         while not self._stop.is_set():
             with self._lock:
@@ -148,6 +150,7 @@ class BinanceTradeWS:
             if not active:
                 self._stop.wait(.25)
                 continue
+            started = time.monotonic()
             self.disconnect()
             state = {"generation": None}
 
@@ -183,7 +186,8 @@ class BinanceTradeWS:
                 pass
             finally:
                 self.disconnect(generation=state["generation"])
-            self._stop.wait(retry_delay)
+            self._stop.wait(reconnect.after_session(
+                max(0.0, time.monotonic() - started)))
 
     def stop(self):
         self._stop.set()
