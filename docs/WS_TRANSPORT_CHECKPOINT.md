@@ -31,3 +31,11 @@ Development branch: `codex/ws-transport-isolated-20261113`, based on consolidate
 ## Release blockers
 
 Test real integrated source in an isolated checkout; fix failures as a group; validate Hub producer/worker lifecycle across process death, stale SQLite entries and 500+ symbol subscriptions without touching trading accounts. Follow with full Windows Qt clean-unpack acceptance. Do not merge or release on source inspection alone.
+
+## 2026-11-13 continuation — multi-symbol scheduling and producer fencing
+- Added `HubRegistry.active_bybit_symbols()`: read-only scan of validated live per-symbol ticker and depth50 requests.
+- `MarketDataHub.subscribe_active_websockets()` now pre-registers all actively requested symbols at most once per second, independently from serialized REST-shaped due queue.
+- Bybit ticker reconnection batches topics in groups of 10, matching the user-supplied depth50 subscription approach.
+- The Hub service no longer opens Bybit WebSockets before winning its durable producer lease. Losing leadership terminates the WS-enabled service instead of leaving a zombie connection.
+- Added `tests/test_ws_hub_bulk_subscription.py` with synthetic 120-symbol workload and route filtering.
+- These changes are committed; local full-checkout tests and Windows Qt E2E remain **UNRUN** in this session; do not deploy or flip flags on live bot fleets.
