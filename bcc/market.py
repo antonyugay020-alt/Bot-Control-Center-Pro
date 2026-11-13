@@ -289,10 +289,11 @@ class PublicData:
                     raise ValueError("Недопустимое значение публичного GET")
         return host
 
-    def __init__(self, *, quote_stream=None):
+    def __init__(self, *, quote_stream=None, orderbook_stream=None):
         # Explicit opt-in adapter; the caller owns its producer thread.
         # A missing/failed WebSocket quote never falls back to REST.
         self._quote_stream = quote_stream
+        self._orderbook_stream = orderbook_stream
         self._thread = threading.local()
         self._sessions = []
         self._lock = threading.RLock()
@@ -469,6 +470,64 @@ class PublicData:
         self._assert_provider_allowed(host)
         return data
 
+    def _ws_orderbook_get(self, url, params, host):
+        """Fenced snapshot of public WS book into the existing shared Hub cache.
+
+        REST-shaped result preserves all current PAPER adapter validation.
+        An existing cached REST response never qualifies as a WS book.
+        """
+        from .ws_quotes import StreamUnavailable
+        symbol = params["symbol"]
+        key = owner = None
+        if self.shared is not None:
+            deadline = time.monotonic() + 3
+            while True:
+                try:
+                    key, owner, cached = self.shared.begin(
+                        url, params, host,
+                        priority=self._position_critical_request(url, params),
+                        websocket=True)
+                    break
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
+                except CacheBusy as exc:
+                    if (str(exc) != "Данные уже запрашиваются другим ботом"
+                            or time.monotonic() >= deadline):
+                        raise DataUnavailable("WebSocket стакан: общий кэш недоступен") from exc
+                    if self.stop_event.wait(.05):
+                        raise DataUnavailable("Получение данных остановлено")
+            if owner is None:
+                if isinstance(cached, dict) and cached.get("_bcc_ws_book") is True:
+                    self._assert_provider_allowed(host)
+                    return cached
+                raise DataUnavailable("WebSocket стакан: происхождение кэша не подтверждено")
+        try:
+            self._orderbook_stream.subscribe(symbol)
+            book = self._orderbook_stream.get_orderbook(symbol)
+            stamp = book["ts"]
+            if (type(stamp) not in (float, int) or not math.isfinite(stamp)
+                    or not -0.5 <= market_now() - stamp <= 3):
+                raise DataUnavailable("WebSocket стакан: неверное время")
+            data = {
+                "retCode": 0, "retMsg": "OK", "_bcc_ws_book": True,
+                "time": int(stamp * 1000),
+                "result": {
+                    "s": symbol, "ts": int(stamp * 1000),
+                    "b": [[str(p), str(q)] for p, q in book["bids"]],
+                    "a": [[str(p), str(q)] for p, q in book["asks"]],
+                    "u": book["u"], "seq": book["seq"],
+                },
+            }
+        except (StreamUnavailable, ValueError, KeyError, TypeError, DataUnavailable) as exc:
+            if self.shared is not None:
+                self._finish_shared(key, owner, host)
+            raise DataUnavailable("WebSocket Bybit: стакан недоступен") from exc
+        if self.shared is not None:
+            if not self._finish_shared(key, owner, host, data, .2):
+                raise DataUnavailable("WebSocket стакан: публикация не подтверждена")
+        self._assert_provider_allowed(host)
+        return data
+
     def get(self, url, params=None, ttl=0):
         began = time.monotonic()
 
@@ -494,6 +553,13 @@ class PublicData:
                 and params["category"] == "linear"
                 and os.environ.get("BCC_MARKET_HUB_MODE") != "client"):
             return received(self._ws_ticker_get(url, params, host), "bybit_ws_hub")
+        if (self._orderbook_stream is not None
+                and url == "https://api.bybit.com/v5/market/orderbook"
+                and type(params) is dict
+                and set(params) == {"category", "symbol", "limit"}
+                and params["category"] == "linear" and params["limit"] == 50
+                and os.environ.get("BCC_MARKET_HUB_MODE") != "client"):
+            return received(self._ws_orderbook_get(url, params, host), "bybit_ws_book_hub")
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.
         # Registration is refreshed by actual demand, not by a synthetic scan.
         if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
@@ -535,6 +601,16 @@ class PublicData:
                     self.stop_event.wait(.05)
                     continue
                 if cached is not None:
+                    if (url == "https://api.bybit.com/v5/market/orderbook"
+                            and os.environ.get("BCC_BYBIT_WS_BOOKS") == "1"
+                            and type(params) is dict and params.get("limit") == 50
+                            and cached.get("_bcc_ws_book") is not True):
+                        raise DataUnavailable("Market Data Hub: WebSocket стакан не подтверждён")
+                    if (url == "https://api.bybit.com/v5/market/tickers"
+                            and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"
+                            and type(params) is dict and params.get("symbol")
+                            and cached.get("_bcc_ws_quote") is not True):
+                        raise DataUnavailable("Market Data Hub: WebSocket котировка не подтверждена")
                     return received(cached, "market_hub")
                 if time.monotonic() >= deadline:
                     raise DataUnavailable("Market Data Hub: нет свежего снимка (очередь или источник недоступен)")
@@ -911,7 +987,11 @@ class PublicData:
             margin_error = str(exc)
         # Metadata may require a separate network round trip on the first read.
         # Fetch the executable snapshot only after that round trip has finished.
-        response = self.bybit("orderbook", {"symbol": symbol, "limit": 200})
+        response = self.bybit("orderbook", {
+            "symbol": symbol,
+            "limit": 50 if (self._orderbook_stream is not None
+                           or os.environ.get("BCC_BYBIT_WS_BOOKS") == "1") else 200,
+        })
         data = response["result"]
         if data.get("s") != symbol:
             raise DataUnavailable("Стакан другой монеты")
