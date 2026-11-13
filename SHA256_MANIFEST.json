@@ -428,6 +428,6 @@
     "tools/verify_windows.py": "bec5ab13bf1415ec5cc7f78436003187a67667ffdfc211a381037c9caa4c2b70",
     "tools/windows_ai_launcher.py": "89bb4ef92af88230b9471e35248c2db12a3df1b0d9a61924cb8508f7e6e94f70",
     "tools/windows_check.py": "93eab4c64726fe0bc3e5d976c6133bbb2f1b56462f308d38a8d4d58fd4f41a19",
-    "tools/ws_offline_acceptance.py": "2d16c642a13ee28ad94a51dd0ed8b2efca0202c8a31794e6276cc3e9bf085465"
+    "tools/ws_offline_acceptance.py": "aed71c8e11d0a0f8dddaf035337c9d9887439f7ef3aade3825b5d4885b72b7f8"
   }
 }
