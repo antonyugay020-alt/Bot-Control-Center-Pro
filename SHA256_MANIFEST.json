@@ -412,7 +412,7 @@
     "tests/test_ws_quotes.py": "7d38ca550db34b076592c8e9a3a80aafa4721db4ad178968b192de33cacfea5e",
     "tests/test_ws_ticker_partial_delta.py": "06f5b1162041b8bf102f9d5a47e531633c95dd775ec04d2579785afa9abb680f",
     "tools/acceptance_session.py": "5dbf9742fd82c44c42640371140d5f7fa528c472597512d8b95207d2d6a9e7a4",
-    "tools/ai_dev_pipeline.py": "55ff5e92c9ff5cd609fdf9fef7af591ed4fa833dd2db21159dd48d69c8bed7bc",
+    "tools/ai_dev_pipeline.py": "07f009404fdfbf242f50c1f709b60e1fd2d6b7066e893cab93cfbbc50115769d",
     "tools/audit20.py": "ee6aff07f9c4b3f06eca3634f45cd0ead133c0618199854e1d900dd0c5a2719d",
     "tools/collect_test_inventory.py": "78cd4aede5152e392319616f29eb05ef549949d3ed375d9339d12c0ca99259d4",
     "tools/export_test_report.py": "09f85e9ae97cf7bf0ba689d3a5f3603a6e915a37ae5fb2f78c735503574d9b4b",
@@ -428,6 +428,6 @@
     "tools/verify_windows.py": "bec5ab13bf1415ec5cc7f78436003187a67667ffdfc211a381037c9caa4c2b70",
     "tools/windows_ai_launcher.py": "89bb4ef92af88230b9471e35248c2db12a3df1b0d9a61924cb8508f7e6e94f70",
     "tools/windows_check.py": "93eab4c64726fe0bc3e5d976c6133bbb2f1b56462f308d38a8d4d58fd4f41a19",
-    "tools/ws_offline_acceptance.py": "e7f491cd48cb84da3fbfe7689a591db55d319674aab7e5fa2f99c23c409e71bf"
+    "tools/ws_offline_acceptance.py": "2d16c642a13ee28ad94a51dd0ed8b2efca0202c8a31794e6276cc3e9bf085465"
   }
 }
