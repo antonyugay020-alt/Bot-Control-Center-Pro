@@ -6,6 +6,7 @@ may be shared among subscribing clients of a single market-data producer.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import threading
@@ -182,6 +183,8 @@ class BybitQuoteStream:
                                        on_message=on_message, on_close=on_close)
             try:
                 ws.run_forever(ping_interval=20, ping_timeout=10)
+            except Exception as exc:
+                logging.warning("Bybit public quote WS reconnect: %s", type(exc).__name__)
             finally:
                 self.disconnect()
             self._stop.wait(retry_delay)
