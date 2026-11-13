@@ -297,15 +297,18 @@ class PolymarketMarketWS:
                 state["generation"] = generation
                 with self._lock:
                     assets = sorted(self._assets)
-                    for i in range(0, len(assets), self.MAX_SUB_PER_MSG):
-                        message = {
+                    # Register market channel even if the Hub has not yet
+                    # discovered the first active UP/DOWN token. Later tokens
+                    # use the dynamic subscribe operation on this channel.
+                    socket.send(json.dumps({
+                        "assets_ids": assets[:self.MAX_SUB_PER_MSG],
+                        "type": "market",
+                    }))
+                    for i in range(self.MAX_SUB_PER_MSG, len(assets), self.MAX_SUB_PER_MSG):
+                        socket.send(json.dumps({
                             "assets_ids": assets[i:i + self.MAX_SUB_PER_MSG],
-                        }
-                        if i == 0:
-                            message["type"] = "market"
-                        else:
-                            message["operation"] = "subscribe"
-                        socket.send(json.dumps(message))
+                            "operation": "subscribe",
+                        }))
 
             def received(socket, raw):
                 self.ingest_message(raw, generation=state["generation"])
