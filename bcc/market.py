@@ -636,7 +636,16 @@ class PublicData:
             self._assert_provider_allowed("api.bybit.com")
             try:
                 self._quote_stream.subscribe(symbol)
-                return self._quote_stream.quote(symbol)
+                observed = self._quote_stream.quote(symbol)
+                if (type(observed) not in (tuple, list) or len(observed) != 3
+                        or any(type(value) not in (int, float)
+                               or not math.isfinite(value) for value in observed)):
+                    raise DataUnavailable("Bybit WebSocket: повреждена котировка")
+                bid, ask, stamp = observed
+                if (bid <= 0 or ask <= 0 or bid > ask or
+                        not -5 <= market_now() - stamp <= 2):
+                    raise DataUnavailable("Bybit WebSocket: котировка устарела или недостоверна")
+                return bid, ask, stamp
             except (StreamUnavailable, ValueError) as exc:
                 raise DataUnavailable("Bybit WebSocket: свежая котировка недоступна") from exc
         data = self.bybit("tickers", {"symbol": symbol})
