@@ -42,6 +42,19 @@ class BinanceTradeTests(unittest.TestCase):
         with self.assertRaises(StreamUnavailable):
             self.stream.quote("BTCUSDT")
 
+    def test_malformed_new_trade_revokes_prior_price(self):
+        self.assertTrue(self.trade())
+        self.assertFalse(self.trade(price="NaN"))
+        with self.assertRaises(StreamUnavailable):
+            self.stream.quote("BTCUSDT")
+
+    def test_stale_new_trade_revokes_prior_price(self):
+        self.assertTrue(self.trade())
+        self.clock.wall += 3
+        self.assertFalse(self.trade(stamp=int((self.clock.wall - 6) * 1000)))
+        with self.assertRaises(StreamUnavailable):
+            self.stream.quote("BTCUSDT")
+
     def test_absent_token_no_price(self):
         self.assertFalse(self.trade(symbol="UNKNOWNUSDT"))
 
