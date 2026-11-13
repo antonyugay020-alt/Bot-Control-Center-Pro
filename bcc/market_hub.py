@@ -815,7 +815,11 @@ class MarketDataHub:
                 pass
         if poly is not None:
             try:
-                poly.subscribe(sorted(self.registry.active_polymarket_assets()))
+                desired = sorted(self.registry.active_polymarket_assets())
+                if hasattr(poly, "sync_assets"):
+                    poly.sync_assets(desired)
+                else:
+                    poly.subscribe(desired)
             except (ValueError, StreamUnavailable):
                 pass
 
