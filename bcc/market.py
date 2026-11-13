@@ -544,6 +544,27 @@ class PublicData:
         if self.stop_event.is_set():
             raise DataUnavailable("Получение данных остановлено")
         host = self.validated_public_request(url, params)
+        # In explicitly selected WS mode a missing shared producer cannot
+        # silently reactivate old per-coin HTTP polling. Broad risk marks,
+        # historical backfills and other unmigrated REST routes stay allowed.
+        if os.environ.get("BCC_MARKET_HUB_MODE") != "client":
+            if (url == "https://api.bybit.com/v5/market/tickers"
+                    and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"
+                    and type(params) is dict and params.get("symbol")
+                    and self._quote_stream is None):
+                raise DataUnavailable("Bybit WebSocket котировки: Hub не подключён")
+            if (url == "https://api.bybit.com/v5/market/orderbook"
+                    and os.environ.get("BCC_BYBIT_WS_BOOKS") == "1"
+                    and type(params) is dict and params.get("limit") == 50
+                    and self._orderbook_stream is None):
+                raise DataUnavailable("Bybit WebSocket стакан: Hub не подключён")
+            if (url == "https://api.bybit.com/v5/market/kline"
+                    and os.environ.get("BCC_BYBIT_WS_KLINES") == "1"
+                    and type(params) is dict
+                    and set(params) == {"category", "symbol", "interval", "limit"}
+                    and params.get("interval") == "1" and params.get("limit") == 10
+                    and self._kline_stream is None):
+                raise DataUnavailable("Bybit WebSocket свеча: Hub не подключён")
         # A refusal is a fleet-wide admission fence, not a retryable cache miss.
         self._assert_provider_allowed(host)
         # Explicit producer-side WebSocket transport for symbol-specific Bybit
