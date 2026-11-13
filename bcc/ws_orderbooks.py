@@ -8,6 +8,7 @@ No secrets, trade endpoints or automatic connection on import.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import threading
@@ -240,6 +241,9 @@ class BybitOrderbookWS:
                 on_close=closed)
             try:
                 socket.run_forever(ping_interval=20, ping_timeout=10)
+            except Exception as exc:
+                # Public transport errors are retryable, not trade permission.
+                logging.warning("Bybit public WS reconnect: %s", type(exc).__name__)
             finally:
                 self.disconnect()
             self._stop.wait(retry_delay)
