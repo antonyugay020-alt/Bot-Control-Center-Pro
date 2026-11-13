@@ -263,10 +263,14 @@ class PolymarketMarketWS:
                 with self._lock:
                     assets = sorted(self._assets)
                     for i in range(0, len(assets), self.MAX_SUB_PER_MSG):
-                        socket.send(json.dumps({
+                        message = {
                             "assets_ids": assets[i:i + self.MAX_SUB_PER_MSG],
-                            "type": "market",
-                        }))
+                        }
+                        if i == 0:
+                            message["type"] = "market"
+                        else:
+                            message["operation"] = "subscribe"
+                        socket.send(json.dumps(message))
 
             def received(socket, raw):
                 self.ingest_message(raw, generation=state["generation"])
@@ -277,11 +281,35 @@ class PolymarketMarketWS:
             socket = websocket_app_factory(
                 self.ENDPOINT, on_open=opened,
                 on_message=received, on_close=closed)
+            pulse_stop = threading.Event()
+
+            def heartbeat():
+                # The CLOB market channel uses application-level PING.
+                while not pulse_stop.wait(10):
+                    with self._lock:
+                        current = self._connected and self._socket is socket
+                    if not current:
+                        continue
+                    try:
+                        socket.send("PING")
+                    except Exception:
+                        self.disconnect()
+                        try:
+                            socket.close()
+                        except Exception:
+                            pass
+                        return
+
+            pulse = threading.Thread(target=heartbeat, daemon=True,
+                                     name="polymarket-market-heartbeat")
+            pulse.start()
             try:
                 socket.run_forever(ping_interval=20, ping_timeout=10)
             except Exception:
                 pass
             finally:
+                pulse_stop.set()
+                pulse.join(timeout=2)
                 self.disconnect()
             self._stop.wait(retry_delay)
 
