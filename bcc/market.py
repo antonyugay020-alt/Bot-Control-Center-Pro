@@ -405,6 +405,69 @@ class PublicData:
             if status is not None:
                 raise SourceAccessDenied(host, status)
 
+    def _ws_ticker_get(self, url, params, host):
+        """Publish a single current-generation WS quote using existing leases.
+
+        The Hub producer is the only process given this stream. Client workers
+        still use ordinary validated Hub subscriptions and shared-cache reads.
+        A WS failure never turns into a REST request, even if a cached REST
+        response from an earlier process happens to remain in SQLite.
+        """
+        from .ws_quotes import StreamUnavailable
+        symbol = params["symbol"]
+        key = owner = None
+        if self.shared is not None:
+            deadline = time.monotonic() + 3.0
+            while True:
+                try:
+                    key, owner, cached = self.shared.begin(
+                        url, params, host,
+                        priority=self._position_critical_request(url, params),
+                    )
+                    break
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
+                except CacheBusy as exc:
+                    if (str(exc) != "Данные уже запрашиваются другим ботом"
+                            or time.monotonic() >= deadline):
+                        raise DataUnavailable("WebSocket общий кэш недоступен") from exc
+                    if self.stop_event.wait(.05):
+                        raise DataUnavailable("Получение данных остановлено")
+            if owner is None:
+                if isinstance(cached, dict) and cached.get("_bcc_ws_quote") is True:
+                    self._assert_provider_allowed(host)
+                    return cached
+                # Cache origin is not verified: never accept an older HTTP
+                # ticker as WS data. The old TTL will expire naturally.
+                raise DataUnavailable("WebSocket кэш: источник снимка не подтверждён")
+        try:
+            self._quote_stream.subscribe(symbol)
+            bid, ask, at = self._quote_stream.quote(symbol)
+            if (type(bid) not in (float, int) or type(ask) not in (float, int)
+                    or type(at) not in (float, int)
+                    or not all(math.isfinite(x) for x in (bid, ask, at))
+                    or bid <= 0 or ask <= 0 or bid > ask
+                    or not -5 <= market_now() - at <= 2):
+                raise DataUnavailable("WebSocket Bybit: недостоверная котировка")
+            data = {
+                "retCode": 0, "retMsg": "OK", "_bcc_ws_quote": True,
+                "time": int(at * 1000),
+                "result": {"list": [{
+                    "symbol": symbol, "bid1Price": str(bid),
+                    "ask1Price": str(ask),
+                }]},
+            }
+        except (StreamUnavailable, ValueError, TypeError, DataUnavailable) as exc:
+            if self.shared is not None:
+                self._finish_shared(key, owner, host, cooldown=.25)
+            raise DataUnavailable("WebSocket Bybit: свежий снимок недоступен") from exc
+        if self.shared is not None:
+            published = self._finish_shared(key, owner, host, data, .35)
+            if not published:
+                raise DataUnavailable("WebSocket Bybit: публикация не подтверждена")
+        self._assert_provider_allowed(host)
+        return data
+
     def get(self, url, params=None, ttl=0):
         began = time.monotonic()
 
@@ -422,6 +485,14 @@ class PublicData:
         host = self.validated_public_request(url, params)
         # A refusal is a fleet-wide admission fence, not a retryable cache miss.
         self._assert_provider_allowed(host)
+        # Explicit producer-side WebSocket transport for symbol-specific Bybit
+        # quotes. Workers never receive the stream or exchange connections.
+        if (self._quote_stream is not None
+                and url == "https://api.bybit.com/v5/market/tickers"
+                and type(params) is dict and set(params) == {"category", "symbol"}
+                and params["category"] == "linear"
+                and os.environ.get("BCC_MARKET_HUB_MODE") != "client"):
+            return received(self._ws_ticker_get(url, params, host), "bybit_ws_hub")
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.
         # Registration is refreshed by actual demand, not by a synthetic scan.
         if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
