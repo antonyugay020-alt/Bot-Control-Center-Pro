@@ -480,10 +480,10 @@ class HubRegistry:
             clauses = []
             for route in skip_ws_routes:
                 if route.endswith("/tickers"):
-                    shape = ("json_type(params,'$.symbol')='text' "
+                    shape = ("coalesce(json_type(params,'$.symbol')='text',0) "
                              "AND json_extract(params,'$.category')='linear'")
                 else:
-                    shape = ("json_type(params,'$.symbol')='text' "
+                    shape = ("coalesce(json_type(params,'$.symbol')='text',0) "
                              "AND json_extract(params,'$.category')='linear' "
                              "AND json_extract(params,'$.limit')=50")
                 clauses.append("NOT (url=? AND CASE WHEN json_valid(params) "
