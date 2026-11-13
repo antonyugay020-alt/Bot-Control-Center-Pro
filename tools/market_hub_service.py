@@ -48,6 +48,7 @@ def main():
           flush=True)
     quote_stream = book_stream = None
     ws_threads = []
+    ws_jobs = []
     if args.bybit_ws_quotes or args.bybit_ws_books:
         from websocket import WebSocketApp
         from bcc.market import PublicData
@@ -66,8 +67,7 @@ def main():
                 target=lambda selected=stream: selected.run(
                     websocket_app_factory=WebSocketApp),
                 name='bybit-ws-' + label, daemon=True)
-            thread.start()
-            ws_threads.append(thread)
+            ws_jobs.append(thread)
     else:
         hub = MarketDataHub(args.cache, max_workers=args.concurrency)
     print('Market Hub cache initialized', flush=True)
@@ -97,9 +97,16 @@ def main():
                             'pid': os.getpid(), 'token': args.ready_token,
                             'leader_owner': hub.owner,
                         })
+                    # Never start sockets on a standby Hub: only the
+                    # authoritative leased producer may attach to Bybit.
+                    for thread in ws_jobs:
+                        thread.start()
+                        ws_threads.append(thread)
                     print('Market Hub leader lease acquired', flush=True)
                     ready_logged = True
                 hub.poll_nonblocking()
+                if ws_threads and not hub._leader_held:
+                    raise RuntimeError("Bybit WebSocket producer lost Hub leader lease")
                 # A failed liveness probe is NOT permission to retire a
                 # leader with potentially active PAPER subscribers.
                 if args.idle_exit:
