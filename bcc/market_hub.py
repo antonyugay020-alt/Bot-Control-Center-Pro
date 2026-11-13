@@ -434,6 +434,31 @@ class HubRegistry:
                 continue
         return tickers, books
 
+    def active_bybit_klines(self):
+        """Only latest 1m tail requests; historical backfills remain REST."""
+        url = "https://api.bybit.com/v5/market/kline"
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT params FROM hub_subscriptions "
+                "WHERE active_until>? AND url=?",
+                (time.time(), url),
+            ).fetchall()
+        from .market import PublicData
+        symbols = set()
+        for (raw,) in rows:
+            try:
+                params = json.loads(raw)
+                PublicData.validated_public_request(url, params)
+                if (type(params) is dict
+                        and set(params) == {"category", "symbol", "interval", "limit"}
+                        and params["category"] == "linear"
+                        and params["interval"] == "1"
+                        and type(params["limit"]) is int and params["limit"] == 10):
+                    symbols.add(params["symbol"])
+            except (ValueError, TypeError):
+                continue
+        return symbols
+
     def has_active_subscriptions(self):
         """Read-only liveness probe for the independent producer lifecycle.
 
@@ -469,6 +494,7 @@ class HubRegistry:
         ws_routes = frozenset({
             "https://api.bybit.com/v5/market/tickers",
             "https://api.bybit.com/v5/market/orderbook",
+            "https://api.bybit.com/v5/market/kline",
         })
         if any(type(url) is not str or url not in ws_routes
                for url in skip_ws_routes):
@@ -482,6 +508,13 @@ class HubRegistry:
                 if route.endswith("/tickers"):
                     shape = ("coalesce(json_type(params,'$.symbol')='text',0) "
                              "AND json_extract(params,'$.category')='linear'")
+                elif route.endswith("/kline"):
+                    shape = ("coalesce(json_type(params,'$.symbol')='text',0) "
+                             "AND json_extract(params,'$.category')='linear' "
+                             "AND json_extract(params,'$.interval')='1' "
+                             "AND json_extract(params,'$.limit')=10 "
+                             "AND json_type(params,'$.end') IS NULL "
+                             "AND json_type(params,'$.start') IS NULL")
                 else:
                     shape = ("coalesce(json_type(params,'$.symbol')='text',0) "
                              "AND json_extract(params,'$.category')='linear' "
@@ -606,6 +639,10 @@ class MarketDataHub:
             stream = getattr(self.source, "_orderbook_stream", None)
             url = "https://api.bybit.com/v5/market/orderbook"
             params = {"category": "linear", "symbol": symbol, "limit": 50}
+        elif kind == "kline1":
+            stream = getattr(self.source, "_kline_stream", None)
+            url = "https://api.bybit.com/v5/market/kline"
+            params = {"category": "linear", "symbol": symbol, "interval": "1", "limit": 10}
         else:
             raise ValueError("unknown WS publication channel")
         if stream is None:
@@ -626,6 +663,21 @@ class MarketDataHub:
                     }]},
                 }
                 ttl = .35
+            elif kind == "kline1":
+                candle = stream.get_candle(symbol)
+                stamp = candle.message_ms / 1000
+                if not -5 <= time.time() - stamp <= 10:
+                    return False
+                value = {
+                    "retCode": 0, "retMsg": "OK", "_bcc_ws_kline": True,
+                    "time": candle.message_ms,
+                    "result": {"list": [[
+                        str(candle.start_ms), str(candle.open), str(candle.high),
+                        str(candle.low), str(candle.close), str(candle.volume),
+                        "0",
+                    ]]},
+                }
+                ttl = .75
             else:
                 book = stream.get_orderbook(symbol)
                 stamp = book["ts"]
@@ -661,6 +713,8 @@ class MarketDataHub:
             routes.append("https://api.bybit.com/v5/market/tickers")
         if getattr(self.source, "_orderbook_stream", None) is not None:
             routes.append("https://api.bybit.com/v5/market/orderbook")
+        if getattr(self.source, "_kline_stream", None) is not None:
+            routes.append("https://api.bybit.com/v5/market/kline")
         return tuple(routes)
 
     def subscribe_active_websockets(self):
@@ -673,7 +727,8 @@ class MarketDataHub:
         self._ws_subscription_scan_due = now + 1.0
         ticker = getattr(self.source, "_quote_stream", None)
         orderbook = getattr(self.source, "_orderbook_stream", None)
-        if ticker is None and orderbook is None:
+        kline = getattr(self.source, "_kline_stream", None)
+        if ticker is None and orderbook is None and kline is None:
             return
         tickers, books = self.registry.active_bybit_symbols()
         if ticker is not None:
@@ -703,6 +758,16 @@ class MarketDataHub:
                     valid_books.append(symbol)
             try:
                 orderbook.subscribe(valid_books)
+            except (ValueError, StreamUnavailable):
+                pass
+        if kline is not None:
+            valid_klines = []
+            from .ws_quotes import _SYMBOL
+            for symbol in sorted(self.registry.active_bybit_klines()):
+                if _SYMBOL.fullmatch(symbol):
+                    valid_klines.append(symbol)
+            try:
+                kline.subscribe(valid_klines)
             except (ValueError, StreamUnavailable):
                 pass
 
