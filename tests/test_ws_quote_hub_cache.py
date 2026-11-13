@@ -83,7 +83,7 @@ class HubWsQuoteTests(unittest.TestCase):
             with self.assertRaises(DataUnavailable):
                 source.get(URL, PARAMS)
             self.assertEqual(len(cache.finishes), 1)
-            self.assertEqual(cache.finishes[0][1]["cooldown"], .25)
+            self.assertEqual(cache.finishes[0][1], {})
         finally:
             source.close()
 
