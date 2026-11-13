@@ -36,11 +36,12 @@ class BybitOrderbookWS:
     ENDPOINT = "wss://stream.bybit.com/v5/public/linear"
     MAX_SUB_PER_MSG = 10
 
-    def __init__(self, *, monotonic=time.monotonic, wall=time.time, max_age=3.0):
+    def __init__(self, *, monotonic=time.monotonic, wall=time.time, max_age=3.0, on_update=None):
         if (type(max_age) not in (float, int) or not math.isfinite(max_age)
                 or not 0 < max_age <= 3):
             raise ValueError("orderbook max_age must be within 3 seconds")
         self._mono, self._wall, self._max_age = monotonic, wall, max_age
+        self.on_update = on_update
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._socket = None
@@ -178,7 +179,12 @@ class BybitOrderbookWS:
                 self._books.pop(symbol, None)
                 return False
             self._books[symbol] = new
-            return True
+        if self.on_update is not None:
+            try:
+                self.on_update("depth50", symbol)
+            except Exception:
+                pass
+        return True
 
     def get_orderbook(self, symbol):
         with self._lock:
