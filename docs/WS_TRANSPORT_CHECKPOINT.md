@@ -39,3 +39,12 @@ Test real integrated source in an isolated checkout; fix failures as a group; va
 - The Hub service no longer opens Bybit WebSockets before winning its durable producer lease. Losing leadership terminates the WS-enabled service instead of leaving a zombie connection.
 - Added `tests/test_ws_hub_bulk_subscription.py` with synthetic 120-symbol workload and route filtering.
 - These changes are committed; local full-checkout tests and Windows Qt E2E remain **UNRUN** in this session; do not deploy or flip flags on live bot fleets.
+
+## 2026-11-13 event-driven follow-up (same development branch)
+- WebSocket receive callbacks notify one bounded/coalescing event publisher, instead of waiting for every symbol to reach the REST-shaped Hub due scheduler.
+- PublicCache.publish_websocket() commits a verified per-symbol quote/depth50 under a single SQLite transaction, requiring live leader token, live verified subscription and active provider-denial policy. Does not debit REST request budget.
+- Hub due queue excludes only stream-covered Bybit per-symbol ticker and depth50 shapes; broad mark-price ticker packets and depth200 instrument books remain REST (important for protective margin).
+- Bybit subscription fanout now pre-registers active symbols and sends 10 topics per message, including on reconnect. Unit regression includes 500 simultaneous symbol subscriptions.
+- Synthetic test modules added: test_ws_hub_push_integration.py, test_ws_event_publication.py, test_ws_due_filter.py, test_ws_500_subscriptions.py. **Not yet executed against the full repository**.
+- SQL predicate for filtering non-symbol ticker packs was checked in isolated SQLite locally: the broad ticker and depth200 request remain while symbol ticker and depth50 are excluded.
+- Required before deploying: full checkout regressions, real Bybit protocol/connection and many-worker latency tests, native Windows Qt E2E. Binance, Polymarket and Bybit live candle streams are still not migrated.
