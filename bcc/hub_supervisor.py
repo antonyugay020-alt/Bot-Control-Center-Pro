@@ -250,10 +250,14 @@ def ensure_hub(repo_root, *, timeout=8):
         challenge = uuid.uuid4().hex
         ready_path = root / ('.market_hub_ready_' + challenge + '.json')
         spawned_at = time.time()
+        # Strict opt-in: no restart or transport change for existing Hubs.
+        command = [sys.executable, '-m', 'tools.market_hub_service',
+                   '--cache', str(cache), '--ready-file', str(ready_path),
+                   '--ready-token', challenge]
+        if env.get('BCC_BYBIT_WS_QUOTES') == '1':
+            command.append('--bybit-ws-quotes')
         with (root / 'market_hub.log').open('ab') as log:
-            proc = _spawn_hub([sys.executable, '-m', 'tools.market_hub_service',
-                                     '--cache', str(cache), '--ready-file', str(ready_path),
-                                     '--ready-token', challenge], cwd=app_root, env=env,
+            proc = _spawn_hub(command, cwd=app_root, env=env,
                                     stdout=log, stderr=subprocess.STDOUT,
                                     creationflags=flags,
                                     start_new_session=os.name != 'nt')
