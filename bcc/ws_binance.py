@@ -164,6 +164,11 @@ class BinanceTradeWS:
                     data = json.loads(raw)
                 except (TypeError, ValueError):
                     return
+                if (isinstance(data, dict) and
+                        ("code" in data and "msg" in data)):
+                    self.disconnect(generation=state["generation"])
+                    socket.close()
+                    return
                 self.ingest(data, generation=state["generation"])
 
             def closed(socket, code, reason):
