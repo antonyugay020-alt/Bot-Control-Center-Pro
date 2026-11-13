@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -169,8 +170,15 @@ class PublicCache:
                 self._ready = False
 
     @staticmethod
+    @lru_cache(maxsize=1)
     def _boot_epoch():
-        """Independent OS boot witness; uptime alone cannot prove a reboot."""
+        """Process-stable OS boot witness; never rederive on a wall-clock jump.
+
+        On Windows psutil.boot_time() can reflect a changed wall clock while
+        this process and its monotonic clock have NOT rebooted. Capturing it
+        once per process preserves same-boot HTTP 403/451 fences. A genuine
+        reboot starts a fresh process and obtains a fresh witness.
+        """
         try:
             import psutil
             value = float(psutil.boot_time())
