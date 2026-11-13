@@ -11,8 +11,9 @@ import collections
 import threading
 import time
 
-URGENT = frozenset({"polybook", "depth50", "tickers"})
-REGULAR = frozenset({"binance_trade", "kline1"})
+# CLOB ASK/BID and executable depth must not queue behind ticker floods.
+URGENT = frozenset({"polybook", "depth50"})
+REGULAR = frozenset({"tickers", "binance_trade", "kline1"})
 
 
 class MarketEventQueue:
