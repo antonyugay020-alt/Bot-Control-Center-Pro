@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = (
@@ -61,10 +62,14 @@ def main(argv=None):
     if ROOT not in report.resolve().parents:
         cli.error("--report must be within the isolated checkout")
     started = time.time()
+    # Complete tracebacks must survive any failed nine-minute acceptance.
+    # The JSON remains compact and points to the full local evidence.
+    full_log = report.with_name("WS_QA_FULL_PYTHON_LOG.txt")
     result = {
         "mode": "offline-isolated", "started_at": started,
         "repeat": args.repeat, "full_regression": args.full_regression,
         "compiled": [], "executions": [],
+        "full_log": str(full_log),
         "release_status": "BLOCKED_NATIVE_WINDOWS_QT_E2E_UNRUN",
     }
     try:
@@ -94,6 +99,9 @@ def main(argv=None):
                     cmd, cwd=str(ROOT), env=env, capture_output=True,
                     text=True, errors="replace", timeout=1800,
                 )
+                with full_log.open("a", encoding="utf-8") as stream:
+                    stream.write(f"\\n===== WEBSOCKET ITERATION {cycle + 1} =====\\n")
+                    stream.write(process.stdout + "\\n" + process.stderr + "\\n")
                 result["executions"].append({
                     "kind": "websocket", "iteration": cycle + 1,
                     "returncode": process.returncode,
@@ -107,6 +115,9 @@ def main(argv=None):
                     cwd=str(ROOT), env=env, capture_output=True,
                     text=True, errors="replace", timeout=3600,
                 )
+                with full_log.open("a", encoding="utf-8") as stream:
+                    stream.write("\\n===== FULL PYTHON REGRESSION =====\\n")
+                    stream.write(process.stdout + "\\n" + process.stderr + "\\n")
                 result["executions"].append({
                     "kind": "full-python", "returncode": process.returncode,
                     "tail": (process.stdout + "\n" + process.stderr)[-8000:],
@@ -122,7 +133,12 @@ def main(argv=None):
     # claim GUI acceptance from Python-only checks.
     report.write_text(json.dumps(result, ensure_ascii=False, indent=2),
                       encoding="utf-8")
-    print(report)
+    diagnostics = report.with_name("WS_QA_DIAGNOSTICS.zip")
+    with zipfile.ZipFile(diagnostics, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.write(report, "WS_QA_RESULT.json")
+        if full_log.is_file():
+            bundle.write(full_log, "WS_QA_FULL_PYTHON_LOG.txt")
+    print(diagnostics)
     print(result["python_status"], result["release_status"])
     return 0 if result["python_status"] == "PASS" else 1
 
