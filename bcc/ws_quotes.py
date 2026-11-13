@@ -78,10 +78,13 @@ class BybitQuoteStream:
             self._socket = None
             self._quotes.clear()
 
-    def connect(self):
+    def connect(self, socket=None):
         with self._lock:
+            if self._stop.is_set():
+                raise StreamUnavailable("Bybit WebSocket stopped")
             self._generation += 1
             self._connected = True
+            self._socket = socket
             self._quotes.clear()
             return self._generation
 
@@ -149,10 +152,12 @@ class BybitQuoteStream:
             state = {"generation": None}
 
             def on_open(ws):
-                gen = self.connect()
+                if self._stop.is_set():
+                    ws.close()
+                    return
+                gen = self.connect(ws)
                 state["generation"] = gen
                 with self._lock:
-                    self._socket = ws
                     topics = ["tickers." + s for s in sorted(self._subscriptions)]
                 if topics:
                     ws.send(json.dumps({"op": "subscribe", "args": topics}))
