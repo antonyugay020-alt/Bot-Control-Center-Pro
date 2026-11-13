@@ -11,6 +11,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+from .ws_dispatch import ReconnectBackoff
 from .ws_quotes import StreamUnavailable
 
 _TOKEN = re.compile(r"[0-9]{1,100}\Z")
@@ -310,6 +311,7 @@ class PolymarketMarketWS:
             websocket_app_factory = WebSocketApp
         if type(retry_delay) not in (int, float) or not .1 <= retry_delay <= 30:
             raise ValueError("invalid retry delay")
+        reconnect = ReconnectBackoff(base=retry_delay)
         self._stop.clear()
         while not self._stop.is_set():
             with self._lock:
@@ -318,6 +320,7 @@ class PolymarketMarketWS:
                 # No valid market to follow: avoid an empty CLOB handshake.
                 self._stop.wait(.25)
                 continue
+            started = time.monotonic()
             self.disconnect()
             state = {"generation": None}
 
@@ -392,7 +395,8 @@ class PolymarketMarketWS:
                 pulse_stop.set()
                 pulse.join(timeout=2)
                 self.disconnect(generation=state["generation"])
-            self._stop.wait(retry_delay)
+            self._stop.wait(reconnect.after_session(
+                max(0.0, time.monotonic() - started)))
 
     def stop(self):
         self._stop.set()
