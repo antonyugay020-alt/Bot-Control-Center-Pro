@@ -55,6 +55,13 @@ class Depth50Tests(unittest.TestCase):
         with self.assertRaises(StreamUnavailable):
             self.book.get_orderbook("BTCUSDT")
 
+    def test_malformed_delta_invalidates_entire_book(self):
+        self.publish()
+        self.assertFalse(self.publish("delta", bids=[["bad", "1"]],
+                                      asks=[], seq=2, update=2))
+        with self.assertRaises(StreamUnavailable):
+            self.book.get_orderbook("BTCUSDT")
+
     def test_disconnected_invalidates(self):
         self.publish()
         self.book.disconnect()
