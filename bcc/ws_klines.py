@@ -12,6 +12,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+from .ws_dispatch import ReconnectBackoff
 
 from .ws_quotes import StreamUnavailable
 
@@ -178,8 +179,10 @@ class BybitKlineWS:
         if (type(retry_delay) not in (int, float) or
                 not math.isfinite(retry_delay) or not .1 <= retry_delay <= 30):
             raise ValueError("invalid retry delay")
+        reconnect = ReconnectBackoff(base=retry_delay)
         self._stop.clear()
         while not self._stop.is_set():
+            started = time.monotonic()
             self.disconnect()
             state = {"generation": None}
 
@@ -218,7 +221,8 @@ class BybitKlineWS:
                                 type(exc).__name__)
             finally:
                 self.disconnect(generation=state["generation"])
-            self._stop.wait(retry_delay)
+            self._stop.wait(reconnect.after_session(
+                max(0.0, time.monotonic() - started)))
 
     def stop(self):
         self._stop.set()
