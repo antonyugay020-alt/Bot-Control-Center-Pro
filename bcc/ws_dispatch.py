@@ -31,7 +31,8 @@ class MarketEventQueue:
         self._dropped = 0
 
     def notify(self, kind, symbol):
-        if kind not in URGENT | REGULAR or type(symbol) is not str or not symbol:
+        if (type(kind) is not str or kind not in URGENT | REGULAR
+                or type(symbol) is not str or not symbol):
             return False
         item = (kind, symbol)
         with self._cv:
