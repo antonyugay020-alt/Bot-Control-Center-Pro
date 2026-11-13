@@ -459,6 +459,30 @@ class HubRegistry:
                 continue
         return symbols
 
+    def active_polymarket_assets(self):
+        """Read-only active public CLOB book subscriptions."""
+        url = "https://clob.polymarket.com/book"
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT params FROM hub_subscriptions "
+                "WHERE active_until>? AND url=?",
+                (time.time(), url),
+            ).fetchall()
+        from .market import PublicData
+        from .ws_polymarket import _TOKEN
+        assets = set()
+        for (raw,) in rows:
+            try:
+                params = json.loads(raw)
+                PublicData.validated_public_request(url, params)
+                if (type(params) is dict and set(params) == {"token_id"}
+                        and type(params["token_id"]) is str
+                        and _TOKEN.fullmatch(params["token_id"])):
+                    assets.add(params["token_id"])
+            except (ValueError, TypeError):
+                continue
+        return assets
+
     def has_active_subscriptions(self):
         """Read-only liveness probe for the independent producer lifecycle.
 
@@ -495,6 +519,7 @@ class HubRegistry:
             "https://api.bybit.com/v5/market/tickers",
             "https://api.bybit.com/v5/market/orderbook",
             "https://api.bybit.com/v5/market/kline",
+            "https://clob.polymarket.com/book",
         })
         if any(type(url) is not str or url not in ws_routes
                for url in skip_ws_routes):
@@ -505,7 +530,9 @@ class HubRegistry:
             # request shapes; keep unrelated REST safety/mark reads alive.
             clauses = []
             for route in skip_ws_routes:
-                if route.endswith("/tickers"):
+                if route == "https://clob.polymarket.com/book":
+                    shape = ("coalesce(json_type(params,'$.token_id')='text',0)")
+                elif route.endswith("/tickers"):
                     shape = ("coalesce(json_type(params,'$.symbol')='text',0) "
                              "AND json_extract(params,'$.category')='linear'")
                 elif route.endswith("/kline"):
@@ -639,6 +666,10 @@ class MarketDataHub:
             stream = getattr(self.source, "_orderbook_stream", None)
             url = "https://api.bybit.com/v5/market/orderbook"
             params = {"category": "linear", "symbol": symbol, "limit": 50}
+        elif kind == "polybook":
+            stream = getattr(self.source, "_polymarket_stream", None)
+            url = "https://clob.polymarket.com/book"
+            params = {"token_id": symbol}
         elif kind == "kline1":
             stream = getattr(self.source, "_kline_stream", None)
             url = "https://api.bybit.com/v5/market/kline"
@@ -648,7 +679,14 @@ class MarketDataHub:
         if stream is None:
             return False
         try:
-            if kind == "tickers":
+            if kind == "polybook":
+                book = stream.get_book(symbol)
+                stamp = float(book["timestamp"]) / 1000
+                if not -1 <= time.time() - stamp <= 2:
+                    return False
+                value = {"_bcc_ws_polybook": True, **book}
+                ttl = .35
+            elif kind == "tickers":
                 bid, ask, at = stream.quote(symbol)
                 if (not all(math.isfinite(x) for x in (bid, ask, at))
                         or bid <= 0 or ask <= 0 or bid > ask
@@ -700,7 +738,9 @@ class MarketDataHub:
         from .data_cache import CacheBusy
         try:
             return self.source.shared.publish_websocket(
-                url, params, "api.bybit.com", value, ttl=ttl,
+                url, params,
+                "clob.polymarket.com" if kind == "polybook" else "api.bybit.com",
+                value, ttl=ttl,
                 leader_owner=self.owner, leader_token=self._leader_token,
             )
         except CacheBusy:
@@ -715,6 +755,8 @@ class MarketDataHub:
             routes.append("https://api.bybit.com/v5/market/orderbook")
         if getattr(self.source, "_kline_stream", None) is not None:
             routes.append("https://api.bybit.com/v5/market/kline")
+        if getattr(self.source, "_polymarket_stream", None) is not None:
+            routes.append("https://clob.polymarket.com/book")
         return tuple(routes)
 
     def subscribe_active_websockets(self):
@@ -728,7 +770,8 @@ class MarketDataHub:
         ticker = getattr(self.source, "_quote_stream", None)
         orderbook = getattr(self.source, "_orderbook_stream", None)
         kline = getattr(self.source, "_kline_stream", None)
-        if ticker is None and orderbook is None and kline is None:
+        poly = getattr(self.source, "_polymarket_stream", None)
+        if ticker is None and orderbook is None and kline is None and poly is None:
             return
         tickers, books = self.registry.active_bybit_symbols()
         if ticker is not None:
@@ -768,6 +811,11 @@ class MarketDataHub:
                     valid_klines.append(symbol)
             try:
                 kline.subscribe(valid_klines)
+            except (ValueError, StreamUnavailable):
+                pass
+        if poly is not None:
+            try:
+                poly.subscribe(sorted(self.registry.active_polymarket_assets()))
             except (ValueError, StreamUnavailable):
                 pass
 
