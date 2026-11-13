@@ -144,6 +144,11 @@ class BybitOrderbookWS:
             bids = self._levels(data["b"])
             asks = self._levels(data["a"])
         except (KeyError, ValueError, TypeError, OverflowError):
+            # An invalid delta cannot be applied safely, and keeping its
+            # predecessor after a missed change can fabricate executable depth.
+            with self._lock:
+                if self._connected and generation == self._generation:
+                    self._books.pop(symbol, None)
             return False
         with self._lock:
             if (not self._connected or generation != self._generation
