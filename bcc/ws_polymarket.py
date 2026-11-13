@@ -141,6 +141,25 @@ class PolymarketMarketWS:
         return result
 
     @staticmethod
+    def _snapshot_sides(event):
+        """Accept either documented CLOB depth field spelling, never both.
+
+        Mixing `buys/sells` with `bids/asks` could hide contradictory
+        liquidity. Ambiguous or partial snapshots must fail closed.
+        """
+        direct = "bids" in event or "asks" in event
+        alternate = "buys" in event or "sells" in event
+        if direct == alternate:
+            raise ValueError("missing or ambiguous CLOB book side fields")
+        if direct:
+            if "bids" not in event or "asks" not in event:
+                raise ValueError("incomplete CLOB bid/ask snapshot")
+            return event["bids"], event["asks"]
+        if "buys" not in event or "sells" not in event:
+            raise ValueError("incomplete CLOB buys/sells snapshot")
+        return event["buys"], event["sells"]
+
+    @staticmethod
     def _book(asset, bids, asks, stamp, generation, now):
         buy = tuple(sorted(bids.items(), reverse=True))
         sell = tuple(sorted(asks.items()))
@@ -171,8 +190,9 @@ class PolymarketMarketWS:
                 return False
             try:
                 stamp = self._fresh_timestamp(event["timestamp"])
-                bids = self._levels(event["bids"])
-                asks = self._levels(event["asks"])
+                raw_bids, raw_asks = self._snapshot_sides(event)
+                bids = self._levels(raw_bids)
+                asks = self._levels(raw_asks)
             except (ValueError, KeyError, TypeError, OverflowError):
                 with self._lock:
                     if generation == self._generation:
