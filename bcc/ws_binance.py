@@ -48,8 +48,10 @@ class BinanceTradeWS:
         self._socket = None
         self._prices.clear()
 
-    def disconnect(self):
+    def disconnect(self, *, generation=None):
         with self._lock:
+            if generation is not None and generation != self._generation:
+                return False
             self._invalidate()
 
     def connect(self, socket=None):
@@ -159,7 +161,7 @@ class BinanceTradeWS:
                 self.ingest(data, generation=state["generation"])
 
             def closed(socket, code, reason):
-                self.disconnect()
+                self.disconnect(generation=state["generation"])
 
             socket = websocket_app_factory(
                 self.ENDPOINT, on_open=opened,
@@ -169,7 +171,7 @@ class BinanceTradeWS:
             except Exception:
                 pass
             finally:
-                self.disconnect()
+                self.disconnect(generation=state["generation"])
             self._stop.wait(retry_delay)
 
     def stop(self):
