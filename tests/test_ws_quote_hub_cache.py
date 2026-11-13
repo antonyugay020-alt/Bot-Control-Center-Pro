@@ -63,9 +63,9 @@ class HubWsQuoteTests(unittest.TestCase):
         cache = FakeCache()
         source = self.make_source(quote=quote, cache=cache)
         try:
-            with patch("bcc.market.market_now", return_value=1763000000.), patch.object(
-                source, "session", new_callable=lambda: property(
-                    lambda _: (_ for _ in ()).throw(AssertionError("REST called")))):
+            with patch("bcc.market.market_now", return_value=1763000000.), patch(
+                "requests.sessions.Session.get", side_effect=AssertionError("REST called")
+            ):
                 data = source.get(URL, PARAMS)
             self.assertEqual(data["result"]["list"][0]["bid1Price"], "100.0")
             self.assertIs(data["_bcc_ws_quote"], True)
