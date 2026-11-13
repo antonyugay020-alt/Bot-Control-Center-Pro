@@ -246,11 +246,16 @@ class PublicCache:
             # through this budget-free WS lane. Never let arbitrary HTTP
             # endpoints opt out of their provider request quota.
             from .market import PublicData
-            if (url != "https://api.bybit.com/v5/market/tickers"
-                    or host != "api.bybit.com"
-                    or type(params) is not dict
-                    or set(params) != {"category", "symbol"}
-                    or params["category"] != "linear"):
+            if type(params) is not dict:
+                raise ValueError('WebSocket publication route not allowed')
+            ticker = (url == "https://api.bybit.com/v5/market/tickers"
+                      and set(params) == {"category", "symbol"})
+            book = (url == "https://api.bybit.com/v5/market/orderbook"
+                    and set(params) == {"category", "symbol", "limit"}
+                    and type(params.get("limit")) is int and params["limit"] == 50)
+            if (host != "api.bybit.com" or type(params) is not dict
+                    or params.get("category") != "linear"
+                    or not (ticker or book)):
                 raise ValueError('WebSocket publication route not allowed')
             PublicData.validated_public_request(url, params)
         key = hashlib.sha256(
