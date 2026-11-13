@@ -646,9 +646,18 @@ class MarketDataHub:
         tickers, books = self.registry.active_bybit_symbols()
         if ticker is not None:
             for symbol in sorted(tickers):
-                ticker.subscribe(symbol)
-        if orderbook is not None and books:
-            orderbook.subscribe(sorted(books))
+                try:
+                    ticker.subscribe(symbol)
+                except ValueError:
+                    # One malformed or incompatible symbol cannot terminate
+                    # the shared producer for unrelated valid bot streams.
+                    continue
+        if orderbook is not None:
+            for symbol in sorted(books):
+                try:
+                    orderbook.subscribe(symbol)
+                except ValueError:
+                    continue
 
     def _fetch_public(self, url, params, *, urgent):
         """Preserve subscriber priority across ALL Hub producer modes.
