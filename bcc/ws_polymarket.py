@@ -290,6 +290,12 @@ class PolymarketMarketWS:
             raise ValueError("invalid retry delay")
         self._stop.clear()
         while not self._stop.is_set():
+            with self._lock:
+                active = bool(self._assets)
+            if not active:
+                # No valid market to follow: avoid an empty CLOB handshake.
+                self._stop.wait(.25)
+                continue
             self.disconnect()
             state = {"generation": None}
 
@@ -301,9 +307,10 @@ class PolymarketMarketWS:
                 state["generation"] = generation
                 with self._lock:
                     assets = sorted(self._assets)
-                    # Register market channel even if the Hub has not yet
-                    # discovered the first active UP/DOWN token. Later tokens
-                    # use the dynamic subscribe operation on this channel.
+                    if not assets:
+                        self._invalidate()
+                        socket.close()
+                        return
                     socket.send(json.dumps({
                         "assets_ids": assets[:self.MAX_SUB_PER_MSG],
                         "type": "market",
