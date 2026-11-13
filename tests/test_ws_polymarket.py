@@ -53,6 +53,27 @@ class MarketChannelTests(unittest.TestCase):
         self.assertEqual(data["asks"][0]["price"], "0.46")
         self.assertEqual(data["bids"][0]["price"], "0.42")
 
+    def test_legacy_buys_sells_snapshot(self):
+        snapshot = self.book()
+        snapshot["buys"] = snapshot.pop("bids")
+        snapshot["sells"] = snapshot.pop("asks")
+        self.assertTrue(self.stream.ingest(snapshot, generation=self.generation))
+        self.assertEqual(self.stream.get_book("123")["asks"][0]["price"], "0.46")
+
+    def test_mixed_book_field_variants_rejected(self):
+        mixed = self.book()
+        mixed["buys"] = mixed["bids"]
+        self.assertFalse(self.stream.ingest(mixed, generation=self.generation))
+        with self.assertRaises(StreamUnavailable):
+            self.stream.get_book("123")
+
+    def test_incomplete_legacy_snapshot_rejected(self):
+        missing = self.book()
+        missing["buys"] = missing.pop("bids")
+        self.assertFalse(self.stream.ingest(missing, generation=self.generation))
+        with self.assertRaises(StreamUnavailable):
+            self.stream.get_book("123")
+
     def test_incremental_ask_removal(self):
         self.stream.ingest(self.book(), generation=self.generation)
         self.assertTrue(self.stream.ingest(self.change(), generation=self.generation))
