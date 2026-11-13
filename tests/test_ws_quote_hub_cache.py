@@ -34,7 +34,8 @@ class FakeCache:
         self.cached = cached
         self.finishes = []
 
-    def begin(self, url, params, host, *, priority=False):
+    def begin(self, url, params, host, *, priority=False, websocket=False):
+        assert websocket is True
         assert (url, params, host) == (URL, PARAMS, "api.bybit.com")
         if self.cached is not None:
             return ("key", None, self.cached)
