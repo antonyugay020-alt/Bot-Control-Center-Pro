@@ -423,6 +423,7 @@ class PublicData:
                     key, owner, cached = self.shared.begin(
                         url, params, host,
                         priority=self._position_critical_request(url, params),
+                        websocket=True,
                     )
                     break
                 except ProviderDenied as exc:
