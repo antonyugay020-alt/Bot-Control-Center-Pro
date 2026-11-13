@@ -262,6 +262,8 @@ def ensure_hub(repo_root, *, timeout=8):
             command.append('--bybit-ws-klines')
         if env.get('BCC_POLY_WS_BOOKS') == '1':
             command.append('--poly-ws-books')
+        if env.get('BCC_BINANCE_WS_PRICE') == '1':
+            command.append('--binance-ws-price')
         with (root / 'market_hub.log').open('ab') as log:
             proc = _spawn_hub(command, cwd=app_root, env=env,
                                     stdout=log, stderr=subprocess.STDOUT,
