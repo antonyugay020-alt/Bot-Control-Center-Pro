@@ -474,7 +474,21 @@ class HubRegistry:
                for url in skip_ws_routes):
             raise ValueError("Invalid WebSocket queue route filter")
         if skip_ws_routes:
-            skip_sql += ' AND url NOT IN (' + ','.join('?' for _ in skip_ws_routes) + ')'
+            # Broad Bybit ticker packs and REST depth200 are NOT covered by
+            # symbol-specific WS streams. Exclude only the exact migrated
+            # request shapes; keep unrelated REST safety/mark reads alive.
+            clauses = []
+            for route in skip_ws_routes:
+                if route.endswith("/tickers"):
+                    shape = ("json_type(params,'$.symbol')='text' "
+                             "AND json_extract(params,'$.category')='linear'")
+                else:
+                    shape = ("json_type(params,'$.symbol')='text' "
+                             "AND json_extract(params,'$.category')='linear' "
+                             "AND json_extract(params,'$.limit')=50")
+                clauses.append("NOT (url=? AND CASE WHEN json_valid(params) "
+                               "THEN (" + shape + ") ELSE 0 END)")
+            skip_sql += ' AND ' + ' AND '.join(clauses)
         with self._connect() as db:
             now = time.time()
             urgent = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
