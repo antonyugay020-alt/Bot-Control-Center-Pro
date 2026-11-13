@@ -13,6 +13,8 @@ from bcc.market_hub import MarketDataHub
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--cache', required=True)
+    p.add_argument('--bybit-ws-quotes', action='store_true',
+                   help='Explicit experimental Bybit per-symbol ticker WebSocket transport')
     p.add_argument('--ready-file', default=None)
     p.add_argument('--ready-token', default=None)
     p.add_argument('--poll', type=float, default=.1)
@@ -42,7 +44,19 @@ def main():
     print(f'Market Hub starting: pid={os.getpid()} '
           f'python={sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}',
           flush=True)
-    hub = MarketDataHub(args.cache, max_workers=args.concurrency)
+    quote_stream = None
+    ws_thread = None
+    if args.bybit_ws_quotes:
+        from bcc.market import PublicData
+        from bcc.ws_quotes import BybitQuoteStream
+        quote_stream = BybitQuoteStream()
+        source = PublicData(quote_stream=quote_stream)
+        hub = MarketDataHub(args.cache, source=source, max_workers=args.concurrency)
+        ws_thread = threading.Thread(target=quote_stream.run,
+                                     name='bybit-public-ws', daemon=True)
+        ws_thread.start()
+    else:
+        hub = MarketDataHub(args.cache, max_workers=args.concurrency)
     print('Market Hub cache initialized', flush=True)
     last_client = time.monotonic()
     ready_logged = False
@@ -89,6 +103,12 @@ def main():
         traceback.print_exc()
         raise
     finally:
+        if quote_stream is not None:
+            try:
+                quote_stream.stop()
+            finally:
+                if ws_thread is not None:
+                    ws_thread.join(timeout=5)
         hub.close()
 
 
