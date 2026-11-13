@@ -256,6 +256,8 @@ def ensure_hub(repo_root, *, timeout=8):
                    '--ready-token', challenge]
         if env.get('BCC_BYBIT_WS_QUOTES') == '1':
             command.append('--bybit-ws-quotes')
+        if env.get('BCC_BYBIT_WS_BOOKS') == '1':
+            command.append('--bybit-ws-books')
         with (root / 'market_hub.log').open('ab') as log:
             proc = _spawn_hub(command, cwd=app_root, env=env,
                                     stdout=log, stderr=subprocess.STDOUT,
