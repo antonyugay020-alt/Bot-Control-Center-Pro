@@ -682,6 +682,7 @@ class MarketDataHub:
         provider fence and cache publication as one atomic decision.
         """
         from .ws_quotes import StreamUnavailable
+        from .market_clock import market_now
         if not self._leader_held or not self._leader_token:
             return False
         if kind == "tickers":
@@ -712,7 +713,7 @@ class MarketDataHub:
             if kind == "binance_trade":
                 price, at = stream.quote(symbol)
                 if (not math.isfinite(price) or price <= 0
-                        or not -1 <= time.time() - at <= 2):
+                        or not -1 <= market_now() - at <= 2):
                     return False
                 value = {
                     "symbol": symbol, "price": str(price),
@@ -722,7 +723,7 @@ class MarketDataHub:
             elif kind == "polybook":
                 book = stream.get_book(symbol)
                 stamp = float(book["timestamp"]) / 1000
-                if not -1 <= time.time() - stamp <= 2:
+                if not -1 <= market_now() - stamp <= 2:
                     return False
                 value = {"_bcc_ws_polybook": True, **book}
                 ttl = .35
@@ -730,7 +731,7 @@ class MarketDataHub:
                 bid, ask, at = stream.quote(symbol)
                 if (not all(math.isfinite(x) for x in (bid, ask, at))
                         or bid <= 0 or ask <= 0 or bid > ask
-                        or not -5 <= time.time() - at <= 2):
+                        or not -5 <= market_now() - at <= 2):
                     return False
                 value = {
                     "retCode": 0, "retMsg": "OK", "_bcc_ws_quote": True,
@@ -744,7 +745,7 @@ class MarketDataHub:
             elif kind == "kline1":
                 candle = stream.get_candle(symbol)
                 stamp = candle.message_ms / 1000
-                if not -5 <= time.time() - stamp <= 10:
+                if not -5 <= market_now() - stamp <= 10:
                     return False
                 value = {
                     "retCode": 0, "retMsg": "OK", "_bcc_ws_kline": True,
@@ -760,7 +761,7 @@ class MarketDataHub:
                 book = stream.get_orderbook(symbol)
                 stamp = book["ts"]
                 if (not math.isfinite(stamp) or
-                        not -.5 <= time.time() - stamp <= 3):
+                        not -.5 <= market_now() - stamp <= 3):
                     return False
                 value = {
                     "retCode": 0, "retMsg": "OK", "_bcc_ws_book": True,
