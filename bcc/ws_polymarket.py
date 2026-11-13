@@ -167,6 +167,8 @@ class PolymarketMarketWS:
             return False
         if kind == "book":
             asset = event.get("asset_id")
+            if type(asset) is not str or not _TOKEN.fullmatch(asset):
+                return False
             try:
                 stamp = self._fresh_timestamp(event["timestamp"])
                 bids = self._levels(event["bids"])
@@ -211,6 +213,8 @@ class PolymarketMarketWS:
             if type(change) is not dict:
                 continue
             asset = change.get("asset_id")
+            if type(asset) is not str or not _TOKEN.fullmatch(asset):
+                continue
             with self._lock:
                 if generation != self._generation or not self._connected:
                     return any_accepted
