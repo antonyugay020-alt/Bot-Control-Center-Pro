@@ -109,6 +109,15 @@ class MarketChannelTests(unittest.TestCase):
         self.assertFalse(self.stream.ingest(self.book(
             timestamp=str(int((self.clock.wall + 5) * 1000))), generation=self.generation))
 
+    def test_malformed_unhashable_asset_never_crashes_receiver(self):
+        self.assertFalse(self.stream.ingest(
+            self.book(asset_id=["invalid"]), generation=self.generation))
+        self.assertFalse(self.stream.ingest(
+            self.change(price_changes=[{
+                "asset_id": ["invalid"], "price": "0.46",
+                "size": "2", "side": "SELL",
+            }]), generation=self.generation))
+
     def test_non_numeric_public_token_denied(self):
         with self.assertRaises(ValueError):
             self.stream.subscribe("Bearer secret")
