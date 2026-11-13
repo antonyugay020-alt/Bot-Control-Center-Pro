@@ -252,18 +252,24 @@ class PublicCache:
                 or url not in (
                     "https://api.bybit.com/v5/market/tickers",
                     "https://api.bybit.com/v5/market/orderbook",
+                    "https://api.bybit.com/v5/market/kline",
                 )
                 or (url.endswith("/orderbook") and
                     (set(params) != {"category", "symbol", "limit"}
                      or params.get("limit") != 50))
+                or (url.endswith("/kline") and
+                    (set(params) != {"category", "symbol", "interval", "limit"}
+                     or params.get("interval") != "1" or params.get("limit") != 10))
                 or (url.endswith("/tickers") and
                     set(params) != {"category", "symbol"})
                 or type(ttl) not in (float, int) or not 0 < ttl <= 1
                 or type(leader_owner) is not str or not leader_owner
                 or type(leader_token) is not str or not leader_token):
             raise ValueError("Invalid WS publisher admission")
-        if (type(value) is not dict or
-                value.get("_bcc_ws_book" if url.endswith("/orderbook") else "_bcc_ws_quote") is not True):
+        marker = ("_bcc_ws_book" if url.endswith("/orderbook")
+                  else "_bcc_ws_kline" if url.endswith("/kline")
+                  else "_bcc_ws_quote")
+        if type(value) is not dict or value.get(marker) is not True:
             raise ValueError("Unverified WS payload provenance")
         key = hashlib.sha256(
             json.dumps([url, params], sort_keys=True).encode()
@@ -312,9 +318,13 @@ class PublicCache:
             book = (url == "https://api.bybit.com/v5/market/orderbook"
                     and set(params) == {"category", "symbol", "limit"}
                     and type(params.get("limit")) is int and params["limit"] == 50)
+            kline = (url == "https://api.bybit.com/v5/market/kline"
+                     and set(params) == {"category", "symbol", "interval", "limit"}
+                     and params.get("interval") == "1"
+                     and type(params.get("limit")) is int and params["limit"] == 10)
             if (host != "api.bybit.com" or type(params) is not dict
                     or params.get("category") != "linear"
-                    or not (ticker or book)):
+                    or not (ticker or book or kline)):
                 raise ValueError('WebSocket publication route not allowed')
             PublicData.validated_public_request(url, params)
         key = hashlib.sha256(
