@@ -684,17 +684,27 @@ class MarketDataHub:
             for symbol in sorted(tickers):
                 if _SYMBOL.fullmatch(symbol):
                     validated.append(symbol)
-            if hasattr(ticker, "subscribe_many"):
-                ticker.subscribe_many(validated)
-            else:
-                for symbol in validated:
-                    ticker.subscribe(symbol)
+            from .ws_quotes import StreamUnavailable
+            try:
+                if hasattr(ticker, "subscribe_many"):
+                    ticker.subscribe_many(validated)
+                else:
+                    for symbol in validated:
+                        ticker.subscribe(symbol)
+            except (ValueError, StreamUnavailable):
+                # Only this feed reconnects. Other providers remain alive.
+                pass
         if orderbook is not None:
+            from .ws_quotes import StreamUnavailable
+            valid_books = []
+            from .ws_quotes import _SYMBOL
             for symbol in sorted(books):
-                try:
-                    orderbook.subscribe(symbol)
-                except ValueError:
-                    continue
+                if _SYMBOL.fullmatch(symbol):
+                    valid_books.append(symbol)
+            try:
+                orderbook.subscribe(valid_books)
+            except (ValueError, StreamUnavailable):
+                pass
 
     def _fetch_public(self, url, params, *, urgent):
         """Preserve subscriber priority across ALL Hub producer modes.
