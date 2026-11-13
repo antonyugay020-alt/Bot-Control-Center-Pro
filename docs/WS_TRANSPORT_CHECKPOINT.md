@@ -1,22 +1,33 @@
-# BCC WebSocket transport integration — isolated development checkpoint
+# BCC WebSocket integration — isolated branch checkpoint
 
-**NOT RELEASE / NOT MERGED / NO LIVE BOTS TOUCHED.**
+**NOT RELEASE. NOT MERGED. NO LIVE BOT PROCESSES OR DATA TOUCHED.**
 
-Source baseline: consolidated PR #11 HEAD `7dace5b70b487d5dc5bf714f4989f55cabc307e5`.
-Development branch: `codex/ws-transport-isolated-20261113`.
+Development branch: `codex/ws-transport-isolated-20261113`, based on consolidated PR #11 at `7dace5b70b487d5dc5bf714f4989f55cabc307e5`.
 
-## Implemented together
-- One opt-in public Bybit linear ticker WebSocket reader with dynamic subscriptions, generation fencing, bounded freshness, disconnect invalidation and close-on-stop.
-- Explicit `PublicData` quote adapter and producer-side `/v5/market/tickers?category=linear&symbol=...` interception. Existing Hub workers still subscribe and consume via the shared cache; no direct WebSocket per bot.
-- Cache publication carries an explicit origin marker; a stale REST cache row does not masquerade as a WebSocket snapshot.
-- Shared publication retains SQLite ownership/lease fencing and host denial checks but does not consume the HTTP provider request rate budget.
-- Hub service has explicit `--bybit-ws-quotes` mode; ordinary supervisor launches accept only `BCC_BYBIT_WS_QUOTES=1` as opt-in. Off by default; no running producer replaced.
-- Quote transport never silently falls back to HTTP if the stream is absent or stale. Funding, history, instrument lookup, broad mark-price and orderbook HTTP routes remain unchanged.
+## User-supplied files incorporated
 
-## Evidence and limits
-- Independent minimal local recreation of the WebSocket reader: Python compileall PASS; 8 / 8 behavioral unit tests PASS (freshness, invalid quote, disconnect, epoch, runtime subscribe, shutdown, failed send). This is **not** an exact checkout full-suite result.
-- Committed regression modules: `tests/test_ws_quotes.py`, `test_ws_quote_lifecycle.py`, `test_ws_quote_transport.py`, `test_ws_quote_public_data.py`, `test_ws_quote_hub_cache.py`, `test_ws_quote_cache_budget.py`. The repository tests were **not executed** in this session.
-- No public network WebSocket connection, live exchange data, multi-process load test, clean Windows Qt E2E, full source seal audit, or full application regression. Do not claim release readiness or activate the flag on any live installation.
+- `bootstrap_stage2.py`: Bybit public linear `orderbook.50.SYMBOL` subscriptions, batches of 10, root-level `ts`, full snapshot + delta level insertion, price/quantity replacement/deletion, sorted bids/asks, API to retrieve an orderbook.
+- `bootstrap_stage3b.py`: adaptation of WS orderbook to the existing `PublicData.orderbook()` response structure. Metadata, risk parameters, validation and existing strategy-facing fields are retained.
+- `bootstrap_stage4.py`: multi-symbol subscription intent is provided by Hub registration and dynamic producer subscription, **not** by constructing an independent WS connection in every worker.
+- `bootstrap_stage1.py` creates a separate desktop copy and is **not executed**: this GitHub branch already provides a safe independent integration; no existing directory is overwritten.
+- `bootstrap_stage3.py` copies clock logic but changes book freshness to 15 s. That relaxation is deliberately **not adopted**, because it is unsafe for trade/exit decisions; existing clock authority stays intact.
+- `test_ws.py` tests five live symbols but is not an offline acceptance test; no public Bybit network connection was attempted.
 
-## Next linked acceptance gate
-Execute complete source regression on an isolated checkout. Repair all failures as a coherent group. Extend WS to Bybit orderbook/kline, Binance and Polymarket with verified independent per-provider message contracts and restart/recovery. Test many workers, exchange outages and policy denial without touching running bot DBs. Only then native Windows GUI clean-unpack acceptance.
+## Integrated implementation
+
+- `bcc/ws_orderbooks.py`: orderbook depth50 snapshot/delta state, dynamic multi-symbol subscriptions, batch size 10, generation fencing, reconnect, monotonic/market-time freshness, rejection of out-of-order and malformed updates, cross-book/inverted-price protection, cleanup on failure.
+- `bcc/ws_quotes.py`: independent per-symbol public tickers, generation-fenced short-lived quotes and automatic transport reconnect.
+- `bcc/market.py`: opt-in `PublicData.get()` intercept for Bybit depth50 and ticker stream; strict WebSocket origin checks at the Hub consumer; existing `orderbook()` adapter can request depth50 without changing strategy-facing output. Missing WebSocket data blocks instead of silently using REST.
+- `bcc/data_cache.py`: only exact public Bybit WS ticker or depth50 cache publications may bypass REST request-budget accounting. SQLite leases and provider access denial remain in force.
+- `tools/market_hub_service.py` and `bcc/hub_supervisor.py`: opt-in producer flags `BCC_BYBIT_WS_QUOTES=1` / `BCC_BYBIT_WS_BOOKS=1`; existing Hub and workers remain unchanged unless a clean isolated producer is explicitly started with the flags.
+- Tests added: `tests/test_ws_orderbooks.py`, `test_ws_orderbook_hub.py`, and prior `test_ws_quote_*.py` cases. This code is **not** enabled on a live installation.
+
+## Executed and unexecuted verification
+
+- **Executed locally on exact uploaded `bootstrap_stage2.py` code:** Python parse PASS; synthetic snapshot + delta update PASS; reproduced stale-book-after-disconnect and delta-before-snapshot hazards.
+- **Not executed on the actual integrated GitHub branch:** complete pytest suite, integrated tests, full source integrity seal, shared-cache concurrency/load, real Bybit WebSocket connection, Windows Qt E2E. No CI or paid Actions started.
+- Bybit streaming depth50 is **not equivalent** to the previous REST depth200; insufficient executable liquidity must remain an explicit denial. Historical candles, instruments, risk limit, portfolio marks and funding still use REST. Binance and Polymarket WS integration not done.
+
+## Release blockers
+
+Test real integrated source in an isolated checkout; fix failures as a group; validate Hub producer/worker lifecycle across process death, stale SQLite entries and 500+ symbol subscriptions without touching trading accounts. Follow with full Windows Qt clean-unpack acceptance. Do not merge or release on source inspection alone.
