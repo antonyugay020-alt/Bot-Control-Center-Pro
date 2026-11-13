@@ -100,10 +100,16 @@ class BinanceTradeWS:
         try:
             stamp = event["T"]
             price = float(event["p"])
+            if (type(stamp) is not int or not math.isfinite(price) or price <= 0
+                    or not -1 <= self._wall() - stamp / 1000 <= self._max_age):
+                raise ValueError("invalid Binance trade payload")
         except (KeyError, TypeError, ValueError, OverflowError):
-            return False
-        if (type(stamp) is not int or not math.isfinite(price) or price <= 0 or
-                not -1 <= self._wall() - stamp / 1000 <= self._max_age):
+            # A damaged new message cannot allow a previous executable
+            # PAPER impulse price to masquerade as the current market.
+            with self._lock:
+                if (generation == self._generation and self._connected
+                        and symbol in self._symbols):
+                    self._prices.pop(symbol, None)
             return False
         with self._lock:
             if (not self._connected or generation != self._generation or
