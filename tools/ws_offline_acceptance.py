@@ -17,6 +17,10 @@ import tempfile
 import time
 import zipfile
 
+# The Windows launcher invokes this file with python -I by absolute path.
+# Isolated mode omits the checkout root from sys.path, so restore only
+# this exact source root, not cwd/PYTHONPATH/user site-packages.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tools.verify_package import verify
 
 ROOT = Path(__file__).resolve().parent.parent
