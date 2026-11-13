@@ -238,9 +238,21 @@ class PublicCache:
             ).fetchone()
         return json.loads(row[0]) if row else None
 
-    def begin(self, url, params, host, *, priority=False):
-        if type(priority) is not bool:
-            raise ValueError('Public GET priority must be boolean')
+    def begin(self, url, params, host, *, priority=False, websocket=False):
+        if type(priority) is not bool or type(websocket) is not bool:
+            raise ValueError('Invalid public request reservation')
+        if websocket:
+            # Only the known public Bybit linear ticker route may publish
+            # through this budget-free WS lane. Never let arbitrary HTTP
+            # endpoints opt out of their provider request quota.
+            from .market import PublicData
+            if (url != "https://api.bybit.com/v5/market/tickers"
+                    or host != "api.bybit.com"
+                    or type(params) is not dict
+                    or set(params) != {"category", "symbol"}
+                    or params["category"] != "linear"):
+                raise ValueError('WebSocket publication route not allowed')
+            PublicData.validated_public_request(url, params)
         key = hashlib.sha256(
             json.dumps([url, params], sort_keys=True).encode()
         ).hexdigest()
@@ -261,24 +273,23 @@ class PublicCache:
             lease = db.execute("SELECT until FROM lease WHERE k=?", (key,)).fetchone()
             if lease and lease[0] > now:
                 raise CacheBusy("Данные уже запрашиваются другим ботом")
-            slot = int(now)
-            budget = db.execute(
-                "SELECT slot,count FROM request_budget WHERE host=?", (host,)
-            ).fetchone()
-            maximum = 10 if host == "api.binance.com" else 60
-            count = budget[1] if budget and budget[0] == slot else 0
-            # Keep one fifth of Bybit's existing shared request budget for
-            # executable books of OPEN PAPER positions. Background scanners
-            # cannot consume the reserved capacity, while priority requests
-            # still obey the same hard 60-per-second total budget.
-            reserved = 12 if host == "api.bybit.com" else 0
-            allowed = maximum if priority else maximum - reserved
-            if count >= allowed:
-                raise CacheBusy("Общий бюджет публичных запросов исчерпан; ожидание")
-            db.execute(
-                "INSERT OR REPLACE INTO request_budget VALUES(?,?,?)",
-                (host, slot, count + 1),
-            )
+            if not websocket:
+                slot = int(now)
+                budget = db.execute(
+                    "SELECT slot,count FROM request_budget WHERE host=?", (host,)
+                ).fetchone()
+                maximum = 10 if host == "api.binance.com" else 60
+                count = budget[1] if budget and budget[0] == slot else 0
+                # Reserve one fifth of HTTP Bybit request capacity for open
+                # PAPER positions; real WS publications consume none of it.
+                reserved = 12 if host == "api.bybit.com" else 0
+                allowed = maximum if priority else maximum - reserved
+                if count >= allowed:
+                    raise CacheBusy("Общий бюджет публичных запросов исчерпан; ожидание")
+                db.execute(
+                    "INSERT OR REPLACE INTO request_budget VALUES(?,?,?)",
+                    (host, slot, count + 1),
+                )
             db.execute(
                 "INSERT OR REPLACE INTO lease VALUES(?,?,?)", (key, owner, now + 20)
             )
