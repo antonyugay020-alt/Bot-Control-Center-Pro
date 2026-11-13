@@ -289,13 +289,14 @@ class PublicData:
                     raise ValueError("Недопустимое значение публичного GET")
         return host
 
-    def __init__(self, *, quote_stream=None, orderbook_stream=None, kline_stream=None, polymarket_stream=None):
+    def __init__(self, *, quote_stream=None, orderbook_stream=None, kline_stream=None, polymarket_stream=None, binance_stream=None):
         # Explicit opt-in adapter; the caller owns its producer thread.
         # A missing/failed WebSocket quote never falls back to REST.
         self._quote_stream = quote_stream
         self._orderbook_stream = orderbook_stream
         self._kline_stream = kline_stream
         self._polymarket_stream = polymarket_stream
+        self._binance_stream = binance_stream
         self._thread = threading.local()
         self._sessions = []
         self._lock = threading.RLock()
@@ -541,6 +542,20 @@ class PublicData:
             raise DataUnavailable("Polymarket WS: свежий стакан недоступен") from exc
         return {"_bcc_ws_polybook": True, **payload}
 
+    def _ws_binance_price_get(self, url, params, host):
+        """Public Binance last trade price compatible with PAPER impulse()."""
+        from .ws_quotes import StreamUnavailable
+        symbol = params["symbol"]
+        self._binance_stream.subscribe(symbol)
+        try:
+            price, stamp = self._binance_stream.quote(symbol)
+        except (StreamUnavailable, ValueError) as exc:
+            raise DataUnavailable("Binance WebSocket: нет свежей цены импульса") from exc
+        if not math.isfinite(price) or price <= 0:
+            raise DataUnavailable("Binance WebSocket: повреждена цена импульса")
+        return {"symbol": symbol, "price": str(price),
+                "_bcc_ws_binance": True, "_ws_timestamp": stamp}
+
     def get(self, url, params=None, ttl=0):
         began = time.monotonic()
 
@@ -583,6 +598,12 @@ class PublicData:
                 and os.environ.get("BCC_POLY_WS_BOOKS") == "1"
                 and self._polymarket_stream is None):
             raise DataUnavailable("Polymarket WebSocket market Hub недоступен")
+        if (url == "https://api.binance.com/api/v3/ticker/price"
+                and type(params) is dict and set(params) == {"symbol"}
+                and os.environ.get("BCC_MARKET_HUB_MODE") != "client"
+                and os.environ.get("BCC_BINANCE_WS_PRICE") == "1"
+                and self._binance_stream is None):
+            raise DataUnavailable("Binance WebSocket поток импульса не подключён")
         # A refusal is a fleet-wide admission fence, not a retryable cache miss.
         self._assert_provider_allowed(host)
         # Explicit producer-side WebSocket transport for symbol-specific Bybit
@@ -605,6 +626,11 @@ class PublicData:
                 and type(params) is dict and set(params) == {"token_id"}
                 and os.environ.get("BCC_MARKET_HUB_MODE") != "client"):
             return received(self._ws_polymarket_get(url, params, host), "polymarket_ws_book")
+        if (self._binance_stream is not None
+                and url == "https://api.binance.com/api/v3/ticker/price"
+                and type(params) is dict and set(params) == {"symbol"}
+                and os.environ.get("BCC_MARKET_HUB_MODE") != "client"):
+            return received(self._ws_binance_price_get(url, params, host), "binance_ws_trade")
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.
         # Registration is refreshed by actual demand, not by a synthetic scan.
         if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
@@ -656,6 +682,11 @@ class PublicData:
                             and type(params) is dict and params.get("symbol")
                             and cached.get("_bcc_ws_quote") is not True):
                         raise DataUnavailable("Market Data Hub: WebSocket котировка не подтверждена")
+                    if (url == "https://api.binance.com/api/v3/ticker/price"
+                            and os.environ.get("BCC_BINANCE_WS_PRICE") == "1"
+                            and type(params) is dict and set(params) == {"symbol"}
+                            and cached.get("_bcc_ws_binance") is not True):
+                        raise DataUnavailable("Market Data Hub: Binance WS цена не подтверждена")
                     if (url == "https://clob.polymarket.com/book"
                             and os.environ.get("BCC_POLY_WS_BOOKS") == "1"
                             and type(params) is dict and set(params) == {"token_id"}
