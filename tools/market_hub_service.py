@@ -85,21 +85,22 @@ def main():
             args.binance_ws_price):
         from websocket import WebSocketApp
         from bcc.market import PublicData
+        from bcc.market_clock import clock, market_now
         if args.bybit_ws_quotes:
             from bcc.ws_quotes import BybitQuoteStream
-            quote_stream = BybitQuoteStream(on_update=on_update)
+            quote_stream = BybitQuoteStream(wall=market_now, on_update=on_update)
         if args.bybit_ws_books:
             from bcc.ws_orderbooks import BybitOrderbookWS
-            book_stream = BybitOrderbookWS(on_update=on_update)
+            book_stream = BybitOrderbookWS(wall=market_now, on_update=on_update)
         if args.bybit_ws_klines:
             from bcc.ws_klines import BybitKlineWS
-            kline_stream = BybitKlineWS(on_update=on_update)
+            kline_stream = BybitKlineWS(wall=market_now, on_update=on_update)
         if args.poly_ws_books:
             from bcc.ws_polymarket import PolymarketMarketWS
-            poly_stream = PolymarketMarketWS(on_update=on_update)
+            poly_stream = PolymarketMarketWS(wall=market_now, on_update=on_update)
         if args.binance_ws_price:
             from bcc.ws_binance import BinanceTradeWS
-            binance_stream = BinanceTradeWS(on_update=on_update)
+            binance_stream = BinanceTradeWS(wall=market_now, on_update=on_update)
         source = PublicData(quote_stream=quote_stream, orderbook_stream=book_stream,
                             kline_stream=kline_stream, polymarket_stream=poly_stream,
                             binance_stream=binance_stream)
@@ -118,11 +119,18 @@ def main():
         hub = MarketDataHub(args.cache, max_workers=args.concurrency)
     print('Market Hub cache initialized', flush=True)
     last_client = time.monotonic()
+    last_clock_refresh = 0.0
     last_ws_health = 0.0
     ready_logged = False
     try:
         while not stop.is_set():
             try:
+                if ws_jobs and time.monotonic() - last_clock_refresh >= 10:
+                    # WS messages use the same independent, bounded trading
+                    # UTC reference as PAPER decisions, never raw OS wall time.
+                    # No verified clock => no WS producer readiness.
+                    clock.ensure()
+                    last_clock_refresh = time.monotonic()
                 if any(not thread.is_alive() for thread in ws_threads):
                     raise RuntimeError("Bybit public WebSocket producer exited")
                 if not ready_logged:
