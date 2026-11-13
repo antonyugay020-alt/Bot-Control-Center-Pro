@@ -289,12 +289,13 @@ class PublicData:
                     raise ValueError("Недопустимое значение публичного GET")
         return host
 
-    def __init__(self, *, quote_stream=None, orderbook_stream=None, kline_stream=None):
+    def __init__(self, *, quote_stream=None, orderbook_stream=None, kline_stream=None, polymarket_stream=None):
         # Explicit opt-in adapter; the caller owns its producer thread.
         # A missing/failed WebSocket quote never falls back to REST.
         self._quote_stream = quote_stream
         self._orderbook_stream = orderbook_stream
         self._kline_stream = kline_stream
+        self._polymarket_stream = polymarket_stream
         self._thread = threading.local()
         self._sessions = []
         self._lock = threading.RLock()
@@ -529,6 +530,17 @@ class PublicData:
         self._assert_provider_allowed(host)
         return data
 
+    def _ws_polymarket_get(self, url, params, host):
+        """Producer-side on-demand CLOB book, preserving legacy PAPER format."""
+        from .ws_quotes import StreamUnavailable
+        asset = params["token_id"]
+        self._polymarket_stream.subscribe(asset)
+        try:
+            payload = self._polymarket_stream.get_book(asset)
+        except (StreamUnavailable, ValueError) as exc:
+            raise DataUnavailable("Polymarket WS: свежий стакан недоступен") from exc
+        return {"_bcc_ws_polybook": True, **payload}
+
     def get(self, url, params=None, ttl=0):
         began = time.monotonic()
 
@@ -565,6 +577,12 @@ class PublicData:
                     and params.get("interval") == "1" and params.get("limit") == 10
                     and self._kline_stream is None):
                 raise DataUnavailable("Bybit WebSocket свеча: Hub не подключён")
+        if (url == "https://clob.polymarket.com/book"
+                and type(params) is dict and set(params) == {"token_id"}
+                and os.environ.get("BCC_MARKET_HUB_MODE") != "client"
+                and os.environ.get("BCC_POLY_WS_BOOKS") == "1"
+                and self._polymarket_stream is None):
+            raise DataUnavailable("Polymarket WebSocket market Hub недоступен")
         # A refusal is a fleet-wide admission fence, not a retryable cache miss.
         self._assert_provider_allowed(host)
         # Explicit producer-side WebSocket transport for symbol-specific Bybit
@@ -582,6 +600,11 @@ class PublicData:
                 and params["category"] == "linear" and params["limit"] == 50
                 and os.environ.get("BCC_MARKET_HUB_MODE") != "client"):
             return received(self._ws_orderbook_get(url, params, host), "bybit_ws_book_hub")
+        if (self._polymarket_stream is not None
+                and url == "https://clob.polymarket.com/book"
+                and type(params) is dict and set(params) == {"token_id"}
+                and os.environ.get("BCC_MARKET_HUB_MODE") != "client"):
+            return received(self._ws_polymarket_get(url, params, host), "polymarket_ws_book")
         # Optional hub consumer: this worker NEVER falls back to direct HTTP.
         # Registration is refreshed by actual demand, not by a synthetic scan.
         if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
@@ -633,6 +656,11 @@ class PublicData:
                             and type(params) is dict and params.get("symbol")
                             and cached.get("_bcc_ws_quote") is not True):
                         raise DataUnavailable("Market Data Hub: WebSocket котировка не подтверждена")
+                    if (url == "https://clob.polymarket.com/book"
+                            and os.environ.get("BCC_POLY_WS_BOOKS") == "1"
+                            and type(params) is dict and set(params) == {"token_id"}
+                            and cached.get("_bcc_ws_polybook") is not True):
+                        raise DataUnavailable("Market Data Hub: Polymarket WS стакан не подтверждён")
                     if (url == "https://api.bybit.com/v5/market/kline"
                             and os.environ.get("BCC_BYBIT_WS_KLINES") == "1"
                             and type(params) is dict and
