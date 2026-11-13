@@ -47,13 +47,15 @@ def main():
     quote_stream = None
     ws_thread = None
     if args.bybit_ws_quotes:
+        from websocket import WebSocketApp
         from bcc.market import PublicData
         from bcc.ws_quotes import BybitQuoteStream
         quote_stream = BybitQuoteStream()
         source = PublicData(quote_stream=quote_stream)
         hub = MarketDataHub(args.cache, source=source, max_workers=args.concurrency)
-        ws_thread = threading.Thread(target=quote_stream.run,
-                                     name='bybit-public-ws', daemon=True)
+        ws_thread = threading.Thread(
+            target=lambda: quote_stream.run(websocket_app_factory=WebSocketApp),
+            name='bybit-public-ws', daemon=True)
         ws_thread.start()
     else:
         hub = MarketDataHub(args.cache, max_workers=args.concurrency)
@@ -63,6 +65,8 @@ def main():
     try:
         while not stop.is_set():
             try:
+                if ws_thread is not None and not ws_thread.is_alive():
+                    raise RuntimeError("Bybit public WebSocket producer exited")
                 if not ready_logged:
                     # Startup lease and steady-state queue use the same
                     # bounded SQLite contention policy. A brief writer lock
