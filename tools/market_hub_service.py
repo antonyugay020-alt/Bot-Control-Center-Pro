@@ -7,8 +7,8 @@ import signal
 import sqlite3
 import threading
 import time
-import queue
 from bcc.market_hub import MarketDataHub
+from bcc.ws_dispatch import MarketEventQueue
 
 
 def main():
@@ -56,36 +56,27 @@ def main():
     quote_stream = book_stream = kline_stream = poly_stream = binance_stream = None
     ws_threads = []
     ws_jobs = []
-    ws_updates = queue.Queue(maxsize=16384)
-    ws_pending = set()
-    ws_pending_lock = threading.Lock()
+    ws_updates = MarketEventQueue(capacity=16384, urgent_burst=8)
 
     def on_update(kind, symbol):
-        item = (kind, symbol)
-        with ws_pending_lock:
-            if item in ws_pending:
-                return
-            try:
-                ws_updates.put_nowait(item)
-            except queue.Full:
-                # Streaming backpressure must not stall the receiver.
-                # Scheduled hub snapshots remain an independent recovery path.
-                return
-            ws_pending.add(item)
+        ws_updates.notify(kind, symbol)
 
     def publish_events():
+        last_warning = 0.0
         while not stop.is_set():
-            try:
-                item = ws_updates.get(timeout=.1)
-            except queue.Empty:
+            item = ws_updates.take(timeout=.1)
+            if item is None:
                 continue
-            with ws_pending_lock:
-                ws_pending.discard(item)
             try:
                 hub.publish_ws_event(*item)
             except (sqlite3.Error, OSError, ValueError) as exc:
                 print("WebSocket event publication unavailable: " +
                       type(exc).__name__, flush=True)
+            stats = ws_updates.stats()
+            if stats["dropped_notifications"] and time.monotonic() - last_warning > 30:
+                print("WebSocket event queue saturated; snapshots fail closed",
+                      flush=True)
+                last_warning = time.monotonic()
 
     publisher = None
     if (args.bybit_ws_quotes or args.bybit_ws_books or
