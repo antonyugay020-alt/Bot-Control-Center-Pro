@@ -41,7 +41,7 @@ class BybitQuoteStream:
     ENDPOINT = "wss://stream.bybit.com/v5/public/linear"
 
     def __init__(self, *, max_age=2.0, monotonic=time.monotonic, wall=time.time):
-        if not 0 < max_age <= 15:
+        if type(max_age) not in (int, float) or not math.isfinite(max_age) or not 0 < max_age <= 15:
             raise ValueError("invalid quote max_age")
         self._max_age = max_age
         self._mono, self._wall = monotonic, wall
@@ -50,18 +50,32 @@ class BybitQuoteStream:
         self._connected = False
         self._subscriptions = set()
         self._quotes = {}
+        self._socket = None
         self._stop = threading.Event()
 
     def subscribe(self, symbol):
         if type(symbol) is not str or not _SYMBOL.fullmatch(symbol):
             raise ValueError("invalid linear USDT symbol")
         with self._lock:
+            if symbol in self._subscriptions:
+                return
             self._subscriptions.add(symbol)
+            socket = self._socket if self._connected else None
+        if socket is not None:
+            try:
+                socket.send(json.dumps({"op": "subscribe", "args": ["tickers." + symbol]}))
+            except Exception as exc:
+                self.disconnect()
+                try:
+                    socket.close()
+                finally:
+                    raise StreamUnavailable("Bybit subscription send failed") from exc
 
     def disconnect(self):
         with self._lock:
             self._generation += 1
             self._connected = False
+            self._socket = None
             self._quotes.clear()
 
     def connect(self):
@@ -127,7 +141,7 @@ class BybitQuoteStream:
             except ImportError as exc:
                 raise StreamUnavailable("websocket-client dependency unavailable") from exc
             websocket_app_factory = WebSocketApp
-        if not 0.1 <= retry_delay <= 30:
+        if type(retry_delay) not in (int, float) or not math.isfinite(retry_delay) or not 0.1 <= retry_delay <= 30:
             raise ValueError("invalid retry delay")
         self._stop.clear()
         while not self._stop.is_set():
@@ -138,6 +152,7 @@ class BybitQuoteStream:
                 gen = self.connect()
                 state["generation"] = gen
                 with self._lock:
+                    self._socket = ws
                     topics = ["tickers." + s for s in sorted(self._subscriptions)]
                 if topics:
                     ws.send(json.dumps({"op": "subscribe", "args": topics}))
@@ -168,4 +183,8 @@ class BybitQuoteStream:
 
     def stop(self):
         self._stop.set()
+        with self._lock:
+            socket = self._socket
         self.disconnect()
+        if socket is not None:
+            socket.close()
