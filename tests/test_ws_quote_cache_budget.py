@@ -36,6 +36,24 @@ def test_websocket_publication_does_not_consume_http_budget(tmp_path):
         cache.close()
 
 
+def test_depth50_publication_is_not_an_http_request(tmp_path):
+    cache = PublicCache(tmp_path / "depth_public.sqlite")
+    try:
+        url = "https://api.bybit.com/v5/market/orderbook"
+        params = {"category": "linear", "symbol": "BTCUSDT", "limit": 50}
+        key, owner, _ = cache.begin(url, params, HOST, websocket=True)
+        assert owner
+        assert cache.finish(
+            key, owner, HOST, {"_bcc_ws_book": True, "result": {"s": "BTCUSDT"}},
+            ttl=.2)
+        with cache.db() as db:
+            assert db.execute(
+                "SELECT count FROM request_budget WHERE host=?", (HOST,)
+            ).fetchone() is None
+    finally:
+        cache.close()
+
+
 @pytest.mark.parametrize("url,params,host", [
     ("https://api.bybit.com/v5/market/kline",
      {"category": "linear", "symbol": "BTCUSDT", "interval": "1"}, HOST),
