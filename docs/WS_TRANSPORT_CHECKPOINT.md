@@ -73,3 +73,15 @@ Source branch: `codex/ws-transport-isolated-20261113`. This is an **isolated, OF
 - **Release blockers:** live WS CLOB/Binance protocol and subscription limits must be verified against provider documentation and real responses; producer/worker multiprocess integration and latency/load tests on independent checkout; complete regression including VELES/GRID/Pump/Polymarket and real Windows Qt clean-unpack E2E. Web research is disabled for this session. Do not activate flags for actual PAPER operations until those gates pass.
 
 - Additional offline lifecycle mocks passed: CLOB first public market subscription/snapshot/shutdown and Binance first spot trade/subscription/shutdown. Total isolated reproduced local transport tests: **28 PASS / 0 FAIL**. These are not equivalent to real CLOB/Binance network protocol acceptance or full Windows QA.
+
+## 2026-11-13 integration hardening (no live deployment)
+
+- All five WS receivers (Bybit ticker/depth50/kline1, Polymarket public CLOB, Binance public trade) now fence delayed socket-close/error callbacks by connection generation. A stale old socket cannot revoke a new connection.
+- CLOB snapshots accept either `bids/asks` or `buys/sells`, but reject ambiguous or incomplete mixtures; event snapshots and deltas remain fail-closed.
+- Invalid Binance spot-trade payloads revoke the cached price rather than leaving an old PAPER impulse price available.
+- Added bounded `bcc/ws_dispatch.py`: urgent CLOB/depth changes, regular quote/trade/kline updates, per-asset notification coalescing, fair access for regular streams, bounded backlog and dropped-notification counters. A surge of Binance ticks cannot indefinitely hide CLOB ASK updates.
+- Added shared `ReconnectBackoff` policy with exponential 1..30-second retry and reset after a 30-second healthy session; this prevents reconnection storms during provider outages.
+- Hub service logs only connection status and dispatcher aggregate counters every 30 seconds; does not log tokens, keys or quote payloads.
+- Added `tools/ws_offline_acceptance.py`, a no-paid-actions local isolated-checkout gate. It rejects live runtime bot state/cache, syntax-checks core modules, runs every `tests/test_ws_*.py` through pytest with explicit WS runtime flags removed, supports up to 150 separate Python executions and optional full Python regression. It deliberately reports `BLOCKED_NATIVE_WINDOWS_QT_E2E_UNRUN` even if offline tests pass.
+- In this session, an isolated reproduction of the new fair dispatcher and shared retry policy was Python-compiled and executed: **8/8 PASS**. Five-stream generation-regression test module and other new integration test modules were saved to GitHub but **have not been executed against a full checkout**.
+- **Next mandatory release gates:** run unified WS QA and full Python suite in an independent clean checkout; resolve all failures systematically; verify real venue WS handshakes/subscription limits and measure latency under load; perform native Windows Qt full-system E2E without touching 24/7 live bots or monitors. Do not merge or release until all mandatory gates pass.
