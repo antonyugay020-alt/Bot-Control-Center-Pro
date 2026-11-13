@@ -22,6 +22,8 @@ def main():
                    help='Explicit experimental Bybit current-minute kline WebSocket transport')
     p.add_argument('--poly-ws-books', action='store_true',
                    help='Explicit experimental public Polymarket CLOB market WebSocket')
+    p.add_argument('--binance-ws-price', action='store_true',
+                   help='Explicit experimental Binance spot trade WebSocket for PAPER')
     p.add_argument('--ready-file', default=None)
     p.add_argument('--ready-token', default=None)
     p.add_argument('--poll', type=float, default=.1)
@@ -51,7 +53,7 @@ def main():
     print(f'Market Hub starting: pid={os.getpid()} '
           f'python={sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}',
           flush=True)
-    quote_stream = book_stream = kline_stream = poly_stream = None
+    quote_stream = book_stream = kline_stream = poly_stream = binance_stream = None
     ws_threads = []
     ws_jobs = []
     ws_updates = queue.Queue(maxsize=16384)
@@ -87,7 +89,8 @@ def main():
 
     publisher = None
     if (args.bybit_ws_quotes or args.bybit_ws_books or
-            args.bybit_ws_klines or args.poly_ws_books):
+            args.bybit_ws_klines or args.poly_ws_books or
+            args.binance_ws_price):
         from websocket import WebSocketApp
         from bcc.market import PublicData
         if args.bybit_ws_quotes:
@@ -102,11 +105,16 @@ def main():
         if args.poly_ws_books:
             from bcc.ws_polymarket import PolymarketMarketWS
             poly_stream = PolymarketMarketWS(on_update=on_update)
+        if args.binance_ws_price:
+            from bcc.ws_binance import BinanceTradeWS
+            binance_stream = BinanceTradeWS(on_update=on_update)
         source = PublicData(quote_stream=quote_stream, orderbook_stream=book_stream,
-                            kline_stream=kline_stream, polymarket_stream=poly_stream)
+                            kline_stream=kline_stream, polymarket_stream=poly_stream,
+                            binance_stream=binance_stream)
         hub = MarketDataHub(args.cache, source=source, max_workers=args.concurrency)
         for label, stream in (('tickers', quote_stream), ('depth50', book_stream),
-                              ('kline1', kline_stream), ('polybook', poly_stream)):
+                              ('kline1', kline_stream), ('polybook', poly_stream),
+                              ('binance_trade', binance_stream)):
             if stream is None:
                 continue
             thread = threading.Thread(
@@ -176,7 +184,8 @@ def main():
         traceback.print_exc()
         raise
     finally:
-        for stream in (quote_stream, book_stream, kline_stream, poly_stream):
+        for stream in (quote_stream, book_stream, kline_stream, poly_stream,
+                       binance_stream):
             if stream is not None:
                 stream.stop()
         for thread in ws_threads:
