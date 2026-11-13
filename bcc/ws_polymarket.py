@@ -88,6 +88,41 @@ class PolymarketMarketWS:
                     finally:
                         raise StreamUnavailable("CLOB subscribe failed") from exc
 
+    def sync_assets(self, assets):
+        """Replace active CLOB subscriptions during 5m/15m market rotation.
+
+        Old token books are invalidated immediately; an unsubscribed token
+        may never authorize PAPER entry even while its previous cache TTL
+        has not yet elapsed in a separate worker process.
+        """
+        if not isinstance(assets, (list, tuple, set)) or any(
+                type(asset) is not str or not _TOKEN.fullmatch(asset)
+                for asset in assets):
+            raise ValueError("invalid Polymarket CLOB asset ids")
+        desired = set(assets)
+        with self._lock:
+            removed = sorted(self._assets - desired)
+            added = sorted(desired - self._assets)
+            socket = self._socket if self._connected else None
+            if socket is not None:
+                try:
+                    for kind, ids in (("unsubscribe", removed),
+                                      ("subscribe", added)):
+                        for i in range(0, len(ids), self.MAX_SUB_PER_MSG):
+                            socket.send(json.dumps({
+                                "assets_ids": ids[i:i + self.MAX_SUB_PER_MSG],
+                                "operation": kind,
+                            }))
+                except Exception as exc:
+                    self._invalidate()
+                    try:
+                        socket.close()
+                    finally:
+                        raise StreamUnavailable("CLOB market rotation failed") from exc
+            self._assets = desired
+            for token in removed:
+                self._books.pop(token, None)
+
     @staticmethod
     def _levels(rows):
         if type(rows) is not list:
