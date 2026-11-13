@@ -344,6 +344,16 @@ class PolymarketMarketWS:
                         }))
 
             def received(socket, raw):
+                try:
+                    status = json.loads(raw)
+                except (TypeError, ValueError):
+                    status = None
+                if (isinstance(status, dict) and
+                        (status.get("success") is False
+                         or status.get("event_type") == "error")):
+                    self.disconnect(generation=state["generation"])
+                    socket.close()
+                    return
                 self.ingest_message(raw, generation=state["generation"])
 
             def closed(socket, code, reason):
