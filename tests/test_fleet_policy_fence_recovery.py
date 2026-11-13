@@ -99,6 +99,29 @@ def test_denial_clock_jump_and_reboot_expiry_use_correct_clock(tmp_path, monkeyp
         cache.close()
 
 
+def test_os_boot_witness_is_process_stable_across_wall_clock_jump(monkeypatch):
+    """psutil boot_time must not change BCC's boot identity mid-process.
+
+    Windows providers can derive their reported boot epoch from the wall
+    clock. A wall-clock jump is not a reboot and must not clear HTTP 451.
+    """
+    psutil = pytest.importorskip("psutil")
+    getter = PublicCache._boot_epoch
+    getter.cache_clear()
+    observed = []
+    def volatile_boot_time():
+        observed.append(1)
+        return 1700000000.0 + len(observed) * 86400
+    try:
+        monkeypatch.setattr(psutil, "boot_time", volatile_boot_time)
+        first = getter()
+        second = getter()
+        assert first == second == 1700086400.0
+        assert len(observed) == 1
+    finally:
+        getter.cache_clear()
+
+
 def test_new_refusal_replaces_expired_previous_boot_deadline(tmp_path, monkeypatch):
     cache = PublicCache(tmp_path / "fleet.sqlite")
     try:
