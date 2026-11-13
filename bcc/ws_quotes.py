@@ -42,11 +42,12 @@ class BybitQuoteStream:
     ENDPOINT = "wss://stream.bybit.com/v5/public/linear"
     MAX_SUB_PER_MSG = 10
 
-    def __init__(self, *, max_age=2.0, monotonic=time.monotonic, wall=time.time):
+    def __init__(self, *, max_age=2.0, monotonic=time.monotonic, wall=time.time, on_update=None):
         if type(max_age) not in (int, float) or not math.isfinite(max_age) or not 0 < max_age <= 15:
             raise ValueError("invalid quote max_age")
         self._max_age = max_age
         self._mono, self._wall = monotonic, wall
+        self.on_update = on_update
         self._lock = threading.RLock()
         self._generation = 0
         self._connected = False
@@ -123,6 +124,12 @@ class BybitQuoteStream:
             if previous is not None and ts < previous.exchange_ms:
                 return False
             self._quotes[symbol] = Quote(symbol, bid, ask, ts, self._mono(), generation)
+        if self.on_update is not None:
+            try:
+                self.on_update("tickers", symbol)
+            except Exception:
+                # Consumer failures never kill the independent receive loop.
+                pass
         return True
 
     def quote(self, symbol):
