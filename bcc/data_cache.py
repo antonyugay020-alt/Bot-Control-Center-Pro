@@ -246,6 +246,10 @@ class PublicCache:
         """
         from .market import PublicData
         PublicData.validated_public_request(url, params)
+        binance = (host == "api.binance.com"
+                   and url == "https://api.binance.com/api/v3/ticker/price"
+                   and type(params) is dict and set(params) == {"symbol"}
+                   and type(params.get("symbol")) is str)
         poly = (host == "clob.polymarket.com"
                 and url == "https://clob.polymarket.com/book"
                 and type(params) is dict and set(params) == {"token_id"}
@@ -267,12 +271,13 @@ class PublicCache:
                      params.get("interval") == "1" and params.get("limit") == 10))
                 and (url.endswith("/tickers") is False or
                     set(params) == {"category", "symbol"}))
-        if ((not poly and not bybit)
+        if ((not poly and not bybit and not binance)
                 or type(ttl) not in (float, int) or not 0 < ttl <= 1
                 or type(leader_owner) is not str or not leader_owner
                 or type(leader_token) is not str or not leader_token):
             raise ValueError("Invalid WS publisher admission")
-        marker = ("_bcc_ws_polybook" if poly else
+        marker = ("_bcc_ws_binance" if binance else
+                  "_bcc_ws_polybook" if poly else
                   "_bcc_ws_book" if url.endswith("/orderbook") else
                   "_bcc_ws_kline" if url.endswith("/kline") else
                   "_bcc_ws_quote")
