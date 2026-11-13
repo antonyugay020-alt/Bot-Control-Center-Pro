@@ -246,29 +246,36 @@ class PublicCache:
         """
         from .market import PublicData
         PublicData.validated_public_request(url, params)
-        if (host != "api.bybit.com" or type(params) is not dict
-                or params.get("category") != "linear"
-                or type(params.get("symbol")) is not str
-                or url not in (
+        poly = (host == "clob.polymarket.com"
+                and url == "https://clob.polymarket.com/book"
+                and type(params) is dict and set(params) == {"token_id"}
+                and type(params.get("token_id")) is str
+                and params["token_id"].isdigit())
+        bybit = (host == "api.bybit.com"
+                and type(params) is dict and params.get("category") == "linear"
+                and type(params.get("symbol")) is str
+                and url in (
                     "https://api.bybit.com/v5/market/tickers",
                     "https://api.bybit.com/v5/market/orderbook",
                     "https://api.bybit.com/v5/market/kline",
                 )
-                or (url.endswith("/orderbook") and
-                    (set(params) != {"category", "symbol", "limit"}
-                     or params.get("limit") != 50))
-                or (url.endswith("/kline") and
-                    (set(params) != {"category", "symbol", "interval", "limit"}
-                     or params.get("interval") != "1" or params.get("limit") != 10))
-                or (url.endswith("/tickers") and
-                    set(params) != {"category", "symbol"})
+                and (url.endswith("/orderbook") is False or
+                    (set(params) == {"category", "symbol", "limit"} and
+                     params.get("limit") == 50))
+                and (url.endswith("/kline") is False or
+                    (set(params) == {"category", "symbol", "interval", "limit"} and
+                     params.get("interval") == "1" and params.get("limit") == 10))
+                and (url.endswith("/tickers") is False or
+                    set(params) == {"category", "symbol"}))
+        if ((not poly and not bybit)
                 or type(ttl) not in (float, int) or not 0 < ttl <= 1
                 or type(leader_owner) is not str or not leader_owner
                 or type(leader_token) is not str or not leader_token):
             raise ValueError("Invalid WS publisher admission")
-        marker = ("_bcc_ws_book" if url.endswith("/orderbook")
-                  else "_bcc_ws_kline" if url.endswith("/kline")
-                  else "_bcc_ws_quote")
+        marker = ("_bcc_ws_polybook" if poly else
+                  "_bcc_ws_book" if url.endswith("/orderbook") else
+                  "_bcc_ws_kline" if url.endswith("/kline") else
+                  "_bcc_ws_quote")
         if type(value) is not dict or value.get(marker) is not True:
             raise ValueError("Unverified WS payload provenance")
         key = hashlib.sha256(
