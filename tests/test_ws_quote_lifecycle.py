@@ -19,6 +19,9 @@ class SocketLifecycleTests(unittest.TestCase):
             def send(self, raw):
                 self.sent.append(json.loads(raw))
 
+            def close(self):
+                pass
+
             def run_forever(self, **kwargs):
                 self.on_open(self)
                 assert self.sent == [{"op": "subscribe", "args": ["tickers.BTCUSDT"]}]
