@@ -40,6 +40,7 @@ class EventHandoffTests(unittest.TestCase):
     def test_unrecognized_events_never_enqueued(self):
         queue = MarketEventQueue()
         self.assertFalse(queue.notify("execute-order", "BTCUSDT"))
+        self.assertFalse(queue.notify([], "BTCUSDT"))
         self.assertFalse(queue.notify("polybook", ""))
         self.assertEqual(queue.stats()["pending"], 0)
 
