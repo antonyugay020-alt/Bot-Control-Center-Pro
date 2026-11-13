@@ -16,6 +16,30 @@ URGENT = frozenset({"polybook", "depth50"})
 REGULAR = frozenset({"tickers", "binance_trade", "kline1"})
 
 
+class ReconnectBackoff:
+    """Shared capped retry policy, independent of provider or credentials."""
+
+    def __init__(self, base=1.0, maximum=30.0, healthy_after=30.0):
+        if (type(base) not in (int, float) or not 0.1 <= base <= maximum
+                or type(maximum) not in (int, float) or not base <= maximum <= 120
+                or type(healthy_after) not in (int, float)
+                or not 5 <= healthy_after <= 600):
+            raise ValueError("invalid reconnect policy")
+        self.base = float(base)
+        self.maximum = float(maximum)
+        self.healthy_after = float(healthy_after)
+        self._next = self.base
+
+    def after_session(self, uptime):
+        if type(uptime) not in (int, float) or uptime < 0:
+            raise ValueError("invalid session uptime")
+        if uptime >= self.healthy_after:
+            self._next = self.base
+        result = self._next
+        self._next = min(self.maximum, max(self.base, self._next * 2))
+        return result
+
+
 class MarketEventQueue:
     def __init__(self, *, capacity=8192, urgent_burst=8):
         if (type(capacity) is not int or not 16 <= capacity <= 100000
