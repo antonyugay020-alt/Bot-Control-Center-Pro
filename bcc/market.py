@@ -289,11 +289,12 @@ class PublicData:
                     raise ValueError("Недопустимое значение публичного GET")
         return host
 
-    def __init__(self, *, quote_stream=None, orderbook_stream=None):
+    def __init__(self, *, quote_stream=None, orderbook_stream=None, kline_stream=None):
         # Explicit opt-in adapter; the caller owns its producer thread.
         # A missing/failed WebSocket quote never falls back to REST.
         self._quote_stream = quote_stream
         self._orderbook_stream = orderbook_stream
+        self._kline_stream = kline_stream
         self._thread = threading.local()
         self._sessions = []
         self._lock = threading.RLock()
@@ -611,6 +612,15 @@ class PublicData:
                             and type(params) is dict and params.get("symbol")
                             and cached.get("_bcc_ws_quote") is not True):
                         raise DataUnavailable("Market Data Hub: WebSocket котировка не подтверждена")
+                    if (url == "https://api.bybit.com/v5/market/kline"
+                            and os.environ.get("BCC_BYBIT_WS_KLINES") == "1"
+                            and type(params) is dict and
+                            set(params) == {"category", "symbol", "interval", "limit"}
+                            and params.get("category") == "linear"
+                            and params.get("interval") == "1"
+                            and params.get("limit") == 10
+                            and cached.get("_bcc_ws_kline") is not True):
+                        raise DataUnavailable("Market Data Hub: WebSocket свеча не подтверждена")
                     return received(cached, "market_hub")
                 if time.monotonic() >= deadline:
                     raise DataUnavailable("Market Data Hub: нет свежего снимка (очередь или источник недоступен)")
