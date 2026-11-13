@@ -40,6 +40,7 @@ class BybitQuoteStream:
     """
 
     ENDPOINT = "wss://stream.bybit.com/v5/public/linear"
+    MAX_SUB_PER_MSG = 10
 
     def __init__(self, *, max_age=2.0, monotonic=time.monotonic, wall=time.time):
         if type(max_age) not in (int, float) or not math.isfinite(max_age) or not 0 < max_age <= 15:
@@ -160,8 +161,11 @@ class BybitQuoteStream:
                 state["generation"] = gen
                 with self._lock:
                     topics = ["tickers." + s for s in sorted(self._subscriptions)]
-                if topics:
-                    ws.send(json.dumps({"op": "subscribe", "args": topics}))
+                for index in range(0, len(topics), self.MAX_SUB_PER_MSG):
+                    ws.send(json.dumps({
+                        "op": "subscribe",
+                        "args": topics[index:index + self.MAX_SUB_PER_MSG],
+                    }))
 
             def on_message(ws, raw):
                 try:
