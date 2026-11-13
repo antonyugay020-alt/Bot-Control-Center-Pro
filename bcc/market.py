@@ -289,7 +289,10 @@ class PublicData:
                     raise ValueError("Недопустимое значение публичного GET")
         return host
 
-    def __init__(self):
+    def __init__(self, *, quote_stream=None):
+        # Explicit opt-in adapter; the caller owns its producer thread.
+        # A missing/failed WebSocket quote never falls back to REST.
+        self._quote_stream = quote_stream
         self._thread = threading.local()
         self._sessions = []
         self._lock = threading.RLock()
@@ -628,6 +631,14 @@ class PublicData:
 
     def quote(self, symbol):
         clock.ensure()
+        if self._quote_stream is not None:
+            from .ws_quotes import StreamUnavailable
+            self._assert_provider_allowed("api.bybit.com")
+            try:
+                self._quote_stream.subscribe(symbol)
+                return self._quote_stream.quote(symbol)
+            except (StreamUnavailable, ValueError) as exc:
+                raise DataUnavailable("Bybit WebSocket: свежая котировка недоступна") from exc
         data = self.bybit("tickers", {"symbol": symbol})
         try:
             rows = data["result"]["list"]
