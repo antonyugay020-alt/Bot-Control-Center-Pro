@@ -399,6 +399,41 @@ class HubRegistry:
             )
             return cursor.rowcount
 
+    def active_bybit_symbols(self):
+        """Return active validated market WS subscriptions, independent of due.
+
+        This is a read-only registry scan: no REST, no cache writes. It lets
+        the single producer subscribe every requested symbol immediately
+        instead of waiting for each symbol's scheduled HTTP-shaped poll.
+        """
+        ticker_url = "https://api.bybit.com/v5/market/tickers"
+        book_url = "https://api.bybit.com/v5/market/orderbook"
+        tickers, books = set(), set()
+        with self._connect() as db:
+            now = time.time()
+            rows = db.execute(
+                "SELECT url,params FROM hub_subscriptions "
+                "WHERE active_until>? AND url IN (?,?)",
+                (now, ticker_url, book_url),
+            ).fetchall()
+        from .market import PublicData
+        for url, raw in rows:
+            try:
+                params = json.loads(raw)
+                PublicData.validated_public_request(url, params)
+                if (type(params) is not dict or
+                        params.get("category") != "linear" or
+                        type(params.get("symbol")) is not str):
+                    continue
+                if url == ticker_url and set(params) == {"category", "symbol"}:
+                    tickers.add(params["symbol"])
+                if (url == book_url and set(params) == {"category", "symbol", "limit"}
+                        and type(params["limit"]) is int and params["limit"] == 50):
+                    books.add(params["symbol"])
+            except (ValueError, TypeError):
+                continue
+        return tickers, books
+
     def has_active_subscriptions(self):
         """Read-only liveness probe for the independent producer lifecycle.
 
@@ -502,6 +537,7 @@ class MarketDataHub:
         self._leader_held = False
         self._leader_token = None
         self._prune_due = 0.0
+        self._ws_subscription_scan_due = 0.0
         self.lease_renew_interval = 5.0
         self.source = source or PublicData()
         if self.source.shared is None:
@@ -528,6 +564,25 @@ class MarketDataHub:
         if now >= self._prune_due:
             self.registry.prune_expired()
             self._prune_due = now + 30.0
+
+    def subscribe_active_websockets(self):
+        """Pre-register every demanded symbol on the shared WS producers."""
+        if self._leader_token is None:
+            return
+        now = time.monotonic()
+        if now < self._ws_subscription_scan_due:
+            return
+        self._ws_subscription_scan_due = now + 1.0
+        ticker = getattr(self.source, "_quote_stream", None)
+        orderbook = getattr(self.source, "_orderbook_stream", None)
+        if ticker is None and orderbook is None:
+            return
+        tickers, books = self.registry.active_bybit_symbols()
+        if ticker is not None:
+            for symbol in sorted(tickers):
+                ticker.subscribe(symbol)
+        if orderbook is not None and books:
+            orderbook.subscribe(sorted(books))
 
     def _fetch_public(self, url, params, *, urgent):
         """Preserve subscriber priority across ALL Hub producer modes.
@@ -573,6 +628,7 @@ class MarketDataHub:
         if not token:
             return []
         self._maintain_registry()
+        self.subscribe_active_websockets()
         results = []
         for key, url, params, urgent, generation in self.registry.due(
                 limit, include_priority=True, include_generation=True):
@@ -633,6 +689,7 @@ class MarketDataHub:
         if not token:
             return []
         self._maintain_registry()
+        self.subscribe_active_websockets()
         batch = min(limit, self.max_workers)
         # A one-request batch has no second lane to reserve. Keep the
         # scheduler's reservation strictly below the actual batch size.
@@ -716,6 +773,7 @@ class MarketDataHub:
             return []
 
         self._maintain_registry()
+        self.subscribe_active_websockets()
         results = []
         for key, (future, url, is_urgent, launched_token, generation) in list(self._inflight.items()):
             if not future.done():
