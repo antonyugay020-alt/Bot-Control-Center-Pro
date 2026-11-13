@@ -1,7 +1,7 @@
 """Publisher handoff: venue fairness, bounded growth and no duplicate work."""
 import unittest
 
-from bcc.ws_dispatch import MarketEventQueue
+from bcc.ws_dispatch import MarketEventQueue, ReconnectBackoff
 
 
 class EventHandoffTests(unittest.TestCase):
@@ -42,6 +42,19 @@ class EventHandoffTests(unittest.TestCase):
         self.assertFalse(queue.notify("execute-order", "BTCUSDT"))
         self.assertFalse(queue.notify("polybook", ""))
         self.assertEqual(queue.stats()["pending"], 0)
+
+    def test_reconnect_backoff_is_capped_and_recovers(self):
+        policy = ReconnectBackoff(base=1, maximum=30, healthy_after=30)
+        delays = [policy.after_session(0.1) for _ in range(8)]
+        self.assertEqual(delays, [1, 2, 4, 8, 16, 30, 30, 30])
+        self.assertEqual(policy.after_session(60), 1)
+        self.assertEqual(policy.after_session(0.1), 2)
+
+    def test_reconnect_backoff_rejects_invalid_limits(self):
+        with self.assertRaises(ValueError):
+            ReconnectBackoff(base=0)
+        with self.assertRaises(ValueError):
+            ReconnectBackoff(base=31, maximum=30)
 
     def test_no_work_returns_none(self):
         queue = MarketEventQueue()
