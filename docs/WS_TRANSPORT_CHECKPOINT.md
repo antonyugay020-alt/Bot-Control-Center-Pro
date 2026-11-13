@@ -48,3 +48,13 @@ Test real integrated source in an isolated checkout; fix failures as a group; va
 - Synthetic test modules added: test_ws_hub_push_integration.py, test_ws_event_publication.py, test_ws_due_filter.py, test_ws_500_subscriptions.py. **Not yet executed against the full repository**.
 - SQL predicate for filtering non-symbol ticker packs was checked in isolated SQLite locally: the broad ticker and depth200 request remain while symbol ticker and depth50 are excluded.
 - Required before deploying: full checkout regressions, real Bybit protocol/connection and many-worker latency tests, native Windows Qt E2E. Binance, Polymarket and Bybit live candle streams are still not migrated.
+
+## 2026-11-13 late continuation: Bybit 1-minute candle and partial-delta bridge
+
+- The Bybit ticker receiver merges partial `delta` updates while independently expiring the bid and ask fields; a one-sided delta never renews the other side's timestamps.
+- Added `bcc/ws_klines.py` for the **current 1-minute bar only**, with generation fencing, message-time checks, price/volume validation, confirmation monotonicity, and bounded reconnect.
+- Streaming `kline.1.SYMBOL` updates are published by the same event-driven Hub to the REST-compatible `/v5/market/kline?category=linear&symbol=...&interval=1&limit=10` cache identity. `PublicData.candles()` retains its historical REST backfill (`limit=100..1000`) and continuity validation.
+- New transport is **OFF by default**. Enable only on isolated copies using `BCC_BYBIT_WS_KLINES=1`; old running processes and databases are never migrated automatically. Explicit mode fails closed when the producer is absent.
+- Local verification on an isolated faithful reproduction of the three WebSocket receiver modules: Python compileall PASS and **27/27 synthetic unit tests PASS**, including 500-subscription batching for quote/depth50/kline. This is not a full GitHub checkout regression.
+- Additional real SQLite in-memory checks: strict due-filter selected only the three stream-covered per-symbol routes, preserving broad ticker marks, depth200 and historical kline/time-range REST calls. This is not live-exchange evidence.
+- **Blocking acceptance still missing**: full repository test suite, network Bybit V5 WS exchange verification and subscription limits, load tests on a real multi-process fleet, native Windows Qt E2E, independent clean-unpack release QA. Binance and Polymarket market streams remain unmigrated. No release and no deployment to live bots.
