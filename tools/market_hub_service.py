@@ -14,7 +14,9 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--cache', required=True)
     p.add_argument('--bybit-ws-quotes', action='store_true',
-                   help='Explicit experimental Bybit per-symbol ticker WebSocket transport')
+                   help='Explicit experimental Bybit ticker WebSocket transport')
+    p.add_argument('--bybit-ws-books', action='store_true',
+                   help='Explicit experimental Bybit orderbook.50 WebSocket transport')
     p.add_argument('--ready-file', default=None)
     p.add_argument('--ready-token', default=None)
     p.add_argument('--poll', type=float, default=.1)
@@ -44,19 +46,28 @@ def main():
     print(f'Market Hub starting: pid={os.getpid()} '
           f'python={sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}',
           flush=True)
-    quote_stream = None
-    ws_thread = None
-    if args.bybit_ws_quotes:
+    quote_stream = book_stream = None
+    ws_threads = []
+    if args.bybit_ws_quotes or args.bybit_ws_books:
         from websocket import WebSocketApp
         from bcc.market import PublicData
-        from bcc.ws_quotes import BybitQuoteStream
-        quote_stream = BybitQuoteStream()
-        source = PublicData(quote_stream=quote_stream)
+        if args.bybit_ws_quotes:
+            from bcc.ws_quotes import BybitQuoteStream
+            quote_stream = BybitQuoteStream()
+        if args.bybit_ws_books:
+            from bcc.ws_orderbooks import BybitOrderbookWS
+            book_stream = BybitOrderbookWS()
+        source = PublicData(quote_stream=quote_stream, orderbook_stream=book_stream)
         hub = MarketDataHub(args.cache, source=source, max_workers=args.concurrency)
-        ws_thread = threading.Thread(
-            target=lambda: quote_stream.run(websocket_app_factory=WebSocketApp),
-            name='bybit-public-ws', daemon=True)
-        ws_thread.start()
+        for label, stream in (('tickers', quote_stream), ('depth50', book_stream)):
+            if stream is None:
+                continue
+            thread = threading.Thread(
+                target=lambda selected=stream: selected.run(
+                    websocket_app_factory=WebSocketApp),
+                name='bybit-ws-' + label, daemon=True)
+            thread.start()
+            ws_threads.append(thread)
     else:
         hub = MarketDataHub(args.cache, max_workers=args.concurrency)
     print('Market Hub cache initialized', flush=True)
@@ -65,7 +76,7 @@ def main():
     try:
         while not stop.is_set():
             try:
-                if ws_thread is not None and not ws_thread.is_alive():
+                if any(not thread.is_alive() for thread in ws_threads):
                     raise RuntimeError("Bybit public WebSocket producer exited")
                 if not ready_logged:
                     # Startup lease and steady-state queue use the same
@@ -107,12 +118,11 @@ def main():
         traceback.print_exc()
         raise
     finally:
-        if quote_stream is not None:
-            try:
-                quote_stream.stop()
-            finally:
-                if ws_thread is not None:
-                    ws_thread.join(timeout=5)
+        for stream in (quote_stream, book_stream):
+            if stream is not None:
+                stream.stop()
+        for thread in ws_threads:
+            thread.join(timeout=5)
         hub.close()
 
 
