@@ -31,10 +31,35 @@ class StreamTests(unittest.TestCase):
         self.assertTrue(self.feed())
         self.assertEqual(self.stream.quote("BTCUSDT")[:2], (100.0, 101.0))
 
-    def test_no_unverified_partial_delta(self):
+    def test_partial_delta_keeps_independent_other_side_age(self):
         self.assertTrue(self.feed())
-        self.assertFalse(self.feed({"symbol": "BTCUSDT", "bid1Price": "500"}))
-        self.assertEqual(self.stream.quote("BTCUSDT")[0], 100)
+        self.clock.mono += 1
+        self.clock.wall += 1
+        self.assertTrue(self.stream.ingest({
+            "type": "delta", "topic": "tickers.BTCUSDT",
+            "ts": int(self.clock.wall * 1000),
+            "data": {"symbol": "BTCUSDT", "bid1Price": "100.5"},
+        }, generation=self.generation))
+        self.assertEqual(self.stream.quote("BTCUSDT")[:2], (100.5, 101.))
+        self.clock.mono += 1.1
+        self.clock.wall += 1.1
+        # A new bid never renews the untouched ask that is now >2s old.
+        self.assertFalse(self.stream.ingest({
+            "type": "delta", "topic": "tickers.BTCUSDT",
+            "ts": int(self.clock.wall * 1000),
+            "data": {"symbol": "BTCUSDT", "bid1Price": "100.6"},
+        }, generation=self.generation))
+        with self.assertRaises(StreamUnavailable):
+            self.stream.quote("BTCUSDT")
+
+    def test_partial_delta_before_snapshot_denied(self):
+        self.assertFalse(self.stream.ingest({
+            "type": "delta", "topic": "tickers.BTCUSDT",
+            "ts": int(self.clock.wall * 1000),
+            "data": {"symbol": "BTCUSDT", "bid1Price": "100"},
+        }, generation=self.generation))
+        with self.assertRaises(StreamUnavailable):
+            self.stream.quote("BTCUSDT")
 
     def test_stale(self):
         self.feed()
