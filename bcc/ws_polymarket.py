@@ -222,7 +222,10 @@ class PolymarketMarketWS:
         except (ValueError, TypeError):
             return False
         if isinstance(message, list):
-            return any(self.ingest(item, generation=generation) for item in message)
+            accepted = False
+            for item in message:
+                accepted = self.ingest(item, generation=generation) or accepted
+            return accepted
         return self.ingest(message, generation=generation)
 
     def get_book(self, asset):
