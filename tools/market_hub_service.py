@@ -7,6 +7,7 @@ import signal
 import sqlite3
 import threading
 import time
+import queue
 from bcc.market_hub import MarketDataHub
 
 
@@ -49,15 +50,47 @@ def main():
     quote_stream = book_stream = None
     ws_threads = []
     ws_jobs = []
+    ws_updates = queue.Queue(maxsize=16384)
+    ws_pending = set()
+    ws_pending_lock = threading.Lock()
+
+    def on_update(kind, symbol):
+        item = (kind, symbol)
+        with ws_pending_lock:
+            if item in ws_pending:
+                return
+            try:
+                ws_updates.put_nowait(item)
+            except queue.Full:
+                # Streaming backpressure must not stall the receiver.
+                # Scheduled hub snapshots remain an independent recovery path.
+                return
+            ws_pending.add(item)
+
+    def publish_events():
+        while not stop.is_set():
+            try:
+                item = ws_updates.get(timeout=.1)
+            except queue.Empty:
+                continue
+            with ws_pending_lock:
+                ws_pending.discard(item)
+            try:
+                hub.publish_ws_event(*item)
+            except (sqlite3.Error, OSError, ValueError) as exc:
+                print("WebSocket event publication unavailable: " +
+                      type(exc).__name__, flush=True)
+
+    publisher = None
     if args.bybit_ws_quotes or args.bybit_ws_books:
         from websocket import WebSocketApp
         from bcc.market import PublicData
         if args.bybit_ws_quotes:
             from bcc.ws_quotes import BybitQuoteStream
-            quote_stream = BybitQuoteStream()
+            quote_stream = BybitQuoteStream(on_update=on_update)
         if args.bybit_ws_books:
             from bcc.ws_orderbooks import BybitOrderbookWS
-            book_stream = BybitOrderbookWS()
+            book_stream = BybitOrderbookWS(on_update=on_update)
         source = PublicData(quote_stream=quote_stream, orderbook_stream=book_stream)
         hub = MarketDataHub(args.cache, source=source, max_workers=args.concurrency)
         for label, stream in (('tickers', quote_stream), ('depth50', book_stream)):
@@ -99,6 +132,11 @@ def main():
                         })
                     # Never start sockets on a standby Hub: only the
                     # authoritative leased producer may attach to Bybit.
+                    if ws_jobs:
+                        publisher = threading.Thread(
+                            target=publish_events, name='ws-cache-publisher',
+                            daemon=True)
+                        publisher.start()
                     for thread in ws_jobs:
                         thread.start()
                         ws_threads.append(thread)
@@ -130,6 +168,8 @@ def main():
                 stream.stop()
         for thread in ws_threads:
             thread.join(timeout=5)
+        if publisher is not None:
+            publisher.join(timeout=5)
         hub.close()
 
 
