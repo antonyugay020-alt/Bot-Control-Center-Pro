@@ -460,7 +460,7 @@ class PublicData:
             }
         except (StreamUnavailable, ValueError, TypeError, DataUnavailable) as exc:
             if self.shared is not None:
-                self._finish_shared(key, owner, host, cooldown=.25)
+                self._finish_shared(key, owner, host)
             raise DataUnavailable("WebSocket Bybit: свежий снимок недоступен") from exc
         if self.shared is not None:
             published = self._finish_shared(key, owner, host, data, .35)
