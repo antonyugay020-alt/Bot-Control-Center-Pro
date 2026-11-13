@@ -677,13 +677,18 @@ class MarketDataHub:
             return
         tickers, books = self.registry.active_bybit_symbols()
         if ticker is not None:
+            # One outbound subscription command per ten symbols rather than
+            # one message per coin in the fleet.
+            validated = []
+            from .ws_quotes import _SYMBOL
             for symbol in sorted(tickers):
-                try:
+                if _SYMBOL.fullmatch(symbol):
+                    validated.append(symbol)
+            if hasattr(ticker, "subscribe_many"):
+                ticker.subscribe_many(validated)
+            else:
+                for symbol in validated:
                     ticker.subscribe(symbol)
-                except ValueError:
-                    # One malformed or incompatible symbol cannot terminate
-                    # the shared producer for unrelated valid bot streams.
-                    continue
         if orderbook is not None:
             for symbol in sorted(books):
                 try:
