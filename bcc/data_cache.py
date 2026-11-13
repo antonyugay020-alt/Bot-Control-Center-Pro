@@ -238,6 +238,65 @@ class PublicCache:
             ).fetchone()
         return json.loads(row[0]) if row else None
 
+    def publish_websocket(self, url, params, host, value, *, ttl, leader_owner, leader_token):
+        """Atomic event-driven publication fenced by Hub leader and subscription.
+
+        This does not create a fake HTTP request, consume its budget, or
+        accept events from a producer that lost its cross-process leader lease.
+        """
+        from .market import PublicData
+        PublicData.validated_public_request(url, params)
+        if (host != "api.bybit.com" or type(params) is not dict
+                or params.get("category") != "linear"
+                or type(params.get("symbol")) is not str
+                or url not in (
+                    "https://api.bybit.com/v5/market/tickers",
+                    "https://api.bybit.com/v5/market/orderbook",
+                )
+                or (url.endswith("/orderbook") and
+                    (set(params) != {"category", "symbol", "limit"}
+                     or params.get("limit") != 50))
+                or (url.endswith("/tickers") and
+                    set(params) != {"category", "symbol"})
+                or type(ttl) not in (float, int) or not 0 < ttl <= 1
+                or type(leader_owner) is not str or not leader_owner
+                or type(leader_token) is not str or not leader_token):
+            raise ValueError("Invalid WS publisher admission")
+        if (type(value) is not dict or
+                value.get("_bcc_ws_book" if url.endswith("/orderbook") else "_bcc_ws_quote") is not True):
+            raise ValueError("Unverified WS payload provenance")
+        key = hashlib.sha256(
+            json.dumps([url, params], sort_keys=True).encode()
+        ).hexdigest()
+        encoded = json.dumps(value, allow_nan=False)
+        self._ensure_schema()
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            now = time.time()
+            boot = self._boot_epoch()
+            admitted = db.execute(
+                "SELECT 1 FROM hub_leader WHERE singleton=1 "
+                "AND owner=? AND lease_token=? AND expires>? "
+                "AND (boot_epoch=0 OR ?=0 OR abs(boot_epoch-?)<=60)",
+                (leader_owner, leader_token, now, boot, boot),
+            ).fetchone()
+            subscribed = db.execute(
+                "SELECT 1 FROM hub_subscriptions WHERE k=? "
+                "AND active_until>? AND url=? AND params=?",
+                (key, now, url, json.dumps(params, sort_keys=True,
+                     separators=(",", ":"))),
+            ).fetchone()
+            if not admitted or not subscribed or self._denied(db, host) is not None:
+                db.rollback()
+                return False
+            db.execute(
+                "INSERT OR REPLACE INTO cache(k,value,until,host) "
+                "VALUES(?,?,?,?)",
+                (key, encoded, now + ttl, host),
+            )
+            db.commit()
+        return True
+
     def begin(self, url, params, host, *, priority=False, websocket=False):
         if type(priority) is not bool or type(websocket) is not bool:
             raise ValueError('Invalid public request reservation')
