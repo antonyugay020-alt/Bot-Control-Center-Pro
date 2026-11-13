@@ -57,16 +57,29 @@ class BybitQuoteStream:
         self._stop = threading.Event()
 
     def subscribe(self, symbol):
-        if type(symbol) is not str or not _SYMBOL.fullmatch(symbol):
-            raise ValueError("invalid linear USDT symbol")
+        self.subscribe_many([symbol])
+
+    def subscribe_many(self, symbols):
+        """One validated batched subscription change for an entire bot fleet."""
+        if not isinstance(symbols, (list, tuple, set)) or any(
+                type(symbol) is not str or not _SYMBOL.fullmatch(symbol)
+                for symbol in symbols):
+            raise ValueError("invalid linear USDT symbols")
         with self._lock:
-            if symbol in self._subscriptions:
+            fresh = sorted(set(symbols) - self._subscriptions)
+            if not fresh:
                 return
-            self._subscriptions.add(symbol)
+            self._subscriptions.update(fresh)
             socket = self._socket if self._connected else None
-        if socket is not None:
+            if socket is None:
+                return
             try:
-                socket.send(json.dumps({"op": "subscribe", "args": ["tickers." + symbol]}))
+                for index in range(0, len(fresh), self.MAX_SUB_PER_MSG):
+                    socket.send(json.dumps({
+                        "op": "subscribe",
+                        "args": ["tickers." + symbol
+                                 for symbol in fresh[index:index + self.MAX_SUB_PER_MSG]],
+                    }))
             except Exception as exc:
                 self.disconnect()
                 try:
