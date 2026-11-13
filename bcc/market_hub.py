@@ -448,7 +448,7 @@ class HubRegistry:
             ).fetchone() is not None
 
     def due(self, limit=32, *, reserve_regular=0, exclude=(), include_priority=False,
-            include_generation=False):
+            include_generation=False, skip_ws_routes=()):
         # Urgent position marks first, reserve slots for scans.
 
         # Urgency belongs to a short renewable lease, not a permanent flag.
@@ -465,20 +465,30 @@ class HubRegistry:
         if any(type(key) is not str for key in exclude) or len(exclude) > 64:
             raise ValueError('Invalid in-flight Hub exclusion keys')
         skip_sql = (' AND k NOT IN (' + ','.join('?' for _ in exclude) + ')') if exclude else ''
+        skip_ws_routes = tuple(skip_ws_routes)
+        ws_routes = frozenset({
+            "https://api.bybit.com/v5/market/tickers",
+            "https://api.bybit.com/v5/market/orderbook",
+        })
+        if any(type(url) is not str or url not in ws_routes
+               for url in skip_ws_routes):
+            raise ValueError("Invalid WebSocket queue route filter")
+        if skip_ws_routes:
+            skip_sql += ' AND url NOT IN (' + ','.join('?' for _ in skip_ws_routes) + ')'
         with self._connect() as db:
             now = time.time()
             urgent = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
-              ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, limit-reserve_regular)).fetchall()
+              ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, *skip_ws_routes, limit-reserve_regular)).fetchall()
             regular = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until<=?''' + skip_sql +
-              ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, limit-len(urgent))).fetchall()
+              ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, *skip_ws_routes, limit-len(urgent))).fetchall()
             rows = [(row, True) for row in urgent] + [(row, False) for row in regular]
             if len(rows) < limit and len(urgent) == limit-reserve_regular:
                 more = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
                   WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
                   ' ORDER BY next_due,k LIMIT ? OFFSET ?',
-                  (now,now,now,*exclude,limit-len(rows),len(urgent))).fetchall()
+                  (now,now,now,*exclude,*skip_ws_routes,limit-len(rows),len(urgent))).fetchall()
                 rows.extend((row, True) for row in more)
         # Older Hub databases can contain subscriptions admitted before the
         # shared public-route policy existed. Revalidate at dequeue as well as
@@ -631,6 +641,14 @@ class MarketDataHub:
             # Queue worker may retry a newer event on the next receipt.
             return False
 
+    def _websocket_queue_exclusions(self):
+        routes = []
+        if getattr(self.source, "_quote_stream", None) is not None:
+            routes.append("https://api.bybit.com/v5/market/tickers")
+        if getattr(self.source, "_orderbook_stream", None) is not None:
+            routes.append("https://api.bybit.com/v5/market/orderbook")
+        return tuple(routes)
+
     def subscribe_active_websockets(self):
         """Pre-register every demanded symbol on the shared WS producers."""
         if self._leader_token is None:
@@ -706,7 +724,8 @@ class MarketDataHub:
         self.subscribe_active_websockets()
         results = []
         for key, url, params, urgent, generation in self.registry.due(
-                limit, include_priority=True, include_generation=True):
+                limit, include_priority=True, include_generation=True,
+                skip_ws_routes=self._websocket_queue_exclusions()):
             if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
             delay = 120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0)
@@ -770,7 +789,8 @@ class MarketDataHub:
         # scheduler's reservation strictly below the actual batch size.
         due = self.registry.due(batch,
                                 reserve_regular=1 if batch > 1 else 0,
-                                include_priority=True, include_generation=True)
+                                include_priority=True, include_generation=True,
+                                skip_ws_routes=self._websocket_queue_exclusions())
         if not due:
             return []
         stop = threading.Event()
@@ -885,6 +905,7 @@ class MarketDataHub:
             limit=self.max_workers, reserve_regular=1,
             exclude=tuple(self._inflight), include_priority=True,
             include_generation=True,
+            skip_ws_routes=self._websocket_queue_exclusions(),
         )
         regular_inflight = sum(not item[2] for item in self._inflight.values())
         urgent_inflight = len(self._inflight) - regular_inflight
