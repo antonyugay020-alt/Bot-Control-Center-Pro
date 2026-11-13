@@ -96,11 +96,15 @@ class HubWsQuoteTests(unittest.TestCase):
         finally:
             source.close()
 
-    def test_non_ticker_route_not_intercepted(self):
+    def test_non_ticker_route_remains_http_until_migrated(self):
         source = self.make_source()
+        source.shared = None
         try:
-            self.assertFalse(
-                "https://api.bybit.com/v5/market/kline" == URL
-            )
+            with patch("requests.sessions.Session.get",
+                       side_effect=AssertionError("unmigrated REST route")):
+                with self.assertRaisesRegex(AssertionError, "unmigrated REST route"):
+                    source.get("https://api.bybit.com/v5/market/kline",
+                               {"category": "linear", "symbol": "BTCUSDT",
+                                "interval": "1", "limit": 1})
         finally:
             source.close()
