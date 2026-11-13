@@ -17,6 +17,8 @@ import tempfile
 import time
 import zipfile
 
+from tools.verify_package import verify
+
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = (
     "bcc/ws_quotes.py", "bcc/ws_orderbooks.py", "bcc/ws_klines.py",
@@ -52,7 +54,7 @@ def main(argv=None):
                      help="number of offline regression repetitions 1..150")
     cli.add_argument("--full-regression", action="store_true",
                      help="run all repository Python tests in addition to WS tests")
-    cli.add_argument("--report", default="WS_QA_RESULT.json")
+    cli.add_argument("--report", default="verification_reports/ws_qa/WS_QA_RESULT.json")
     args = cli.parse_args(argv)
     if not 1 <= args.repeat <= 150:
         cli.error("--repeat must be 1..150")
@@ -74,6 +76,8 @@ def main(argv=None):
     }
     try:
         require_isolated_checkout()
+        result["source_integrity"] = verify(ROOT)
+        report.parent.mkdir(parents=True, exist_ok=True)
         for relative in SOURCES:
             filename = ROOT / relative
             ast.parse(filename.read_text(encoding="utf-8"), filename=str(filename))
@@ -100,8 +104,8 @@ def main(argv=None):
                     text=True, errors="replace", timeout=1800,
                 )
                 with full_log.open("a", encoding="utf-8") as stream:
-                    stream.write(f"\\n===== WEBSOCKET ITERATION {cycle + 1} =====\\n")
-                    stream.write(process.stdout + "\\n" + process.stderr + "\\n")
+                    stream.write(f"\n===== WEBSOCKET ITERATION {cycle + 1} =====\n")
+                    stream.write(process.stdout + "\n" + process.stderr + "\n")
                 result["executions"].append({
                     "kind": "websocket", "iteration": cycle + 1,
                     "returncode": process.returncode,
@@ -116,7 +120,7 @@ def main(argv=None):
                     text=True, errors="replace", timeout=3600,
                 )
                 with full_log.open("a", encoding="utf-8") as stream:
-                    stream.write("\\n===== FULL PYTHON REGRESSION =====\\n")
+                    stream.write("\n===== FULL PYTHON REGRESSION =====\n")
                     stream.write(process.stdout + "\\n" + process.stderr + "\\n")
                 result["executions"].append({
                     "kind": "full-python", "returncode": process.returncode,
@@ -129,6 +133,7 @@ def main(argv=None):
         result["python_status"] = "BLOCKED"
         result["blocker"] = type(exc).__name__ + ": " + str(exc)
     result["elapsed_seconds"] = round(time.time() - started, 2)
+    report.parent.mkdir(parents=True, exist_ok=True)
     # One final result in this isolated checkout. Never package a release or
     # claim GUI acceptance from Python-only checks.
     report.write_text(json.dumps(result, ensure_ascii=False, indent=2),
