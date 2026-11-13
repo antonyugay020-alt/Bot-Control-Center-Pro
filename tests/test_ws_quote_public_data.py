@@ -34,7 +34,7 @@ class WSQuoteIntegrationTests(unittest.TestCase):
         stream = FakeStream((100.0, 101.0, 1763000000.0))
         source = self.make_data(stream)
         try:
-            with patch("bcc.market.clock.ensure"), patch.object(source, "bybit", side_effect=AssertionError("REST invoked")):
+            with patch("bcc.market.clock.ensure"), patch("bcc.market.market_now", return_value=1763000000.0), patch.object(source, "bybit", side_effect=AssertionError("REST invoked")):
                 self.assertEqual(source.quote("BTCUSDT"), (100.0, 101.0, 1763000000.0))
             self.assertEqual(stream.symbols, ["BTCUSDT"])
         finally:
