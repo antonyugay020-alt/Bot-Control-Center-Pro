@@ -1323,6 +1323,7 @@ class PolymarketData(PublicData):
 
     def impulse(self, coin, start, now):
         # Signal source is Binance spot; settlement never uses this price.
+        clock.ensure()
         rows = self.get(
             "https://api.binance.com/api/v3/klines",
             {
@@ -1345,6 +1346,13 @@ class PolymarketData(PublicData):
         # impulse direction and purchase the wrong UP/DOWN PAPER outcome.
         if not isinstance(ticker, dict) or ticker.get("symbol") != coin + "USDT":
             raise DataUnavailable("Котировка другой торговой пары Binance")
+        if ticker.get("_bcc_ws_binance") is True:
+            try:
+                stamp = float(ticker["_ws_timestamp"])
+            except (KeyError, ValueError, TypeError, OverflowError) as exc:
+                raise DataUnavailable("Binance WebSocket: неверное время импульса") from exc
+            if not math.isfinite(stamp) or not -1 <= market_now() - stamp <= 2:
+                raise DataUnavailable("Binance WebSocket: цена импульса устарела")
         last = float(ticker["price"])
         if not all(math.isfinite(x) and x > 0 for x in (first, last)):
             raise DataUnavailable("Некорректная цена импульса")
