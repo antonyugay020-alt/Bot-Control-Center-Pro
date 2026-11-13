@@ -29,14 +29,18 @@ class Quote:
     exchange_ms: int
     received_monotonic: float
     generation: int
+    bid_exchange_ms: int
+    ask_exchange_ms: int
+    bid_received_monotonic: float
+    ask_received_monotonic: float
 
 
 class BybitQuoteStream:
-    """Caches fully observed bid/ask pairs per connection generation.
+    """Caches quote sides with independent freshness within one WS generation.
 
-    Bybit ticker deltas may omit one side; never mix sides across messages.
-    All values are dropped upon disconnect, reconnect, subscription failure,
-    or a superseded generation. No live network starts without run().
+    A delta may omit unchanged fields. The missing side is retained only
+    while its OWN exchange/monotonic timestamp remains fresh; a one-sided
+    update never renews its freshness. No mixing across reconnects.
     """
 
     ENDPOINT = "wss://stream.bybit.com/v5/public/linear"
@@ -105,29 +109,34 @@ class BybitQuoteStream:
             return self._generation
 
     def ingest(self, payload, *, generation):
-        """Accept complete Bybit v5 ticker messages only; ignore unrelated data."""
+        """Merge valid partial deltas without renewing the untouched quote side."""
         if type(payload) is not dict or payload.get("type") not in ("snapshot", "delta"):
             return False
+        kind = payload["type"]
         topic = payload.get("topic")
         if type(topic) is not str or not topic.startswith("tickers."):
             return False
         symbol = topic[len("tickers."):]
         row = payload.get("data")
-        if type(row) is not dict or row.get("symbol") != symbol:
-            return False
-        if "bid1Price" not in row or "ask1Price" not in row:
+        if type(row) is not dict or row.get("symbol", symbol) != symbol:
             return False
         try:
-            bid = float(row["bid1Price"])
-            ask = float(row["ask1Price"])
             ts = payload["ts"]
+            if type(ts) is not int or not -5 <= self._wall() - ts / 1000 <= 2:
+                return False
+            incoming = {}
+            for name in ("bid1Price", "ask1Price"):
+                if name in row:
+                    value = float(row[name])
+                    if not math.isfinite(value) or value <= 0:
+                        raise ValueError("invalid ticker price")
+                    incoming[name] = value
         except (ValueError, TypeError, KeyError, OverflowError):
+            with self._lock:
+                if self._connected and generation == self._generation:
+                    self._quotes.pop(symbol, None)
             return False
-        if (type(ts) is not int or not math.isfinite(bid) or
-                not math.isfinite(ask) or bid <= 0 or ask <= 0 or bid > ask):
-            return False
-        now_wall = self._wall()
-        if not -5 <= now_wall - ts / 1000 <= 2:
+        if not incoming:
             return False
         with self._lock:
             if (not self._connected or generation != self._generation or
@@ -136,24 +145,57 @@ class BybitQuoteStream:
             previous = self._quotes.get(symbol)
             if previous is not None and ts < previous.exchange_ms:
                 return False
-            self._quotes[symbol] = Quote(symbol, bid, ask, ts, self._mono(), generation)
+            if kind == "snapshot":
+                # The first quote of a generation must contain both sides.
+                if set(incoming) != {"bid1Price", "ask1Price"}:
+                    self._quotes.pop(symbol, None)
+                    return False
+                previous = None
+            elif previous is None:
+                return False
+            now = self._mono()
+            bid = incoming.get("bid1Price", previous.bid if previous else None)
+            ask = incoming.get("ask1Price", previous.ask if previous else None)
+            bid_ms = ts if "bid1Price" in incoming else previous.bid_exchange_ms
+            ask_ms = ts if "ask1Price" in incoming else previous.ask_exchange_ms
+            bid_mono = now if "bid1Price" in incoming else previous.bid_received_monotonic
+            ask_mono = now if "ask1Price" in incoming else previous.ask_received_monotonic
+            fresh = (
+                bid is not None and ask is not None and bid <= ask
+                and 0 <= now - bid_mono <= self._max_age
+                and 0 <= now - ask_mono <= self._max_age
+                and -5 <= self._wall() - bid_ms / 1000 <= self._max_age
+                and -5 <= self._wall() - ask_ms / 1000 <= self._max_age
+            )
+            if not fresh:
+                self._quotes.pop(symbol, None)
+                return False
+            self._quotes[symbol] = Quote(
+                symbol, bid, ask, ts, now, generation,
+                bid_ms, ask_ms, bid_mono, ask_mono,
+            )
         if self.on_update is not None:
             try:
                 self.on_update("tickers", symbol)
             except Exception:
-                # Consumer failures never kill the independent receive loop.
                 pass
         return True
 
     def quote(self, symbol):
         with self._lock:
             q = self._quotes.get(symbol)
+            now = self._mono()
+            wall = self._wall()
             if (not self._connected or q is None or
                     q.generation != self._generation or
-                    not 0 <= self._mono() - q.received_monotonic <= self._max_age or
-                    not -5 <= self._wall() - q.exchange_ms / 1000 <= 2):
+                    not 0 <= now - q.bid_received_monotonic <= self._max_age or
+                    not 0 <= now - q.ask_received_monotonic <= self._max_age or
+                    not -5 <= wall - q.bid_exchange_ms / 1000 <= self._max_age or
+                    not -5 <= wall - q.ask_exchange_ms / 1000 <= self._max_age):
                 raise StreamUnavailable("Bybit WebSocket quote absent or stale")
-            return q.bid, q.ask, q.exchange_ms / 1000
+            # Conservative exchange time: one-sided delta does not refresh
+            # the timestamp of the unmodified executable quote side.
+            return q.bid, q.ask, min(q.bid_exchange_ms, q.ask_exchange_ms) / 1000
 
     def run(self, *, websocket_app_factory=None, retry_delay=1.0):
         """Blocking producer loop; caller owns its thread and shutdown lifecycle.
