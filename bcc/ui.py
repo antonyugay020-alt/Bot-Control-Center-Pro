@@ -714,6 +714,7 @@ class MainWindow(QMainWindow):
             cfg, _ = self.repo.load(folder)
             self._live_config_name = cfg["name"]
             self._live_config_strategy = cfg["strategy"]
+            self._live_config_symbols = len(cfg["symbols"])
             self.close_positions_button.setVisible(cfg["strategy"] != "POLYMARKET")
             state = read_paper_state(folder)
             if state is None:
@@ -926,6 +927,7 @@ class MainWindow(QMainWindow):
         self.notice.setText(
             f"{name} · свободная маржа {free_text}"
             f" · сохранено позиций {len(state['positions'])}"
+            f" · монет в настройках {getattr(self, '_live_config_symbols', 0)}"
             f" · капитал {value_text}"
             f" · макс. DD {state.get('max_drawdown', 0):.2f}%"
             + (
