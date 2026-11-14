@@ -48,7 +48,15 @@ def process_tick(cfg, store, engine, tick):
             # that remains younger than the generic TTL must not authorize
             # another section's PAPER collateral after its source has failed.
             state["marks"].pop(symbol, None)
-            state.get("margin_data", {}).pop(symbol, None)
+            # Revoke the missing market price immediately, but do not erase
+            # independently verified public risk tiers on a transient book
+            # outage. A subsequent authenticated WS mark can recover pricing
+            # without waiting for another full REST risk-tier round trip.
+            if tick.margin_data is not None:
+                state.setdefault("margin_data", {})[symbol] = dict(tick.margin_data)
+            risk_row = state.get("margin_data", {}).get(symbol)
+            if isinstance(risk_row, dict):
+                risk_row.pop("quote", None)
             apply_funding(state, events, symbol, tick.rates, tick.funding_marks, now)
             # Preserve both independent market failures. With no book we
             # cannot trade, but losing the history error makes a multi-bot
@@ -304,6 +312,9 @@ def run_loop(
                         books.pop(symbol, None)
                         with risk_transaction(store) as (state, events):
                             state["marks"].pop(symbol, None)
+                            risk_row = state.get("margin_data", {}).get(symbol)
+                            if isinstance(risk_row, dict):
+                                risk_row.pop("quote", None)
                             state["diagnostics"][symbol] = [
                                 {"section": "Данные", "reason": str(exc)}
                             ]
