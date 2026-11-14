@@ -18,6 +18,7 @@ class MarketTick:
     funding_marks: dict
     history_error: str = ""
     quote_error: str = ""
+    margin_data: dict | None = None
 
 
 class MarketScheduler:
@@ -81,6 +82,17 @@ class MarketScheduler:
                 history_error = str(exc)
         rates = []
         marks = {}
+        margin_data = None
+        # Refresh slow risk tiers on the independent history/funding lane.
+        # This result is committed by the single financial worker together
+        # with the next fresh executable WS book, never from this pool.
+        if history_only:
+            refresh_risk = getattr(self.source, "refresh_position_risk", None)
+            if callable(refresh_risk):
+                try:
+                    margin_data = refresh_risk(symbol)
+                except (DataUnavailable, ValueError, KeyError, TypeError):
+                    pass  # Retain the old timestamp; admission fails closed.
         if positions:
             try:
                 rates = self.source.funding(symbol)
@@ -106,7 +118,8 @@ class MarketScheduler:
             except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
                 book = None
                 quote_error = str(exc)
-        return MarketTick(symbol, bars, book, rates, marks, history_error, quote_error)
+        return MarketTick(symbol, bars, book, rates, marks, history_error, quote_error,
+                          margin_data)
 
     def _quote(self, symbol):
         try:
@@ -183,7 +196,7 @@ class MarketScheduler:
                         # for the same position alongside the quote lane.
                         self._history_results[symbol] = MarketTick(
                             symbol, tick.bars, None, tick.rates, tick.funding_marks,
-                            tick.history_error, '')
+                            tick.history_error, '', tick.margin_data)
                     else:
                         completed.append((symbol, tick, None))
                 except Exception as exc:
@@ -212,7 +225,13 @@ class MarketScheduler:
                     tick = MarketTick(symbol, history.bars if history else [], book,
                                       history.rates if history else [],
                                       history.funding_marks if history else {},
-                                      history.history_error if history else '', error)
+                                      history.history_error if history else '', error,
+                                      history.margin_data if history else None)
+                    if history is not None:
+                        # A refreshed margin snapshot is delivered once;
+                        # replaying it on each quote would regress newer
+                        # mark-price evidence back to an older risk snapshot.
+                        history.margin_data = None
                     completed.append((symbol, tick, None))
                 except Exception as exc:
                     completed.append((symbol, None, exc))
