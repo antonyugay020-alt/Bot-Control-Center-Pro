@@ -120,7 +120,23 @@ def check_signal_source():
         source.close()
 
 
-def check_sources():
+SOURCE_CHECKS = {
+    "bybit": ("Bybit USDT Futures", check_bybit),
+    "polymarket": ("Polymarket Gamma + CLOB", check_polymarket),
+    "binance": ("Binance spot impulse", check_signal_source),
+}
+
+
+def check_sources(*, venues=("bybit", "polymarket", "binance")):
+    """Explicit source scope; a Bybit-only gate never contacts other venues.
+
+    A selected venue must prove its actual market data; public independent
+    clock references remain mandatory and are not trading venues here.
+    """
+    if not venues or len(set(venues)) != len(venues) or any(
+        venue not in SOURCE_CHECKS for venue in venues
+    ):
+        raise ValueError("Invalid public source check scope")
     def run(item):
         name, callback = item
         start = time.monotonic()
@@ -139,18 +155,15 @@ def check_sources():
         result["elapsed_seconds"] = round(time.monotonic() - start, 3)
         return result
 
-    callbacks = [
-        ("Bybit USDT Futures", check_bybit),
-        ("Polymarket Gamma + CLOB", check_polymarket),
-        ("Binance spot impulse", check_signal_source),
-    ]
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    callbacks = [SOURCE_CHECKS[venue] for venue in venues]
+    with ThreadPoolExecutor(max_workers=len(callbacks)) as pool:
         checks = list(pool.map(run, callbacks))
     report = {
         "app_version": VERSION,
         "at": datetime.now(timezone.utc).isoformat(),
         "platform": platform.platform(),
         "read_only": True,
+        "scope": list(venues),
         "trading_clock": clock.evidence,
         "checks": checks,
         "source_restrictions": [
@@ -177,8 +190,14 @@ def main():
     parser.add_argument(
         "--output", type=Path, default=Path("verification_reports/public_sources.json")
     )
+    parser.add_argument(
+        "--venue", choices=("bybit", "polymarket", "binance", "all"),
+        default="all", help="Read-only venue scope; clock quorum remains independent"
+    )
     args = parser.parse_args()
-    report = check_sources()
+    venues = (("bybit", "polymarket", "binance")
+              if args.venue == "all" else (args.venue,))
+    report = check_sources(venues=venues)
     atomic_json(args.output, report)
     for check in report["checks"]:
         print(check["source"], check["status"], check.get("error", ""), flush=True)
