@@ -61,6 +61,7 @@ class BybitQuoteStream:
         # Exchange mark-price has its own event clock and must never be
         # fabricated from best bid/ask or renewed by quote-only deltas.
         self._marks = {}
+        self._mark_refresh_due = {}
         self._socket = None
         self._stop = threading.Event()
 
@@ -104,6 +105,7 @@ class BybitQuoteStream:
             self._socket = None
             self._quotes.clear()
             self._marks.clear()
+            self._mark_refresh_due.clear()
 
     def connect(self, socket=None):
         with self._lock:
@@ -114,6 +116,7 @@ class BybitQuoteStream:
             self._socket = socket
             self._quotes.clear()
             self._marks.clear()
+            self._mark_refresh_due.clear()
             return self._generation
 
     def ingest(self, payload, *, generation):
@@ -208,6 +211,50 @@ class BybitQuoteStream:
             except Exception:
                 pass
         return True
+
+    def refresh_stale_marks(self, symbols):
+        """Request a NEW exchange ticker snapshot for quiet symbols.
+
+        Never reuse or restamp old observations. A bounded unsubscribe/
+        resubscribe on the established public socket asks Bybit to send a
+        fresh snapshot when a mark has expired. Each symbol is throttled to
+        one recovery request per 6 seconds, not once per scheduler cycle.
+        The subsequent genuine WebSocket event is still required before
+        margin/risk becomes available again.
+        """
+        if not isinstance(symbols, (list, tuple, set)):
+            raise ValueError("invalid mark refresh symbols")
+        if any(type(s) is not str or not _SYMBOL.fullmatch(s) for s in symbols):
+            raise ValueError("invalid mark refresh symbol")
+        with self._lock:
+            if not self._connected or self._socket is None:
+                return 0
+            now = self._mono()
+            wall = self._wall()
+            stale = []
+            for symbol in sorted(set(symbols) & self._subscriptions):
+                row = self._marks.get(symbol)
+                fresh = (row is not None and row[3] == self._generation
+                         and 0 <= now - row[2] <= self._max_age
+                         and -5 <= wall - row[1] / 1000 <= self._max_age)
+                if fresh or now < self._mark_refresh_due.get(symbol, 0):
+                    continue
+                stale.append(symbol)
+                self._mark_refresh_due[symbol] = now + 6.0
+            if not stale:
+                return 0
+            try:
+                for index in range(0, len(stale), self.MAX_SUB_PER_MSG):
+                    topics = [
+                        "tickers." + symbol
+                        for symbol in stale[index:index + self.MAX_SUB_PER_MSG]
+                    ]
+                    self._socket.send(json.dumps({"op": "unsubscribe", "args": topics}))
+                    self._socket.send(json.dumps({"op": "subscribe", "args": topics}))
+            except Exception as exc:
+                self.disconnect()
+                raise StreamUnavailable("Bybit mark refresh subscription failed") from exc
+            return len(stale)
 
     def mark(self, symbol):
         """Independent real Bybit WS mark-price with its original event time.
