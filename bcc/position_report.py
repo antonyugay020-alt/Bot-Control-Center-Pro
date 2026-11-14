@@ -10,12 +10,13 @@ from .trading import mark_pnl
 
 
 def position_mark_pnl(state, position, now=None):
-    from .margin import MODEL
-    if position.get("kind") != "POLYMARKET" and state.get("margin_model") == MODEL:
-        from .trading import position_unrealized
-        return position_unrealized(state, position, now)
+    # Display-only unrealized PnL must follow the verified executable
+    # bid/ask arriving through the Bybit WS book. Margin calculations retain
+    # their independent exchange mark-price and risk-tier requirements;
+    # this display estimate must never authorize entries or collateral.
     quote = state.get("marks", {}).get(position.get("token", position.get("symbol")))
-    if not quote or not quote_is_recent(quote, now=now):
+    maximum = 15 if position.get("kind") == "POLYMARKET" else 3
+    if not quote or not quote_is_recent(quote, maximum=maximum, now=now):
         return None
     try:
         bid, ask = quote["bid"], quote["ask"]
