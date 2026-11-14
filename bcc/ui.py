@@ -939,8 +939,7 @@ class MainWindow(QMainWindow):
                 if stale else ""
             )
             + (
-                " · PnL позиций: по исполнимому WebSocket bid/ask; "
-                "маржинальная оценка проверяется отдельно"
+                " · PnL: исполнимый WebSocket bid/ask (оценка)"
                 if strategy != "POLYMARKET" and state["positions"] else ""
             )
         )
