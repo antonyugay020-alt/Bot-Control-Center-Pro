@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_WS_CLOCK_FENCE_QA_20261113_NOT_RELEASE",
+  "checkpoint": "BCC_WS_SQLITE_FLEET_QA_20261114_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -65,7 +65,7 @@
     "bcc/constructor_transaction.py": "1cfd25a130450f820f5dc623f11568641820f6b84c9eb73c194eb5f4a87ad578",
     "bcc/control.py": "64a9d9fe889ec9e9f989f6793050ffa09f00fcfedaf6346d95ddfcda08ce3092",
     "bcc/coordination.py": "f53ff56ae3ffc5311b515e6c5cca3456d5547a88f7e451acd9a73b1df1f928ef",
-    "bcc/data_cache.py": "f574976a5214fec62b5c95d4412519ccca6bc648ab5de2f7f81cbb84bfc6d6a7",
+    "bcc/data_cache.py": "9ff823f1b711cf01833f72a20f2e360258ddadb98fbd9e09735e7e3a632c1659",
     "bcc/execution.py": "7ca97407a77e226f7d9c9ce3274d0074913d35264fbf4a29823acf607a71f50a",
     "bcc/fleet.py": "5c10de977f44f3c0041802b1434f5e7cb51abe0445a731fa1a2b8f0194fe9da4",
     "bcc/flow_layout.py": "1e5d9c4b48fbd8a31046030276a74a2c488a9ee90a3d8e89027b2714cd3b054a",
@@ -206,7 +206,7 @@
     "tests/test_fleet_architecture.py": "24119f30200f5fee03ce9b87c42391691d235d3a9fa37de990c725ee24dec400",
     "tests/test_fleet_export_admission.py": "f4e220f459357dabb2b967a36acf15d0810ef1a2515454f87c29346440e725c9",
     "tests/test_fleet_inline_callback_scaling.py": "cd34606d9656d27b51738cb5c6bd735f6d2d8f9a0d00c858200f0ce64dd88c66",
-    "tests/test_fleet_policy_fence_recovery.py": "fd0e2cc435234383314faf075ebfbc469a9f61c3a054b42e9dc9821d75bd2210",
+    "tests/test_fleet_policy_fence_recovery.py": "b19c3140e37b19e269ef85115d4935804d0fdbe895b80f38f5ca740353eef727",
     "tests/test_fleet_runnable_priority.py": "c741babd495f153bc7cdf17b1d8e43bacbfc78396eece3ba5dde822b3e10176d",
     "tests/test_grid_preview_model.py": "b7aa5b944f0de116842d7707cfb8fd70c8b76f7fac8c14c5553095ebda12900c",
     "tests/test_gui_runtime_bootstrap_contract.py": "6fa5ddd4448b8a6e5e6a247e3568bcb23810fd9f75aeca598f744515d27bc89f",
