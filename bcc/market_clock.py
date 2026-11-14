@@ -55,7 +55,11 @@ def _provider_interval(provider, result, wall, anchor):
             or sample.get("http_status") != 200
             or any(type(sample.get(key)) not in (int, float)
                    or not math.isfinite(sample[key]) for key in fields)
-            or not 0 <= sample["round_trip_seconds"] <= 1
+            # A provider's independently measured network RTT is not
+            # equivalent to the uncertainty of the final two-provider UTC.
+            # Permit bounded slow connections here; _clock_consensus keeps
+            # the <=0.5 second executable trading-time requirement.
+            or not 0 <= sample["round_trip_seconds"] <= 1.5
             or not 0 < sample["server_precision_seconds"] <= 0.001
         ):
             raise ClockUnavailable("Нет двух точных некэшированных ответов времени " + provider)
@@ -72,7 +76,11 @@ def _provider_interval(provider, result, wall, anchor):
         ))
     low = max(interval[0] for interval in intervals)
     high = min(interval[1] for interval in intervals)
-    if not 0 <= high - low <= 0.5:
+    # A single source provides an uncertainty envelope, never permission
+    # to trade. Do not reject two internally consistent uncached samples
+    # merely because their shared network envelope is wider than 0.5s.
+    # The independent-provider intersection below MUST still be <=0.5s.
+    if not 0 <= high - low <= 1.5:
         raise ClockUnavailable("Два ответа источника не согласуются: " + provider)
     return low, high
 
