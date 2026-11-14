@@ -79,6 +79,10 @@ class BybitQuoteStream:
             if not fresh:
                 return
             self._subscriptions.update(fresh)
+            for symbol in fresh:
+                # Allow the initial exchange subscription snapshot to arrive
+                # before requesting a recovery snapshot.
+                self._mark_refresh_due[symbol] = self._mono() + 3.0
             socket = self._socket if self._connected else None
             if socket is None:
                 return
@@ -117,6 +121,8 @@ class BybitQuoteStream:
             self._quotes.clear()
             self._marks.clear()
             self._mark_refresh_due.clear()
+            for symbol in self._subscriptions:
+                self._mark_refresh_due[symbol] = self._mono() + 3.0
             return self._generation
 
     def ingest(self, payload, *, generation):
