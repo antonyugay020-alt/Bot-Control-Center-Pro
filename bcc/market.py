@@ -315,6 +315,7 @@ class PublicData:
         self._hub_registry = None
         self._hub_renew_at = {}
         self._hub_priority_until = {}
+        self._risk_refresh_due = {}
         path = os.environ.get("BCC_PUBLIC_CACHE")
         if path:
             from .data_cache import PublicCache
@@ -1082,6 +1083,28 @@ class PublicData:
             quote=account_marks[symbol],
             account_marks=account_marks,
         )
+
+    def refresh_position_risk(self, symbol):
+        """Slow independent risk-tier refresh, called only on the history lane.
+
+        A fast book never waits for this HTTP work. Failed refreshes do not
+        extend stale collateral: the normal 300s exchange risk timestamp still
+        expires and blocks new exposure until independently revalidated.
+        """
+        with self._lock:
+            now = time.monotonic()
+            if self._risk_refresh_due.get(symbol, 0) > now:
+                return None
+            # Admit one independent refresh per symbol, never an HTTP stampede.
+            self._risk_refresh_due[symbol] = now + 120
+        try:
+            snapshot = self.margin_snapshot(symbol)
+        except (DataUnavailable, ValueError, KeyError, TypeError):
+            with self._lock:
+                self._risk_refresh_due[symbol] = time.monotonic() + 15
+            raise
+        snapshot.pop("account_marks", None)
+        return snapshot
 
     def _ws_position_mark(self, symbol):
         """Read actual Bybit markPrice, never executable spread as collateral.
