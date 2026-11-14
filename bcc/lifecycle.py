@@ -167,8 +167,14 @@ class Lifecycle:
         # Polymarket uses a separate market/settlement adapter; the public
         # Bybit hub must not launch for bots that never subscribe to it.
         if cfg["strategy"] != "POLYMARKET":
-            ensure_hub(self.repo.root)
+            # New non-Polymarket workers require the active public Bybit
+            # WebSocket quote + executable depth producer, not optional
+            # legacy REST polling. Never interrupt a live legacy Hub:
+            # ensure_hub rejects a capability mismatch rather than restarting it.
+            ensure_hub(self.repo.root, bybit_ws=True)
             env["BCC_MARKET_HUB_MODE"] = "client"
+            env["BCC_BYBIT_WS_BOOKS"] = "1"
+            env["BCC_BYBIT_WS_QUOTES"] = "1"
         with BotLock(folder):
             check_launch_lease(folder)
             guard_paper_recovery(folder)
