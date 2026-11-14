@@ -881,9 +881,18 @@ class MainWindow(QMainWindow):
                 at_end = old_position >= bar.maximum()
                 self.logs.setPlainText(text)
                 bar.setValue(bar.maximum() if at_end else old_position)
-            stale = [
-                s for s, q in state["marks"].items() if not quote_is_recent(q, now=now)
-            ]
+            # Historical mark rows may remain after an old position closes;
+            # report only symbols that currently require an executable price.
+            # Count missing quotes as stale, not just stored expired rows.
+            active_symbols = {
+                p["symbol"] for p in state["positions"].values()
+            } | {
+                p["symbol"] for p in state.get("pending", {}).values()
+            }
+            stale = sorted(
+                s for s in active_symbols
+                if not quote_is_recent(state["marks"].get(s), now=now)
+            )
             free_margin = available_margin(state)
             free_margin_text = f"{free_margin:.2f} USDT" if math.isfinite(free_margin) else "— (нет достоверной оценки)"
             self.notice.setText(
