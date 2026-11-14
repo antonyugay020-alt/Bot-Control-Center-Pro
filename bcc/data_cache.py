@@ -47,15 +47,75 @@ class PublicCache:
             "sqlite_busy": 0,
         }
 
+    @staticmethod
+    def _schema_current(db):
+        """Read-only fast path for the fully migrated shared WAL schema.
+
+        Fifteen Windows workers can attach at once. They must not each take
+        an exclusive migration lock just to run CREATE IF NOT EXISTS against
+        a database whose schema is already correct.
+        """
+        expected = {
+            "cache": {"k", "value", "until", "host"},
+            "lease": {"k", "owner", "until"},
+            "cooldown": {"host", "until"},
+            "provider_denial": {
+                "host", "status", "until_mono", "recorded_mono",
+                "until_utc", "boot_epoch",
+            },
+            "request_budget": {"host", "slot", "count"},
+        }
+        tables = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if not set(expected) <= tables:
+            return False
+        for name, required in expected.items():
+            rows = list(db.execute("PRAGMA table_info(" + name + ")"))
+            columns = {row[1] for row in rows}
+            if not required <= columns:
+                return False
+            pk_name = "k" if name in ("cache", "lease") else "host"
+            if name == "request_budget":
+                pk_name = "host"
+            if not any(row[1] == pk_name and row[5] == 1 for row in rows):
+                return False
+        for index_name, table_name, columns in (
+            ("cache_until", "cache", ("until",)),
+            ("cache_host", "cache", ("host",)),
+            ("lease_until", "lease", ("until",)),
+        ):
+            index = db.execute(
+                "SELECT tbl_name FROM sqlite_master WHERE type='index' AND name=?",
+                (index_name,),
+            ).fetchone()
+            if not index or index[0] != table_name:
+                return False
+            actual = tuple(
+                row[2] for row in db.execute(
+                    "PRAGMA index_info(" + index_name + ")"
+                )
+            )
+            if actual != columns:
+                return False
+        return True
+
     def _ensure_schema(self):
         with self._setup_lock:
             if self._ready:
                 return
             with self.db() as db:
+                # Avoid a cross-process writer lock for an already-migrated
+                # database. Schema discovery and index inspection are reads.
+                mode = db.execute("PRAGMA journal_mode").fetchone()[0]
+                if mode.lower() == "wal" and self._schema_current(db):
+                    self._ready = True
+                    return
                 # A WAL-mode *change* requires an exclusive SQLite lock. The
                 # HubRegistry may already have initialized this database and
                 # workers may be reading it: never issue a redundant change.
-                mode = db.execute("PRAGMA journal_mode").fetchone()[0]
                 if mode.lower() != "wal":
                     mode = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]
                     if mode.lower() != "wal":
