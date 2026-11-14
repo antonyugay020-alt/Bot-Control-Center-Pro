@@ -657,7 +657,9 @@ class PublicData:
                         self._hub_priority_until[subscription_key] = now_mono + 5
             # This is a bounded queue wait, NOT permission to use an expired
             # market snapshot. In an overloaded system the client fails closed.
-            deadline = time.monotonic() + 8.0
+            deadline = time.monotonic() + (
+                0.8 if getattr(self._thread, "mark_intent", False) else 8.0
+            )
             while not self.stop_event.is_set():
                 try:
                     cached = self.shared.read_fresh(url, params, host)
@@ -680,8 +682,11 @@ class PublicData:
                     if (url == "https://api.bybit.com/v5/market/tickers"
                             and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"
                             and type(params) is dict and params.get("symbol")
-                            and cached.get("_bcc_ws_quote") is not True):
-                        raise DataUnavailable("Market Data Hub: WebSocket котировка не подтверждена")
+                            and cached.get(
+                                "_bcc_ws_mark" if getattr(self._thread, "mark_intent", False)
+                                else "_bcc_ws_quote"
+                            ) is not True):
+                        raise DataUnavailable("Market Data Hub: WebSocket тикер не подтверждён")
                     if (url == "https://api.binance.com/api/v3/ticker/price"
                             and os.environ.get("BCC_BINANCE_WS_PRICE") == "1"
                             and type(params) is dict and set(params) == {"symbol"}
@@ -1078,6 +1083,35 @@ class PublicData:
             account_marks=account_marks,
         )
 
+    def _ws_position_mark(self, symbol):
+        """Read actual Bybit markPrice, never executable spread as collateral.
+
+        Demand-driven ticker subscriptions are shared by the Hub, and a
+        bounded wait leaves enough time to refresh the executable book.
+        """
+        previous = getattr(self._thread, "mark_intent", False)
+        self._thread.mark_intent = True
+        try:
+            value = self.get(
+                "https://api.bybit.com/v5/market/tickers",
+                {"category": "linear", "symbol": symbol},
+            )
+        finally:
+            self._thread.mark_intent = previous
+        if value.get("_bcc_ws_mark") is not True:
+            raise DataUnavailable("Bybit WebSocket markPrice not confirmed")
+        rows = value.get("result", {}).get("list", [])
+        if len(rows) != 1 or rows[0].get("symbol") != symbol:
+            raise DataUnavailable("Bybit WebSocket markPrice wrong symbol")
+        try:
+            mark = float(rows[0]["markPrice"])
+            at = float(value["time"]) / 1000
+        except (ValueError, TypeError, KeyError, OverflowError) as exc:
+            raise DataUnavailable("Bybit WebSocket markPrice invalid") from exc
+        if not math.isfinite(mark) or mark <= 0 or not book_is_fresh(at):
+            raise DataUnavailable("Bybit WebSocket markPrice stale")
+        return observed_quote({"bid": mark, "ask": mark, "at": at})
+
     def orderbook(self, symbol, *, position_only=False):
         if type(position_only) is not bool:
             raise ValueError("Invalid position market-data intent")
@@ -1097,9 +1131,17 @@ class PublicData:
                 "Метаданные не подтверждают доступный бессрочный USDT-контракт "
                 + symbol
             )
-        # Margin data is independent of executable liquidity. Its failure must
-        # block increases in exposure without blocking protective exits.
+        # Risk-tier REST refresh stays off the critical position lane.
+        # Actual exchange markPrice is read from the separately timestamped
+        # public Bybit ticker WS channel; bid/ask can never substitute for it.
         margin_data, margin_error = None, ""
+        ws_mark = None
+        if (position_only and os.environ.get("BCC_MARKET_HUB_MODE") == "client"
+                and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"):
+            try:
+                ws_mark = self._ws_position_mark(symbol)
+            except DataUnavailable as exc:
+                margin_error = str(exc)
         if not position_only:
             try:
                 margin_data = self.margin_snapshot(symbol)
@@ -1141,7 +1183,8 @@ class PublicData:
         result = dict(
             margin_required=True,
             margin_data=margin_data,
-            margin_marks=margin_data.pop("account_marks", {}) if margin_data else {},
+            margin_marks=(margin_data.pop("account_marks", {}) if margin_data
+                          else {symbol: ws_mark} if ws_mark is not None else {}),
             margin_error=margin_error,
             bids=bids,
             asks=asks,
