@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_WS_SQLITE_FLEET_FULL_QA_20261114_NOT_RELEASE",
+  "checkpoint": "BCC_WS_SQLITE_ADMISSION_20261114_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -65,7 +65,7 @@
     "bcc/constructor_transaction.py": "1cfd25a130450f820f5dc623f11568641820f6b84c9eb73c194eb5f4a87ad578",
     "bcc/control.py": "64a9d9fe889ec9e9f989f6793050ffa09f00fcfedaf6346d95ddfcda08ce3092",
     "bcc/coordination.py": "f53ff56ae3ffc5311b515e6c5cca3456d5547a88f7e451acd9a73b1df1f928ef",
-    "bcc/data_cache.py": "95720d5acdf7b87ced6caa393ad9503c131804b1e9dbcb323c093a6ad3763051",
+    "bcc/data_cache.py": "89adea57ac9793ac8a1cc701d0f15d20a89fa5145a1dc5af118d9e19bc2221c3",
     "bcc/execution.py": "7ca97407a77e226f7d9c9ce3274d0074913d35264fbf4a29823acf607a71f50a",
     "bcc/fleet.py": "5c10de977f44f3c0041802b1434f5e7cb51abe0445a731fa1a2b8f0194fe9da4",
     "bcc/flow_layout.py": "1e5d9c4b48fbd8a31046030276a74a2c488a9ee90a3d8e89027b2714cd3b054a",
@@ -79,7 +79,7 @@
     "bcc/lifecycle.py": "a2a96045689576175bbbbe9797811ba533626a94464321e541ab3b69b15a950b",
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
-    "bcc/market.py": "5ca131ecd318b6f03da4654b05d39e29fe4ca2798dbc6fe8f83fff662fcd00d8",
+    "bcc/market.py": "9b27eb73644888ea354a02f1f7991a9bed0657a687b1d79447920c33d4f5dcd7",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
     "bcc/market_hub.py": "a093c0a74ee1ba26df73f4f672930ee69c90a20397bb053e1cc5562a844247dd",
@@ -342,7 +342,7 @@
     "tests/test_shared_risk.py": "2ed2840d17c0d967f5d309a421cab7325bb7d2ad51bfb1750040296baee5c14f",
     "tests/test_shared_risk_command_boundary.py": "8ff1855dbb6040d9ecac444e8348e7c24a01b46550cf33def242e3c283198144",
     "tests/test_shared_singleflight_15_bots.py": "e200a7820745f40e971f4bd8043100fd39a672b585fcb18aa7de066f5b43fb97",
-    "tests/test_shared_singleflight_multiprocess.py": "362aff2e00d5fb0db696edf3b41e40e204e6425bf2cb806020d17a9dfd4ad797",
+    "tests/test_shared_singleflight_multiprocess.py": "8d96d236d92273b72899f456e048f7a07d4798322389cb4bf21a06f9d21a8e1b",
     "tests/test_shared_sqlite_schema_migration.py": "9bbcefe974c414217874ee64ff1a46607719556d9216bf03cf94b5a6083ed1b1",
     "tests/test_source_executable_inventory.py": "2dc6672593b2518239f73e9c0c82abc4f85e08b5359f6b260e0c2a91865576dc",
     "tests/test_source_stage_integrity.py": "9211db67d762487b7aa079c9142553db1343c2204c428200399c1c892f2c7f52",
