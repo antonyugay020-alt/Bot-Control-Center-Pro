@@ -481,7 +481,11 @@ def validate_required_evidence(output, *, venue="all"):
         if (not isinstance(report, dict)
                 or report.get("read_only") is not True
                 or report.get("all_available") is not True
-                or report.get("scope") != required_scope):
+                # Legacy full-scope fixtures had no explicit scope field;
+                # still accept them only in the full-scope gate. Bybit
+                # scoped evidence must declare its scope explicitly.
+                or (report.get("scope", required_scope if venue == "all" else None)
+                    != required_scope)):
             
             problems.append("public_sources.json: публичные источники не подтверждены")
             for blocker in source_access_blockers(output / "public_sources.json"):
