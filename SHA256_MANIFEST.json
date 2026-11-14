@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_BYBIT_WS_REAL_MARK_AND_MARGIN_INTEGRATION_20261114_NOT_RELEASE",
+  "checkpoint": "BCC_BYBIT_WS_RISK_MARK_RECOVERY_20261114_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -92,7 +92,7 @@
     "bcc/preferences.py": "6cd532dbcd0c594be409d1914bea63fd2db901938cab9fb5a08056885cfae743",
     "bcc/process_identity.py": "7e95f57f32c5ae59b0c04e61ac6ba9d462849fcb7cdd46357902abd9ebf86bfd",
     "bcc/process_os.py": "943534d17560dd42cf0cbd8697d07995fd8ce2c1bc2e9218f9ae4a812a88f11d",
-    "bcc/runtime.py": "a3ce4ff68d39241ace80e2a7098ef6d014f3ce67794db228725ab08ae0640755",
+    "bcc/runtime.py": "8edeeaad9af9dd5de4aecad4fd6eb5047bc34fdc0eb6803dfec89cf819038a47",
     "bcc/runtime_health.py": "29e8c2bda444899b66021a57455ad79a02974f4699bd5e2ff218f92116dc5412",
     "bcc/runtime_paths.py": "7acdb59ad9b6b0533a430072a0017151f20d9fe1aa9cab219d0c974a9bcb60fc",
     "bcc/runtime_process.py": "ca867b2528d80bf3c18a2d2cacf964b9cf59e42f17fb240036bdd7765d607900",
@@ -155,6 +155,7 @@
     "tests/test_bybit_ws_live_position_pnl.py": "e0bdace1b2301e7480579f8cff9e5c1fafbbc4183f753f6a778bafeb23d26fc6",
     "tests/test_bybit_ws_live_position_qt.py": "3843070bb261028d09ff624e81462950ed79af64d93f8ce11fea4b9233fb7948",
     "tests/test_bybit_ws_mandatory_lifecycle.py": "92ef0d8c1670dc2cb122ed2e71e33ec522f2d1225914dfce62c9b0e4d5f50c6c",
+    "tests/test_bybit_ws_outage_margin_recovery.py": "79611cbd67d0495771d2f6a4a0f145b150c515b500ddff0e53c6a25fa68b984f",
     "tests/test_bybit_ws_position_fast_lane.py": "d2c3944b4b314ac766eec9bd9d6690e8475f9ff5e3587f1888369fccac8561c7",
     "tests/test_bybit_ws_sqlite_qt_e2e.py": "292edaee6a0a6ef6f25d221c2fdce7647bb6695e9ea21566e752a79d7c631cf3",
     "tests/test_cached_read_during_cooldown.py": "ed97d1e4b103cb96d2af86ea36cf7f50039525db2a76559ba8a9328865953e04",
