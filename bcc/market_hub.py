@@ -728,20 +728,47 @@ class MarketDataHub:
                 value = {"_bcc_ws_polybook": True, **book}
                 ttl = .35
             elif kind == "tickers":
-                bid, ask, at = stream.quote(symbol)
-                if (not all(math.isfinite(x) for x in (bid, ask, at))
-                        or bid <= 0 or ask <= 0 or bid > ask
-                        or not -5 <= market_now() - at <= 2):
+                # Independently transport the exchange's real markPrice.
+                # Partial ticker deltas may refresh mark without changing
+                # bid/ask. Never synthesize a mark from an executable spread.
+                mark = None
+                mark_at = None
+                if hasattr(stream, "mark"):
+                    try:
+                        mark, mark_at = stream.mark(symbol)
+                    except StreamUnavailable:
+                        pass
+                bid = ask = at = None
+                try:
+                    bid, ask, at = stream.quote(symbol)
+                except StreamUnavailable:
+                    pass
+                if mark is None and bid is None:
                     return False
+                if (mark is not None and
+                    (not math.isfinite(mark) or mark <= 0
+                     or not math.isfinite(mark_at)
+                     or not -0.5 <= market_now() - mark_at <= 3)):
+                    return False
+                if (bid is not None and
+                    (not all(math.isfinite(x) for x in (bid, ask, at))
+                     or bid <= 0 or ask <= 0 or bid > ask
+                     or not -5 <= market_now() - at <= 2)):
+                    return False
+                row = {"symbol": symbol}
+                if bid is not None:
+                    row.update(bid1Price=str(bid), ask1Price=str(ask))
+                if mark is not None:
+                    row["markPrice"] = str(mark)
+                exchange_at = mark_at if mark is not None else at
                 value = {
-                    "retCode": 0, "retMsg": "OK", "_bcc_ws_quote": True,
-                    "time": int(at * 1000),
-                    "result": {"list": [{
-                        "symbol": symbol,
-                        "bid1Price": str(bid), "ask1Price": str(ask),
-                    }]},
+                    "retCode": 0, "retMsg": "OK",
+                    "_bcc_ws_quote": bid is not None,
+                    "_bcc_ws_mark": mark is not None,
+                    "time": int(exchange_at * 1000),
+                    "result": {"list": [row]},
                 }
-                ttl = .35
+                ttl = .75
             elif kind == "kline1":
                 candle = stream.get_candle(symbol)
                 stamp = candle.message_ms / 1000
