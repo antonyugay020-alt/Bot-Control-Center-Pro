@@ -1008,7 +1008,13 @@ class PublicData:
             # book promptly. The full risk-tier/portfolio ticker scan is
             # performed by normal admission reads and must not hold the
             # protective mark lane hostage on every 0.5s refresh.
-            return self.orderbook(symbol, position_only=True)
+            # The base adapter owns the position_only risk/quote split.
+            # User-defined/subclass transports can implement their own
+            # orderbook(symbol) contract; do not inject a new keyword into
+            # their signatures. The same priority intent is still preserved.
+            if getattr(self.orderbook, "__func__", None) is PublicData.orderbook:
+                return self.orderbook(symbol, position_only=True)
+            return self.orderbook(symbol)
         finally:
             self._thread.position_mark = prior
 
