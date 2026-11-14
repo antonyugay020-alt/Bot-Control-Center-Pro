@@ -16,6 +16,10 @@ class CacheBusy(RuntimeError):
     """SQLite contention, shared rate budget, or a competing request lease."""
 
 
+class CacheContention(CacheBusy):
+    """A retryable local/SQLite lock, never a provider quota or denial."""
+
+
 class ProviderDenied(RuntimeError):
     """A structured policy fence, distinct from retryable cache contention."""
 
@@ -196,7 +200,7 @@ class PublicCache:
         # connection open avoids the last-connection WAL checkpoint on every GET.
         if not self._guard.acquire(timeout=0.2):
             self.stats["local_busy"] += 1
-            raise CacheBusy("Общий кэш занят другим запросом этого процесса")
+            raise CacheContention("Общий кэш занят другим запросом этого процесса")
         try:
             if self._connection is None:
                 self._connection = sqlite3.connect(
@@ -212,7 +216,13 @@ class PublicCache:
             yield self._connection
         except sqlite3.Error as exc:
             self.stats["sqlite_busy"] += 1
-            raise CacheBusy(
+            # Only lock contention may be retried. Corrupt schemas, disk-full
+            # errors and denied providers are not transient admission misses.
+            code = getattr(exc, "sqlite_errorcode", None)
+            lock_codes = (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+            is_lock = (code is not None and (code & 0xff) in lock_codes)
+            error_type = CacheContention if is_lock else CacheBusy
+            raise error_type(
                 "Общий кэш публичных данных недоступен: " + str(exc)
             ) from exc
         finally:
