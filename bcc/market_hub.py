@@ -760,12 +760,14 @@ class MarketDataHub:
                     row.update(bid1Price=str(bid), ask1Price=str(ask))
                 if mark is not None:
                     row["markPrice"] = str(mark)
-                exchange_at = mark_at if mark is not None else at
+                # Never attribute the bid/ask event time to an older mark.
+                # Both public WS observations retain separate exchange clocks.
                 value = {
                     "retCode": 0, "retMsg": "OK",
                     "_bcc_ws_quote": bid is not None,
                     "_bcc_ws_mark": mark is not None,
-                    "time": int(exchange_at * 1000),
+                    "_bcc_ws_mark_at": int(mark_at * 1000) if mark is not None else None,
+                    "time": int((at if bid is not None else mark_at) * 1000),
                     "result": {"list": [row]},
                 }
                 ttl = .75
