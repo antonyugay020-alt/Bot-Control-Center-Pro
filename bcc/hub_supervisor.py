@@ -263,7 +263,7 @@ def ensure_hub(repo_root, *, timeout=8, bybit_ws=False):
         command = [sys.executable, '-m', 'tools.market_hub_service',
                    '--cache', str(cache), '--ready-file', str(ready_path),
                    '--ready-token', challenge]
-        if env.get('BCC_BYBIT_WS_QUOTES') == '1':
+        if bybit_ws or env.get('BCC_BYBIT_WS_QUOTES') == '1':
             command.append('--bybit-ws-quotes')
         if bybit_ws or env.get('BCC_BYBIT_WS_BOOKS') == '1':
             command.append('--bybit-ws-books')
