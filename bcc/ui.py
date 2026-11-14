@@ -456,6 +456,13 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(self.preferences.get("refresh_ms", 2000))
+        # A separate lightweight reader updates only displayed executable
+        # PnL from the worker-owned SQLite ledger; it does not rebuild charts,
+        # scan all bots, or submit any trading commands every half-second.
+        self.live_positions_timer = QTimer(self)
+        self.live_positions_timer.setInterval(500)
+        self.live_positions_timer.timeout.connect(self.refresh_live_positions)
+        self.live_positions_timer.start()
         # Process reconciliation belongs exclusively to the independent runtime
         # service. This window only submits explicit desired-state commands.
         self.refresh()
@@ -705,6 +712,8 @@ class MainWindow(QMainWindow):
         try:
             folder = self.selected()
             cfg, _ = self.repo.load(folder)
+            self._live_config_name = cfg["name"]
+            self._live_config_strategy = cfg["strategy"]
             self.close_positions_button.setVisible(cfg["strategy"] != "POLYMARKET")
             state = read_paper_state(folder)
             if state is None:
@@ -881,40 +890,111 @@ class MainWindow(QMainWindow):
                 at_end = old_position >= bar.maximum()
                 self.logs.setPlainText(text)
                 bar.setValue(bar.maximum() if at_end else old_position)
-            # Historical mark rows may remain after an old position closes;
-            # report only symbols that currently require an executable price.
-            # Count missing quotes as stale, not just stored expired rows.
-            active_symbols = {
-                p["symbol"] for p in state["positions"].values()
-            } | {
-                p["symbol"] for p in state.get("pending", {}).values()
-            }
-            stale = sorted(
-                s for s in active_symbols
-                if not quote_is_recent(state["marks"].get(s), now=now)
-            )
-            free_margin = available_margin(state)
-            free_margin_text = f"{free_margin:.2f} USDT" if math.isfinite(free_margin) else "— (нет достоверной оценки)"
-            self.notice.setText(
-                f"{cfg['name']} · свободная маржа {free_margin_text} · сохранено позиций {len(pos)}"
-                + f" · капитал {'—' if equity(state)[1] else format(equity(state)[0], '.2f')} · макс. DD {state.get('max_drawdown', 0):.2f}%"
-                + (
-                    f" · реинвестировано {state['strategy'].get('veles_reinvested', 0):.2f} USDT"
-                    if cfg["strategy"] == "VELES"
-                    else ""
-                )
-                + (
-                    f" · устаревших котировок: {len(stale)}; подробности — «Сигналы»"
-                    if stale
-                    else ""
-                )
-            )
+            self._render_live_finance_notice(state, cfg["name"], cfg["strategy"], now)
         except Exception as e:
             for t in tables:
                 t.setRowCount(0)
             self.monitor_state = None
             self.logs.clear()
             self.notice.setText("Ошибка чтения состояния: " + str(e))
+
+    def _render_live_finance_notice(self, state, name, strategy, now):
+        # Do not confuse executable WS PnL with Bybit's separate margin
+        # mark-price. Collateral and equity remain unavailable if independent
+        # risk evidence is stale, even when current bid/ask prices are fresh.
+        active_symbols = {
+            p["symbol"] for p in state["positions"].values()
+        } | {
+            p["symbol"] for p in state.get("pending", {}).values()
+        }
+        stale = sorted(
+            symbol for symbol in active_symbols
+            if not quote_is_recent(
+                state["marks"].get(symbol),
+                maximum=15 if strategy == "POLYMARKET" else 3,
+                now=now,
+            )
+        )
+        free_margin = available_margin(state)
+        free_text = (
+            f"{free_margin:.2f} USDT"
+            if math.isfinite(free_margin)
+            else "— (нет достоверной оценки)"
+        )
+        value, unknown = equity(state)
+        value_text = "— (нет подтверждённой оценки)" if unknown else f"{value:.2f}"
+        self.notice.setText(
+            f"{name} · свободная маржа {free_text}"
+            f" · сохранено позиций {len(state['positions'])}"
+            f" · капитал {value_text}"
+            f" · макс. DD {state.get('max_drawdown', 0):.2f}%"
+            + (
+                f" · реинвестировано {state['strategy'].get('veles_reinvested', 0):.2f} USDT"
+                if strategy == "VELES" else ""
+            )
+            + (
+                f" · нет свежих исполнимых котировок по {len(stale)} монетам"
+                if stale else ""
+            )
+            + (
+                " · PnL позиций: по исполнимому WebSocket bid/ask; "
+                "маржинальная оценка проверяется отдельно"
+                if strategy != "POLYMARKET" and state["positions"] else ""
+            )
+        )
+
+    def refresh_live_positions(self):
+        # The regular full refresh retains history, charts and orders.
+        # This short pass only updates the visible PnL column and finance
+        # status; never reads public APIs or mutates the worker's ledger.
+        if (not self.isVisible() or self.current is None
+                or self.current != getattr(self, "_details_folder", None)):
+            return
+        try:
+            state = read_paper_state(self.selected())
+            if state is None:
+                return
+            position_keys = set(state["positions"])
+            row_keys = []
+            for row in range(self.positions.rowCount()):
+                item = self.positions.item(row, 0)
+                if item is None:
+                    return
+                row_keys.append(item.data(Qt.ItemDataRole.UserRole))
+            # Full refresh handles position opens, closes and reordering.
+            # Do not display PnL against an obsolete row identity.
+            if len(row_keys) != len(position_keys) or set(row_keys) != position_keys:
+                self.refresh_details()
+                return
+            now = time.time()
+            self.positions.setSortingEnabled(False)
+            try:
+                for row, key in enumerate(row_keys):
+                    value = position_mark_pnl(state, state["positions"][key], now)
+                    rendered = (
+                        "— (нет свежей оценки)" if value is None
+                        else f"{value:+.4f}"
+                    )
+                    cell = self.positions.item(row, 6)
+                    if cell is not None and cell.text() != rendered:
+                        cell.setText(rendered)
+            finally:
+                self.positions.setSortingEnabled(True)
+            self.monitor_state = state
+            self._render_live_finance_notice(
+                state,
+                getattr(self, "_live_config_name", ""),
+                getattr(self, "_live_config_strategy", ""),
+                now,
+            )
+        except Exception as exc:
+            # A failed SQLite read must never leave the previously shown PnL
+            # appearing current. Do not interrupt the Qt event loop.
+            for row in range(self.positions.rowCount()):
+                cell = self.positions.item(row, 6)
+                if cell is not None:
+                    cell.setText("— (данные недоступны)")
+            self.notice.setText("Не удалось обновить PAPER-оценку: " + str(exc)[:180])
 
     def refresh_chart(self, *args):
         symbol = self.chart_symbol.currentText()
