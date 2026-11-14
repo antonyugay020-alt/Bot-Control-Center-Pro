@@ -165,7 +165,7 @@ def main():
                     print('Market Hub leader lease acquired', flush=True)
                     ready_logged = True
                 hub.poll_nonblocking()
-                if ws_threads and time.monotonic() - last_ws_health >= 30:
+                if ws_threads and time.monotonic() - last_ws_health >= 10:
                     # Only aggregate public transport liveness and queue
                     # pressure; no token ids, API keys or market payloads.
                     states = {}
@@ -179,7 +179,19 @@ def main():
                         if stream is None:
                             continue
                         with stream._lock:
-                            states[label] = "connected" if stream._connected else "reconnecting"
+                            states[label] = {
+                                "connection": "connected" if stream._connected else "reconnecting",
+                            }
+                            # Connected sockets alone prove nothing about
+                            # active symbol delivery. Log counts, not prices,
+                            # symbols or account data, so a stalled subscription
+                            # is observable without disclosing user holdings.
+                            if label == "bybit_quotes":
+                                states[label]["subscribed"] = len(stream._subscriptions)
+                                states[label]["received_symbols"] = len(stream._quotes)
+                            elif label == "bybit_depth":
+                                states[label]["subscribed"] = len(stream._symbols)
+                                states[label]["received_symbols"] = len(stream._books)
                     queue_stats = ws_updates.stats()
                     print("Market Hub WS health: " +
                           json.dumps({
