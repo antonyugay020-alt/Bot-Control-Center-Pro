@@ -383,7 +383,7 @@ def source_access_blockers(path):
     return blockers
 
 
-def validate_required_evidence(output):
+def validate_required_evidence(output, *, venue="all"):
     """Fail closed on missing, malformed or incomplete *required* Windows evidence.
 
     This checks evidence structure only. It is NOT a substitute for genuinely
@@ -473,8 +473,16 @@ def validate_required_evidence(output):
 
     try:
         report = json.loads((output / "public_sources.json").read_text(encoding="utf-8"))
-        expected = {"Bybit USDT Futures", "Polymarket Gamma + CLOB", "Binance spot impulse"}
-        if not isinstance(report, dict) or report.get("read_only") is not True or report.get("all_available") is not True:
+        expected = ({"Bybit USDT Futures"}
+                    if venue == "bybit" else
+                    {"Bybit USDT Futures", "Polymarket Gamma + CLOB", "Binance spot impulse"})
+        required_scope = (["bybit"] if venue == "bybit"
+                          else ["bybit", "polymarket", "binance"])
+        if (not isinstance(report, dict)
+                or report.get("read_only") is not True
+                or report.get("all_available") is not True
+                or report.get("scope") != required_scope):
+            
             problems.append("public_sources.json: публичные источники не подтверждены")
             for blocker in source_access_blockers(output / "public_sources.json"):
                 problems.append(
@@ -515,6 +523,10 @@ def main():
         / "verification_reports"
         / datetime.now().strftime("%Y%m%d_%H%M%S"),
     )
+    parser.add_argument(
+        "--venue", choices=("all", "bybit"), default="all",
+        help="Scoped Bybit phase does not certify deferred Polymarket/Binance venues"
+    )
     args = parser.parse_args()
     output = args.output.resolve()
     # A reused output directory might contain stale passing screenshots/XML.
@@ -530,6 +542,8 @@ def main():
         "python": sys.version,
         "source_sha256": None,
         "steps": [],
+        "venue_scope": args.venue,
+        "deferred_venues": (["polymarket", "binance"] if args.venue == "bybit" else []),
         "release_ready": False,
         "manual_acceptance": "PENDING: follow ACCEPTANCE_WINDOWS_RU.md; automated tests do not replace it",
     }
@@ -571,7 +585,8 @@ def main():
         ("gui", ["-m", "bcc.gui_check", "--output", str(output / "screenshots")], WINDOWS_QA_TIMEOUTS["gui"]),
         (
             "public_sources",
-            ["-m", "bcc.health", "--output", str(output / "public_sources.json")],
+            ["-m", "bcc.health", "--output", str(output / "public_sources.json"),
+             "--venue", args.venue],
             WINDOWS_QA_TIMEOUTS["public_sources"],
         ),
     ]
@@ -596,7 +611,7 @@ def main():
     except (OSError, ValueError, ET.ParseError):
         report["test_totals"] = None
     report["source_access_blockers"] = source_access_blockers(output / "public_sources.json")
-    report["evidence_errors"] = validate_required_evidence(output)
+    report["evidence_errors"] = validate_required_evidence(output, venue=args.venue)
     if report["evidence_errors"]:
         report["steps"].append({
             "step": "required_evidence", "status": "FAIL",
@@ -608,7 +623,8 @@ def main():
         report['source_integrity_final'] = dict(status='FAIL', error=str(exc))
         report['steps'].append(dict(step='source_integrity_final', status='FAIL', error=str(exc)))
     report["status"] = (
-        "AUTOMATED_CHECKS_PASS"
+        ("BYBIT_PHASE_AUTOMATED_PASS" if args.venue == "bybit"
+         else "AUTOMATED_CHECKS_PASS")
         if all(s["status"] == "PASS" for s in report["steps"])
         else "FAIL"
     )
