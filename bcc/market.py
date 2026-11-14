@@ -740,6 +740,13 @@ class PublicData:
             # 403/451 policy and integrity failures never grant permission.
             # Re-admit through the full shared-cache transaction every retry.
             lease_deadline = time.monotonic() + 13.0
+            # A SQLite lock is different from an in-flight shared request.
+            # Report a sustained lock to the scheduler promptly so an
+            # existing PAPER position can show diagnostics, preserve its mark
+            # fence and resume on the next market tick. Waiting the full
+            # lease window would deadlock recovery if the lock owner releases
+            # it only after seeing that diagnostic.
+            lock_deadline = time.monotonic() + 1.5
             while True:
                 if self.stop_event.is_set():
                     raise DataUnavailable("Получение данных остановлено")
@@ -754,11 +761,16 @@ class PublicData:
                 except ProviderDenied as exc:
                     raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as e:
-                    retryable = (
-                        isinstance(e, CacheContention)
-                        or str(e) == "Данные уже запрашиваются другим ботом"
-                    )
-                    if not retryable or time.monotonic() >= lease_deadline:
+                    if isinstance(e, CacheContention):
+                        deadline = min(lease_deadline, lock_deadline)
+                    elif str(e) == "Данные уже запрашиваются другим ботом":
+                        deadline = lease_deadline
+                    else:
+                        # A rate budget, provider cooldown, integrity failure
+                        # or policy fence must never be reinterpreted as
+                        # permission to issue a direct HTTP request.
+                        raise DataUnavailable(str(e)) from e
+                    if time.monotonic() >= deadline:
                         raise DataUnavailable(str(e)) from e
                     if self.stop_event.wait(0.075):
                         raise DataUnavailable("Получение данных остановлено")
