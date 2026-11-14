@@ -44,6 +44,57 @@ def test_shared_policy_refusal_preserves_status_for_reader(tmp_path, status):
         reader.close()
 
 
+def test_provider_policy_read_recovers_after_transient_cross_process_busy(
+    tmp_path, monkeypatch
+):
+    """Bursting workers may see a brief WAL lock during the first schema migration.
+
+    A busy read is not evidence that HTTP 403/451 has expired. After the
+    lock clears, the durable policy must remain authoritative.
+    """
+    cache = PublicCache(tmp_path / "fleet.sqlite")
+    try:
+        _fence(cache)
+        original = cache._ensure_schema
+        attempts = []
+
+        def occasionally_busy():
+            attempts.append(1)
+            if len(attempts) <= 4:
+                raise cache_module.CacheBusy("Общий кэш публичных данных недоступен: database is locked")
+            return original()
+
+        monkeypatch.setattr(cache, "_ensure_schema", occasionally_busy)
+        assert cache.denied_status(HOST) == 451
+        assert len(attempts) == 5
+        with pytest.raises(ProviderDenied) as error:
+            cache.read_fresh(URL, PARAMS, HOST)
+        assert error.value.http_status == 451
+    finally:
+        cache.close()
+
+
+def test_provider_policy_read_never_assumes_permission_on_persistent_busy(
+    tmp_path, monkeypatch
+):
+    """A persistently unreadable shared policy must fail closed."""
+    cache = PublicCache(tmp_path / "fleet.sqlite")
+    try:
+        # Simulate an already-expired admission window without a 5s sleep.
+        ticks = iter([100.0, 106.0])
+        monkeypatch.setattr(cache_module.time, "monotonic", lambda: next(ticks))
+        monkeypatch.setattr(
+            cache, "_ensure_schema",
+            lambda: (_ for _ in ()).throw(
+                cache_module.CacheBusy("database is locked")
+            )
+        )
+        with pytest.raises(cache_module.CacheBusy):
+            cache.denied_status(HOST)
+    finally:
+        cache.close()
+
+
 def test_existing_three_column_policy_table_migrates_without_losing_denial(tmp_path):
     path = tmp_path / "fleet.sqlite"
     with sqlite3.connect(path) as db:
