@@ -30,3 +30,74 @@ def test_fifteen_independent_processes_share_one_fetch(tmp_path):
         for child in children:
             if child.poll() is None: child.kill()
             child.communicate()
+
+
+def test_sqlite_contention_retries_full_admission_not_direct_http(tmp_path, monkeypatch):
+    """Transient WAL contention may retry, but only through authoritative begin."""
+    from bcc.data_cache import CacheContention, PublicCache
+    from bcc.market import PublicData
+
+    shared = PublicCache(tmp_path / "contention.sqlite")
+    source = PublicData()
+    source.shared = shared
+    try:
+        begin = shared.begin
+        attempts = []
+        def busy_then_admit(*args, **kwargs):
+            attempts.append(1)
+            if len(attempts) <= 3:
+                raise CacheContention("Общий кэш: database is locked")
+            return begin(*args, **kwargs)
+
+        monkeypatch.setattr(shared, "begin", busy_then_admit)
+        seen = []
+        class Response:
+            status_code = 200
+            headers = {}
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return {"ok": True}
+
+        class Session:
+            def get(self, *args, **kwargs):
+                seen.append(1)
+                return Response()
+            def close(self):
+                pass
+
+        source._thread.session = Session()
+        result = source.get(
+            "https://api.bybit.com/v5/market/kline",
+            {"symbol": "BTCUSDT"}, ttl=5,
+        )
+        assert result == {"ok": True}
+        assert len(attempts) == 4
+        assert len(seen) == 1
+    finally:
+        source.close()
+
+
+def test_provider_budget_block_does_not_retry_or_bypass(tmp_path, monkeypatch):
+    """A true provider budget denial cannot be mistaken for a SQLite lock."""
+    import pytest
+    from bcc.data_cache import CacheBusy, PublicCache
+    from bcc.market import DataUnavailable, PublicData
+
+    shared = PublicCache(tmp_path / "budget.sqlite")
+    source = PublicData()
+    source.shared = shared
+    attempts = []
+    try:
+        def denied(*args, **kwargs):
+            attempts.append(1)
+            raise CacheBusy("Общий бюджет публичных запросов исчерпан; ожидание")
+        monkeypatch.setattr(shared, "begin", denied)
+        with pytest.raises(DataUnavailable, match="Общий бюджет"):
+            source.get(
+                "https://api.bybit.com/v5/market/kline",
+                {"symbol": "BTCUSDT"}, ttl=5,
+            )
+        assert len(attempts) == 1
+    finally:
+        source.close()
