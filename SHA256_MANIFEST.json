@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_BYBIT_WS_POSITION_MARK_PATH_20261114_NOT_RELEASE",
+  "checkpoint": "BCC_BYBIT_WS_LIVE_GATE_20261114_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -418,9 +418,10 @@
     "tools/acceptance_session.py": "5dbf9742fd82c44c42640371140d5f7fa528c472597512d8b95207d2d6a9e7a4",
     "tools/ai_dev_pipeline.py": "07f009404fdfbf242f50c1f709b60e1fd2d6b7066e893cab93cfbbc50115769d",
     "tools/audit20.py": "ee6aff07f9c4b3f06eca3634f45cd0ead133c0618199854e1d900dd0c5a2719d",
+    "tools/bybit_ws_live_acceptance.py": "1314e18f1751c2dfd916bd1fe44f308152ac7915c7b6f8611ab347588c1f1ff5",
     "tools/collect_test_inventory.py": "78cd4aede5152e392319616f29eb05ef549949d3ed375d9339d12c0ca99259d4",
     "tools/export_test_report.py": "09f85e9ae97cf7bf0ba689d3a5f3603a6e915a37ae5fb2f78c735503574d9b4b",
-    "tools/market_hub_service.py": "7b4925ac0d31068dccd7be4355da8bc72c0cbeaaf73ca508f064ef6be723bf9a",
+    "tools/market_hub_service.py": "56f04a34f4684340625812bf62a7f6193cef456d3fb072332b575be7ee4fc87c",
     "tools/process_guard.py": "ea2d2c5addc3b55508c77ef22330e9fdecfa27485ac1e3a67b7833e818c8a1b4",
     "tools/qa_budgets.py": "39c60497a2450cd614cf2e16327c050059f8657dd22b2978d567cb92e3cb037e",
     "tools/qa_locale.py": "a46a7105622cb23629465e7051ce0b3492fdc7bc7f67f3ba88cd144e1d79fa9a",
