@@ -93,6 +93,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--automated-only", action="store_true")
     parser.add_argument(
+        "--venue", choices=("all", "bybit"), default="all",
+        help="Bybit phase is not overall BCC release acceptance"
+    )
+    parser.add_argument(
         "--preflight-only", action="store_true",
         help="Verify sealed sources without implying Windows Qt or PAPER approval",
     )
@@ -107,6 +111,8 @@ def main(argv=None):
         platform=platform.platform(),
         python=sys.version,
         steps=[],
+        venue_scope=args.venue,
+        deferred_venues=(["polymarket", "binance"] if args.venue == "bybit" else []),
         release_ready=False,
         manual_acceptance="NOT_CONFIRMED",
         workspace=str(workspace),
@@ -167,6 +173,7 @@ def main(argv=None):
                 "tools/verify_windows.py",
                 "--output",
                 str(output / "automated"),
+                "--venue", args.venue,
             ],
             output,
             timeout=AUTOMATED_QA_TIMEOUT,
@@ -219,7 +226,11 @@ def main(argv=None):
             all(automated_step_passed(s) for s in report["steps"]),
             app_started,
         )
-        exit_code = 0 if report["status"].startswith("AUTOMATED_PASS_") else 1
+        if args.venue == "bybit" and report["status"].startswith("AUTOMATED_PASS_"):
+            report["status"] = "BYBIT_PHASE_" + report["status"]
+        # Bybit-only acceptance cannot confer a release claim on the
+        # deferred Polymarket/Binance venue modules.
+        exit_code = 0 if report["status"].startswith(("AUTOMATED_PASS_", "BYBIT_PHASE_AUTOMATED_PASS_")) else 1
     except BaseException as exc:
         report.update(status="ERROR", error=str(exc))
         (output / "checker_error.log").write_text(
