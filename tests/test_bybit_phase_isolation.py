@@ -58,6 +58,10 @@ def test_bybit_phase_keeps_global_release_gate_and_qt_tests_intact():
     assert 'release_ready=False' in sources["launcher"]
     assert 'deferred_venues' in sources["native"]
     assert '"BYBIT_PHASE_AUTOMATED_PASS"' in sources["native"]
+    assert ('return 0 if report["status"] in '
+            '("AUTOMATED_CHECKS_PASS", "BYBIT_PHASE_AUTOMATED_PASS") else 1'
+            in sources["native"])
+    assert '"BYBIT_PHASE_AUTOMATED_PASS_"' in sources["launcher"]
     assert '["-m", "bcc.health", "--output", str(output / "public_sources.json"),' in sources["native"]
     assert '"--venue", args.venue' in sources["native"]
     assert 'expected = ({"Bybit USDT Futures"}' in sources["native"]
