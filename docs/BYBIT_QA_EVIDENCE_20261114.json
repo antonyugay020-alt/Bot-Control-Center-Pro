@@ -1,0 +1,209 @@
+{
+  "schema": 1,
+  "implementation_commit": "14ef8723a8ad29947eece5af5d195d1f39e70916",
+  "baseline_commit": "753f906c6e30f2785ff1707d3eeabce66e5496fa",
+  "executable_source_fingerprint": "c8ba0bdab624e4bda847b2692aae717160ae494cf502b5e473340149a2faf66b",
+  "tested_source_integrity": {
+    "status": "PASS",
+    "verified_files": 444,
+    "checkpoint": "BCC_BYBIT_FINAL_PAPER_QA_20261114_NOT_RELEASE",
+    "manifest_sha256": "ff091bc4338c4c0c1e7030690a79dc5cd2c56cc11b649a9159958841960f7e07"
+  },
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "qt_platform": "offscreen",
+  "release_ready": false,
+  "regression": {
+    "status": "PASS",
+    "totals": {
+      "tests": 3726,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "inventory_count": 3726,
+    "inventory_sha256": "46bbd7b7acc321c70daee100e9f430e90de60b508918f16de51051185add3e93",
+    "merged_junit_sha256": "11c4049223508a74fa46b40fc87e5180330f0ff9fb7b0d5b4d2b5ad19d8e439c",
+    "shards": [
+      {
+        "name": "shard_00",
+        "seconds": 11.257,
+        "exit_code": 0,
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "status": "PASS"
+      },
+      {
+        "name": "shard_01",
+        "seconds": 26.516,
+        "exit_code": 0,
+        "totals": {
+          "tests": 620,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "status": "PASS"
+      },
+      {
+        "name": "shard_02",
+        "seconds": 57.748,
+        "exit_code": 0,
+        "totals": {
+          "tests": 620,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "status": "PASS"
+      },
+      {
+        "name": "shard_03",
+        "seconds": 30.838,
+        "exit_code": 0,
+        "totals": {
+          "tests": 620,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "status": "PASS"
+      },
+      {
+        "name": "shard_04",
+        "seconds": 13.426,
+        "exit_code": 0,
+        "totals": {
+          "tests": 619,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "status": "PASS"
+      },
+      {
+        "name": "shard_05",
+        "seconds": 50.995,
+        "exit_code": 0,
+        "totals": {
+          "tests": 619,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "status": "PASS"
+      },
+      {
+        "name": "shard_06",
+        "seconds": 64.267,
+        "exit_code": 0,
+        "totals": {
+          "tests": 619,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "status": "PASS"
+      },
+      {
+        "name": "shard_07",
+        "seconds": 11.268,
+        "exit_code": 0,
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "status": "PASS"
+      }
+    ],
+    "command": "QT_QPA_PLATFORM=offscreen python -m tools.collect_test_inventory --output INVENTORY.json; python -m tools.run_partitioned_tests --inventory INVENTORY.json --output QA"
+  },
+  "public_ws": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "real_orders": false,
+    "rounds": 24,
+    "successful_reads": 192,
+    "steady_state_max_seconds": 0.957,
+    "isolated_hub_retired": true,
+    "raw_report_sha256": "a647ed272f30bf321d8bdf467e52b3850b71e41f4f91eff883099ea95aefd76e",
+    "per_symbol": [
+      {
+        "symbol": "BTCUSDT",
+        "successful_reads": 24,
+        "max_mark_age_seconds": 1.253
+      },
+      {
+        "symbol": "ETHUSDT",
+        "successful_reads": 24,
+        "max_mark_age_seconds": 0.965
+      },
+      {
+        "symbol": "SOLUSDT",
+        "successful_reads": 24,
+        "max_mark_age_seconds": 2.019
+      },
+      {
+        "symbol": "XRPUSDT",
+        "successful_reads": 24,
+        "max_mark_age_seconds": 1.559
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "successful_reads": 24,
+        "max_mark_age_seconds": 2.078
+      },
+      {
+        "symbol": "ADAUSDT",
+        "successful_reads": 24,
+        "max_mark_age_seconds": 2.087
+      },
+      {
+        "symbol": "LINKUSDT",
+        "successful_reads": 24,
+        "max_mark_age_seconds": 1.995
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "successful_reads": 24,
+        "max_mark_age_seconds": 2.051
+      }
+    ],
+    "command": "python -m tools.bybit_ws_live_acceptance --output NEW_DIRECTORY --require-mark"
+  },
+  "gui": {
+    "status": "PASS",
+    "native_windows": false,
+    "all_bots_monitor_rows": 20,
+    "raw_report_sha256": "5827179c1522ddaccbc7e37b4c58c57f7cd003ff5e42ffe0e89d0c2e4b987896",
+    "command": "QT_QPA_PLATFORM=offscreen python -m bcc.gui_check --output NEW_DIRECTORY"
+  },
+  "public_rest": {
+    "all_available": false,
+    "checks": [
+      {
+        "source": "Bybit USDT Futures",
+        "status": "RESTRICTED",
+        "error": "api.bybit.com: HTTP 403: публичный источник отклонил доступ; торговые решения заблокированы",
+        "restriction": {
+          "host": "api.bybit.com",
+          "http_status": 403
+        },
+        "elapsed_seconds": 1.573
+      }
+    ],
+    "raw_report_sha256": "3ea9408dd5c2bc87e9ee6bc87824b491d01939278b38320668083ba1d8696294"
+  },
+  "unconfirmed": [
+    "Clean-unpack native Windows Qt automated gate on operator PC",
+    "Real-data PAPER VELES/GRID/Pump & Dump entry, DCA, exit and accounting",
+    "Windows Stop/Restart, window reopen, network recovery and monitoring under live data",
+    "Reachable Bybit public REST candles/instruments/risk/funding data",
+    "Independent acceptance review"
+  ],
+  "evidence_update": "This checkpoint adds documentation and reseals the manifest only; implementation and test bytes match implementation_commit."
+}
