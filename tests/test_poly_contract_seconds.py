@@ -13,6 +13,14 @@ from bcc.worker import process_polymarket
 from test_strategies import PolySource
 
 
+
+@pytest.fixture(autouse=True)
+def isolated_paper_clock(monkeypatch):
+    """An unrelated test's global UTC synchronization must not leak into
+    deterministic offline Polymarket schedule checks."""
+    from bcc.market_clock import MarketClock
+    monkeypatch.setattr("bcc.market_clock.clock", MarketClock())
+
 def cfg():
     c = defaults("POLYMARKET")
     c.update(name="Schedule seconds", symbols=["BTC", "ETH"])
