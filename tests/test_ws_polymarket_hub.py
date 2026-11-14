@@ -5,6 +5,17 @@ from bcc.market import PublicData, PolymarketData, DataUnavailable
 from bcc.market_hub import MarketDataHub, HubRegistry
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolated_stream_clock(monkeypatch):
+    """A prior test's process-wide clock reference cannot skew local WS
+    publication timestamps produced by an offline test stream."""
+    from bcc.market_clock import MarketClock
+    monkeypatch.setattr("bcc.market_clock.clock", MarketClock())
+
+
 URL = "https://clob.polymarket.com/book"
 PARAMS = {"token_id": "123"}
 
