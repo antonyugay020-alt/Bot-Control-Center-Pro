@@ -107,7 +107,16 @@ def main(argv=None):
             atomic_json(out / "live_ws_report.json", report)
             if iteration != 2:
                 time.sleep(2)
-        if all(row["status"] == "PASS" for batch in report["rounds"] for row in batch):
+        # Initial subscription may require a handshake; once established,
+        # repeated reads must be delivered promptly instead of waiting for
+        # the eight-second expired-cache timeout on each symbol.
+        report["steady_state_max_seconds"] = max(
+            row["received_in_seconds"]
+            for batch in report["rounds"][1:] for row in batch
+        )
+        if (all(row["status"] == "PASS"
+                for batch in report["rounds"] for row in batch)
+                and report["steady_state_max_seconds"] <= 1.5):
             report["status"] = "PUBLIC_WS_HUB_CLIENT_PASS"
         else:
             report["status"] = "PUBLIC_WS_DELIVERY_INCOMPLETE"
