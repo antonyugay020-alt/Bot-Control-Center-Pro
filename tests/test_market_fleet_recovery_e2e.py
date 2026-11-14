@@ -125,7 +125,11 @@ def fresh_depth(client, price):
     deadline = time.monotonic() + 6
     while time.monotonic() < deadline:
         try:
-            depth = client.position_orderbook('BTCUSDT')
+            # This helper supplies an entry decision, not just a mark for an
+            # already-open position. It must acquire the independent margin
+            # risk tiers and mark-price instead of bypassing entry admission
+            # with the lighter WS position-only path.
+            depth = client.orderbook('BTCUSDT')
             midpoint = (depth['bids'][0][0] + depth['asks'][0][0]) / 2
             if abs(midpoint - price) < .001:
                 return depth
