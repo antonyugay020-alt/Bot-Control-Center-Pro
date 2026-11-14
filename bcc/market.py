@@ -1103,7 +1103,11 @@ class PublicData:
             with self._lock:
                 self._risk_refresh_due[symbol] = time.monotonic() + 15
             raise
+        # REST may validate the long-lived risk tiers, but cannot renew
+        # markPrice collateral in strict Bybit WS mode. Only the independent
+        # original-timestamp ticker WebSocket may supply a tradable mark.
         snapshot.pop("account_marks", None)
+        snapshot.pop("quote", None)
         return snapshot
 
     def _ws_position_mark(self, symbol):
