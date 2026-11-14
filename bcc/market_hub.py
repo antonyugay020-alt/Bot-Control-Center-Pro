@@ -870,6 +870,12 @@ class MarketDataHub:
                 else:
                     for symbol in validated:
                         ticker.subscribe(symbol)
+                # Quiet symbols may not emit a markPrice delta within the
+                # strict collateral TTL. Recover with new *exchange* ticker
+                # snapshots, never by extending cached timestamps or by
+                # presenting executable spread as the missing mark.
+                if hasattr(ticker, "refresh_stale_marks"):
+                    ticker.refresh_stale_marks(validated)
             except (ValueError, StreamUnavailable):
                 # Only this feed reconnects. Other providers remain alive.
                 pass
