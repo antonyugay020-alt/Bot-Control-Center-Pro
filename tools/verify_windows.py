@@ -638,7 +638,7 @@ def main():
         "Manual PAPER acceptance is still required. No release readiness is inferred.",
         flush=True,
     )
-    return 0 if report["status"] == "AUTOMATED_CHECKS_PASS" else 1
+    return 0 if report["status"] in ("AUTOMATED_CHECKS_PASS", "BYBIT_PHASE_AUTOMATED_PASS") else 1
 
 
 if __name__ == "__main__":
