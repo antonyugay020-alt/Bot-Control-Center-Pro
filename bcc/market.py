@@ -1128,7 +1128,7 @@ class PublicData:
             raise DataUnavailable("Bybit WebSocket markPrice wrong symbol")
         try:
             mark = float(rows[0]["markPrice"])
-            at = float(value["time"]) / 1000
+            at = float(value["_bcc_ws_mark_at"]) / 1000
         except (ValueError, TypeError, KeyError, OverflowError) as exc:
             raise DataUnavailable("Bybit WebSocket markPrice invalid") from exc
         if not math.isfinite(mark) or mark <= 0 or not book_is_fresh(at):
