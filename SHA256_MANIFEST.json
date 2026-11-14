@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_WS_SQLITE_ADMISSION_20261114_NOT_RELEASE",
+  "checkpoint": "BCC_WS_SQLITE_RECOVERY_20261114_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -79,7 +79,7 @@
     "bcc/lifecycle.py": "a2a96045689576175bbbbe9797811ba533626a94464321e541ab3b69b15a950b",
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
-    "bcc/market.py": "9b27eb73644888ea354a02f1f7991a9bed0657a687b1d79447920c33d4f5dcd7",
+    "bcc/market.py": "d4638d678196bd84b7851eff820bfacb77f1737afd95d4cfa5d3573d1571d4df",
     "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
     "bcc/market_hub.py": "a093c0a74ee1ba26df73f4f672930ee69c90a20397bb053e1cc5562a844247dd",
@@ -342,7 +342,7 @@
     "tests/test_shared_risk.py": "2ed2840d17c0d967f5d309a421cab7325bb7d2ad51bfb1750040296baee5c14f",
     "tests/test_shared_risk_command_boundary.py": "8ff1855dbb6040d9ecac444e8348e7c24a01b46550cf33def242e3c283198144",
     "tests/test_shared_singleflight_15_bots.py": "e200a7820745f40e971f4bd8043100fd39a672b585fcb18aa7de066f5b43fb97",
-    "tests/test_shared_singleflight_multiprocess.py": "8d96d236d92273b72899f456e048f7a07d4798322389cb4bf21a06f9d21a8e1b",
+    "tests/test_shared_singleflight_multiprocess.py": "b20725ee39721d50361dedace4d2b1f92c7b8b261c918d9c808d429ff576608c",
     "tests/test_shared_sqlite_schema_migration.py": "9bbcefe974c414217874ee64ff1a46607719556d9216bf03cf94b5a6083ed1b1",
     "tests/test_source_executable_inventory.py": "2dc6672593b2518239f73e9c0c82abc4f85e08b5359f6b260e0c2a91865576dc",
     "tests/test_source_stage_integrity.py": "9211db67d762487b7aa079c9142553db1343c2204c428200399c1c892f2c7f52",
