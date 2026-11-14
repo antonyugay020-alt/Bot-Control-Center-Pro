@@ -176,7 +176,11 @@ def _recorded_process_dead(record):
         return False
 
 
-def ensure_hub(repo_root, *, timeout=8):
+def ensure_hub(repo_root, *, timeout=8, bybit_ws=False):
+    # New Bybit workers explicitly request an executable-depth WS producer.
+    # Never replace/reconfigure an existing live producer in place.
+    if type(bybit_ws) is not bool:
+        raise ValueError("Bybit WebSocket capability must be boolean")
     root = Path(repo_root).resolve()
     cache = root / 'market_cache.sqlite'
     lock = root / '.market_hub_spawn.lock'
@@ -193,6 +197,11 @@ def ensure_hub(repo_root, *, timeout=8):
         if not isinstance(record, dict):
             record = {}
         if _matches(record, cache):
+            if bybit_ws and record.get('bybit_ws_books') is not True:
+                raise HubUnavailable(
+                    'Existing live Market Data Hub has no Bybit orderbook WebSocket; '
+                    'refusing to reuse or restart a producer serving running bots'
+                )
             if record.get('startup_failed'):
                 raise HubUnavailable('Market Data Hub previous startup failed; process exit is unconfirmed')
             # A matching PID only proves process identity, not that the
@@ -256,7 +265,7 @@ def ensure_hub(repo_root, *, timeout=8):
                    '--ready-token', challenge]
         if env.get('BCC_BYBIT_WS_QUOTES') == '1':
             command.append('--bybit-ws-quotes')
-        if env.get('BCC_BYBIT_WS_BOOKS') == '1':
+        if bybit_ws or env.get('BCC_BYBIT_WS_BOOKS') == '1':
             command.append('--bybit-ws-books')
         if env.get('BCC_BYBIT_WS_KLINES') == '1':
             command.append('--bybit-ws-klines')
@@ -324,6 +333,8 @@ def ensure_hub(repo_root, *, timeout=8):
                             atomic_json(record_path, {
                                 'pid': service_pid, 'created': service_created,
                                 'leader_owner': owner,
+                                'bybit_ws_books': ('--bybit-ws-books' in command),
+                                'bybit_ws_quotes': ('--bybit-ws-quotes' in command),
                             })
                             return service_pid
                 except (OSError, ValueError, TypeError, sqlite3.Error, psutil.Error):
