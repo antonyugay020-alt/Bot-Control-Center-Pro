@@ -197,7 +197,8 @@ def ensure_hub(repo_root, *, timeout=8, bybit_ws=False):
         if not isinstance(record, dict):
             record = {}
         if _matches(record, cache):
-            if bybit_ws and record.get('bybit_ws_books') is not True:
+            if bybit_ws and (record.get('bybit_ws_books') is not True
+                             or record.get('bybit_ws_quotes') is not True):
                 raise HubUnavailable(
                     'Existing live Market Data Hub has no Bybit orderbook WebSocket; '
                     'refusing to reuse or restart a producer serving running bots'
