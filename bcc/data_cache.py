@@ -205,10 +205,25 @@ class PublicCache:
         return int(row[0]) if now_mono < row[1] else None
 
     def denied_status(self, host):
-        """Share policy refusals across workers, with restart-aware expiry."""
-        self._ensure_schema()
-        with self.db() as db:
-            return self._denied(db, host)
+        """Read the fleet-wide provider fence despite transient SQLite contention.
+
+        On clean Windows startup many independent workers simultaneously
+        initialize the same WAL database. A 200 ms lock timeout is appropriate
+        for one SQL operation, but cannot by itself prove that an HTTP 403/451
+        policy fence is absent. Retry only busy/locked failures within a
+        bounded admission window. Never return None on an unreadable fence,
+        and never send a direct HTTP request to bypass it.
+        """
+        deadline = time.monotonic() + 5.0
+        while True:
+            try:
+                self._ensure_schema()
+                with self.db() as db:
+                    return self._denied(db, host)
+            except CacheBusy:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
 
     @staticmethod
     def _cached(db, key, host, now):
