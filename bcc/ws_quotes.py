@@ -170,12 +170,8 @@ class BybitQuoteStream:
                 old_mark = self._marks.get(symbol)
                 if old_mark is None or ts >= old_mark[1]:
                     self._marks[symbol] = (mark, ts, self._mono(), generation)
-            if not incoming:
-                # The mark is separately sourced from a verified WS delta.
-                # Do not invent a new bid/ask observation.
-                published_mark_only = True
-            else:
-                published_mark_only = False
+            # Mark-only deltas publish evidence without mutating the
+            # independent bid/ask cache or renewing its exchange timestamp.
             if incoming:
                 if kind == "snapshot":
                     # The first quote of a generation must contain both sides.
