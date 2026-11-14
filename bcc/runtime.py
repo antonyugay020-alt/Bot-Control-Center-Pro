@@ -76,6 +76,11 @@ def process_tick(cfg, store, engine, tick):
     if not book_is_fresh(book["at"]):
         raise DataUnavailable("Стакан устарел до торгового решения")
     bid, ask = executable_quote(book)
+    if tick.margin_data is not None:
+        # The history lane provided separately checked public risk tiers.
+        # Commit those tiers atomically with the executable WS snapshot;
+        # attach_snapshot then applies the newer independently timed markPrice.
+        book = dict(book, margin_data=tick.margin_data)
     with risk_transaction(store) as (state, events):
         attach_snapshot(state, symbol, book)
         state["marks"][symbol] = observed_quote(
