@@ -773,7 +773,12 @@ class MarketDataHub:
                         "u": book["u"], "seq": book["seq"],
                     },
                 }
-                ttl = .2
+                # The position scheduler samples at up to 0.5s intervals.
+                # A 0.2s cache residence expired between valid WS events
+                # even though the original exchange snapshot remained fresh.
+                # Residence never renews the exchange timestamp: the worker
+                # still rejects books older than the strict 3s freshness gate.
+                ttl = .75
         except (StreamUnavailable, ValueError, KeyError, TypeError):
             return False
         from .data_cache import CacheBusy
