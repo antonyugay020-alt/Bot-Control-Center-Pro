@@ -18,11 +18,9 @@ def test_bybit_health_scope_never_probes_deferred_market_venues(monkeypatch):
     def forbidden():
         raise AssertionError("Deferred market venue must not be probed")
 
-    monkeypatch.setattr(health, "SOURCE_CHECKS", {
-        "bybit": ("Bybit USDT Futures", success),
-        "polymarket": ("Polymarket Gamma + CLOB", forbidden),
-        "binance": ("Binance spot impulse", forbidden),
-    })
+    monkeypatch.setattr(health, "check_bybit", success)
+    monkeypatch.setattr(health, "check_polymarket", forbidden)
+    monkeypatch.setattr(health, "check_signal_source", forbidden)
     result = health.check_sources(venues=("bybit",))
     assert called == ["bybit"]
     assert result["all_available"] is True
@@ -35,11 +33,9 @@ def test_bybit_health_scope_never_probes_deferred_market_venues(monkeypatch):
 def test_bybit_failure_fails_only_its_own_gate(monkeypatch):
     def blocked():
         raise RuntimeError("Bybit market unavailable")
-    monkeypatch.setattr(health, "SOURCE_CHECKS", {
-        "bybit": ("Bybit USDT Futures", blocked),
-        "polymarket": ("Polymarket Gamma + CLOB", lambda: {"ok": True}),
-        "binance": ("Binance spot impulse", lambda: {"ok": True}),
-    })
+    monkeypatch.setattr(health, "check_bybit", blocked)
+    monkeypatch.setattr(health, "check_polymarket", lambda: {"ok": True})
+    monkeypatch.setattr(health, "check_signal_source", lambda: {"ok": True})
     result = health.check_sources(venues=("bybit",))
     assert result["all_available"] is False
     assert result["checks"][0]["status"] == "UNAVAILABLE"
@@ -76,10 +72,9 @@ def test_legacy_all_sources_scope_still_probes_every_provider(monkeypatch):
             seen.append(name)
             return {"source": name}
         return go
-    monkeypatch.setattr(health, "SOURCE_CHECKS", {
-        name: (name, provider(name))
-        for name in ("bybit", "polymarket", "binance")
-    })
+    monkeypatch.setattr(health, "check_bybit", provider("bybit"))
+    monkeypatch.setattr(health, "check_polymarket", provider("polymarket"))
+    monkeypatch.setattr(health, "check_signal_source", provider("binance"))
     result = health.check_sources()
     assert set(seen) == {"bybit", "polymarket", "binance"}
     assert result["all_available"] is True
