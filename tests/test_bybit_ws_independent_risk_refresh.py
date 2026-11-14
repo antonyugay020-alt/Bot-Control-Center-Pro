@@ -35,6 +35,7 @@ def test_risk_tier_refresh_is_throttled_and_off_fast_position_lane(monkeypatch):
         first = source.refresh_position_risk("BTCUSDT")
         assert first["symbol"] == "BTCUSDT"
         assert "account_marks" not in first
+        assert "quote" not in first  # REST cannot replace authoritative WS markPrice
         assert source.refresh_position_risk("BTCUSDT") is None
         assert calls == ["BTCUSDT"]
         # The strategy history lane can request a new tier verification after
