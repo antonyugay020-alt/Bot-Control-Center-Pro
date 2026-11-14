@@ -154,7 +154,7 @@ def test_fast_position_book_does_not_invent_risk_mark(monkeypatch):
                 "priceFilter": {"tickSize": ".01"},
             }]}}
         if url.endswith("/orderbook"):
-            return {"time": int(now * 1000), "result": {
+            return {"retCode": 0, "time": int(now * 1000), "result": {
                 "s": "BTCUSDT", "ts": int(now * 1000),
                 "b": [["99.99", "10"], ["99.98", "10"]],
                 "a": [["100.01", "10"], ["100.02", "10"]],
