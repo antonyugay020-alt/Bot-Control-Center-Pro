@@ -20,6 +20,7 @@ def test_ws_disconnect_preserves_verified_tiers_but_blocks_margin_then_recovers(
 
     state = initial_state(500)
     state["margin_model"] = MODEL
+    state["margin_data"] = {}
     state["margin_data"]["BTCUSDT"] = {
         "symbol": "BTCUSDT",
         "risk_at": time.time(),
@@ -59,7 +60,7 @@ def test_ws_disconnect_preserves_verified_tiers_but_blocks_margin_then_recovers(
         "margin_data": None,
         "margin_marks": {"BTCUSDT": mark},
     }
-    process_tick({}, object(), None, MarketTick(
+    process_tick({"symbols": ["BTCUSDT"]}, object(), None, MarketTick(
         "BTCUSDT", [], book, [], {}
     ))
     assert state["margin_data"]["BTCUSDT"]["tiers"] == preserved["tiers"]
@@ -70,6 +71,7 @@ def test_failed_market_book_never_retains_tradeable_margin_quote(monkeypatch):
     from bcc import runtime
     state = initial_state(500)
     state["margin_model"] = MODEL
+    state["margin_data"] = {}
     state["margin_data"]["BTCUSDT"] = {
         "symbol": "BTCUSDT",
         "risk_at": time.time(),
