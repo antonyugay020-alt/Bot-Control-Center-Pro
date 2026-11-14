@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_BYBIT_WINDOWS_REGRESSION_20261114_NOT_RELEASE",
+  "checkpoint": "BCC_BYBIT_NATIVE_AUTOMATED_PASS_20261114_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -148,7 +148,7 @@
     "tests/test_architecture_source_sealing.py": "043c54cc2da8c4fd7d5ac40cc5d5d55d6d346efe081d7df55aedf2387c0cdd0d",
     "tests/test_atomic_operator_command_plane.py": "67d4e917daac268aa560af684bb9314f783d8afb5dde14751cf52882fe7f3ed7",
     "tests/test_audit_regressions.py": "d9f7c03896655acbc244b0e7ed78e9a68c2136b90362b778af3e674ee64815eb",
-    "tests/test_bybit_phase_isolation.py": "e05ad4e2ae689196ea11063cef276675a2ec241bc327e268a6243161feba7222",
+    "tests/test_bybit_phase_isolation.py": "7e77b8b6235f4718e00a7306c03651e6877d1d14cbca9f9d339e9936d8540d16",
     "tests/test_cached_read_during_cooldown.py": "ed97d1e4b103cb96d2af86ea36cf7f50039525db2a76559ba8a9328865953e04",
     "tests/test_chart_storage.py": "270a2753af356649dde426c2b8b8e94282e495067914b2fc37af5951ceb27c6b",
     "tests/test_clock_diagnostics.py": "bd6cdd40e6046d00364f8d3a8d504cd0274ea4dd1d2a7552e79832b2dcec2147",
@@ -426,7 +426,7 @@
     "tools/seal_source.py": "bd17e44d377a6c746f1e95358158c12d04fe616176298c6b89d22d0687c4601f",
     "tools/start_windows_check.ps1": "a774ae6d90b784461811b0ab810af9c04547108c38ab749d7c11a700f4278a66",
     "tools/verify_package.py": "ed69ce839b5b888af765311824dbd9129552e8a2b0d86f8e1ef751eac0277f1e",
-    "tools/verify_windows.py": "9c6890e099f78ea14b2207e4700179e26ee13b0cbcc03e212065143db5adf2e0",
+    "tools/verify_windows.py": "8535caa73856a31191a172564462ab2edbe660e37c47d33c0c370c3cd0a77f91",
     "tools/windows_ai_launcher.py": "89bb4ef92af88230b9471e35248c2db12a3df1b0d9a61924cb8508f7e6e94f70",
     "tools/windows_check.py": "6ca39be1d3a9a6e35e675f9daa964859e5401f21c454f4e48633d868ceb94bdf",
     "tools/ws_offline_acceptance.py": "aed71c8e11d0a0f8dddaf035337c9d9887439f7ef3aade3825b5d4885b72b7f8"
