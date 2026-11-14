@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_WS_SQLITE_RECOVERY_20261114_NOT_RELEASE",
+  "checkpoint": "BCC_WS_WINDOWS_CLOCK_QUORUM_20261114_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -80,7 +80,7 @@
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
     "bcc/market.py": "d4638d678196bd84b7851eff820bfacb77f1737afd95d4cfa5d3573d1571d4df",
-    "bcc/market_clock.py": "d8fd85b250c4435c3a3ce0d3da0e9a1b97757f0fa0b4e93fd613f8b059f33ad8",
+    "bcc/market_clock.py": "88423cd8d1152462bfe617eb600b54f58abcaf2920b935aca5e366920b00dfc2",
     "bcc/market_health.py": "03ef55b807852890278a2da5f05e805e17f2a78acfa4ea23a8f1277b26f5255f",
     "bcc/market_hub.py": "a093c0a74ee1ba26df73f4f672930ee69c90a20397bb053e1cc5562a844247dd",
     "bcc/market_selection.py": "92995ed897565f90f5ade52973cdef75375b2adc6b95e7ba98bdca0e34344c91",
@@ -240,7 +240,7 @@
     "tests/test_local_cooldown_cache.py": "cd7fe1cf0fe99b7c7fb1e8c4fc35a4582f4cfa92ab3e5dca25e4e3397300134f",
     "tests/test_manual_close_unified_control.py": "8116f140405312f99dba93408d221bf9119b6138f6507ffd265392e734a9b1f6",
     "tests/test_margin_finance.py": "1fdac2d4f224209b75aff9e0da2d1a6e985448c4190c170d63f320efb83e6a76",
-    "tests/test_market_clock.py": "1e862207be3024d6c64cd6bffe1be66b961d95b4ea43fc524ff5945a2dbc472a",
+    "tests/test_market_clock.py": "9406b95604efa25f8cfc1541d04ee805daf61d1badf8976d411913665cdec11a",
     "tests/test_market_clock_quorum.py": "06c94bf643eda8fcedbc97a5e0bb95eae8dda4350a26ad5123083c4a6b2cacc3",
     "tests/test_market_fleet_recovery_e2e.py": "212a15776f3583e8504816a9630570b426178f6246d802eaa149abdeb51fbf86",
     "tests/test_market_hub_contract.py": "cbdaf4fa1b13daeb34439bd72a78900592d8a35d58b59e73bdee5ac29f95af7f",
