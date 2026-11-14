@@ -967,6 +967,7 @@ class MainWindow(QMainWindow):
                 self.refresh_details()
                 return
             now = time.time()
+            was_sorting = self.positions.isSortingEnabled()
             self.positions.setSortingEnabled(False)
             try:
                 for row, key in enumerate(row_keys):
@@ -979,7 +980,7 @@ class MainWindow(QMainWindow):
                     if cell is not None and cell.text() != rendered:
                         cell.setText(rendered)
             finally:
-                self.positions.setSortingEnabled(True)
+                self.positions.setSortingEnabled(was_sorting)
             self.monitor_state = state
             self._render_live_finance_notice(
                 state,
