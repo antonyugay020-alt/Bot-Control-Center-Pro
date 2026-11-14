@@ -392,6 +392,9 @@ class PublicCache:
                 raise ValueError("Invalid WS mark-price") from exc
             if not math.isfinite(mark) or mark <= 0:
                 raise ValueError("Invalid WS mark-price")
+            exchange_ms = value.get("_bcc_ws_mark_at")
+            if type(exchange_ms) is not int or exchange_ms <= 0:
+                raise ValueError("Missing independently timestamped WS mark-price")
         key = hashlib.sha256(
             json.dumps([url, params], sort_keys=True).encode()
         ).hexdigest()
