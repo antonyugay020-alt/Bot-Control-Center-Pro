@@ -109,6 +109,28 @@ def test_verified_ws_mark_only_hub_snapshot_reaches_risk_reader_without_rest(tmp
         producer.close()
 
 
+
+def test_worker_rejects_old_exchange_mark_with_newer_quote_time(monkeypatch):
+    # A quote-only delta must never launder the original exchange mark time.
+    source = PublicData()
+    current = time.time()
+    monkeypatch.setattr(source, "get", lambda *a, **kw: {
+        "_bcc_ws_quote": True,
+        "_bcc_ws_mark": True,
+        "_bcc_ws_mark_at": int((current - 12) * 1000),
+        "time": int(current * 1000),
+        "result": {"list": [{
+            "symbol": "BTCUSDT",
+            "bid1Price": "102", "ask1Price": "103",
+            "markPrice": "100.5",
+        }]},
+    })
+    try:
+        with pytest.raises(DataUnavailable, match="stale"):
+            source._ws_position_mark("BTCUSDT")
+    finally:
+        source.close()
+
 def test_fast_position_book_does_not_invent_risk_mark(monkeypatch):
     source = PublicData()
     monkeypatch.setenv("BCC_MARKET_HUB_MODE", "client")
