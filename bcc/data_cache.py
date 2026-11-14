@@ -374,8 +374,24 @@ class PublicCache:
                   "_bcc_ws_book" if url.endswith("/orderbook") else
                   "_bcc_ws_kline" if url.endswith("/kline") else
                   "_bcc_ws_quote")
-        if type(value) is not dict or value.get(marker) is not True:
+        if (type(value) is not dict or
+                (value.get(marker) is not True and not (
+                    bybit and url.endswith("/tickers") and
+                    value.get("_bcc_ws_mark") is True))):
             raise ValueError("Unverified WS payload provenance")
+        if bybit and url.endswith("/tickers") and value.get("_bcc_ws_mark") is True:
+            # A mark-only record is not a quote. Validate its independent
+            # price and do not infer a mark from executable bid/ask.
+            rows = value.get("result", {}).get("list", [])
+            if (type(rows) is not list or len(rows) != 1
+                    or rows[0].get("symbol") != params["symbol"]):
+                raise ValueError("Invalid WS mark-price symbol")
+            try:
+                mark = float(rows[0]["markPrice"])
+            except (TypeError, ValueError, KeyError, OverflowError) as exc:
+                raise ValueError("Invalid WS mark-price") from exc
+            if not math.isfinite(mark) or mark <= 0:
+                raise ValueError("Invalid WS mark-price")
         key = hashlib.sha256(
             json.dumps([url, params], sort_keys=True).encode()
         ).hexdigest()
