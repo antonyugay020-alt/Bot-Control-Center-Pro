@@ -393,6 +393,14 @@ def validate_required_evidence(output, *, venue="all"):
 
     output = Path(output)
     problems = []
+    if venue == "bybit":
+        from tools.bybit_ws_live_acceptance import validate_report
+        from tools.verify_package import verify
+        try:
+            ws_report = json.loads((output / "bybit_ws" / "live_ws_report.json").read_text(encoding="utf-8"))
+            problems.extend(validate_report(ws_report, verify(ROOT)["manifest_sha256"]))
+        except (OSError, ValueError, TypeError) as exc:
+            problems.append("Bybit WS evidence unavailable: " + str(exc))
     try:
         totals = read_test_totals(output / "tests.xml")
         # The headless baseline already includes >500 real tests. A tiny
@@ -594,6 +602,12 @@ def main():
             WINDOWS_QA_TIMEOUTS["public_sources"],
         ),
     ]
+    if args.venue == "bybit":
+        steps.insert(-1, (
+            "bybit_ws", ["-m", "tools.bybit_ws_live_acceptance", "--output",
+                         str(output / "bybit_ws"), "--require-mark"],
+            WINDOWS_QA_TIMEOUTS["bybit_ws"],
+        ))
     # The outer launcher must not time out before the inner runner can
     # finish every explicitly budgeted stage and persist FAIL diagnostics.
     # Keep these budgets in sync with tools/windows_check.py.

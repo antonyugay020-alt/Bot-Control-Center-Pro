@@ -322,9 +322,11 @@ class PolymarketMarketWS:
                 continue
             started = time.monotonic()
             self.disconnect()
+            # Bind this session into callback defaults: loop-local variables
+            # otherwise alias the NEXT socket after a reconnect.
             state = {"generation": None}
 
-            def opened(socket):
+            def opened(socket, state=state):
                 if self._stop.is_set():
                     socket.close()
                     return
@@ -346,7 +348,7 @@ class PolymarketMarketWS:
                             "operation": "subscribe",
                         }))
 
-            def received(socket, raw):
+            def received(socket, raw, state=state):
                 try:
                     status = json.loads(raw)
                 except (TypeError, ValueError):
@@ -359,7 +361,7 @@ class PolymarketMarketWS:
                     return
                 self.ingest_message(raw, generation=state["generation"])
 
-            def closed(socket, code, reason):
+            def closed(socket, code, reason, state=state):
                 self.disconnect(generation=state["generation"])
 
             socket = websocket_app_factory(
@@ -367,7 +369,7 @@ class PolymarketMarketWS:
                 on_message=received, on_close=closed)
             pulse_stop = threading.Event()
 
-            def heartbeat():
+            def heartbeat(socket=socket, state=state, pulse_stop=pulse_stop):
                 # The CLOB market channel uses application-level PING.
                 while not pulse_stop.wait(10):
                     with self._lock:

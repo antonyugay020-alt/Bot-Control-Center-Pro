@@ -9,7 +9,7 @@ def test_timeout_definitions_are_shared_and_budgeted():
     assert windows_check.WINDOWS_QA_TIMEOUTS is qa_budgets.WINDOWS_QA_TIMEOUTS
     assert verify_windows.WINDOWS_QA_TIMEOUTS is qa_budgets.WINDOWS_QA_TIMEOUTS
     assert set(qa_budgets.WINDOWS_QA_TIMEOUTS) == {
-        "collection", "tests", "gui", "public_sources"
+        "collection", "tests", "gui", "bybit_ws", "public_sources"
     }
     assert all(isinstance(t, int) and 0 < t < 3600
                for t in qa_budgets.WINDOWS_QA_TIMEOUTS.values())

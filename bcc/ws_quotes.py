@@ -173,44 +173,56 @@ class BybitQuoteStream:
                     symbol not in self._subscriptions):
                 return False
             previous = self._quotes.get(symbol)
-            if previous is not None and ts < previous.exchange_ms:
-                return False
+            changed = False
             if mark is not None:
                 old_mark = self._marks.get(symbol)
-                if old_mark is None or ts >= old_mark[1]:
-                    self._marks[symbol] = (mark, ts, self._mono(), generation)
-            # Mark-only deltas publish evidence without mutating the
-            # independent bid/ask cache or renewing its exchange timestamp.
-            if incoming:
+                if old_mark is None or ts > old_mark[1]:
+                    received = self._mono()
+                    self._marks[symbol] = (mark, ts, received, generation)
+                    if old_mark is None:
+                        # Handshake grace ends once the first genuine mark
+                        # arrives. Keeping the initial three-second deadline
+                        # would otherwise outlive its two-second evidence TTL.
+                        self._mark_refresh_due[symbol] = min(
+                            self._mark_refresh_due.get(symbol, received + 1.0),
+                            received + 1.0,
+                        )
+                    changed = True
+            # Quote and mark ordering are independent. A newer executable
+            # quote cannot suppress an otherwise newer mark observation.
+            if incoming and (previous is None or ts >= previous.exchange_ms):
                 if kind == "snapshot":
-                    # The first quote of a generation must contain both sides.
-                    if set(incoming) != {"bid1Price", "ask1Price"}:
-                        self._quotes.pop(symbol, None)
-                        return False
                     previous = None
-                elif previous is None:
-                    return False
-                now = self._mono()
-                bid = incoming.get("bid1Price", previous.bid if previous else None)
-                ask = incoming.get("ask1Price", previous.ask if previous else None)
-                bid_ms = ts if "bid1Price" in incoming else previous.bid_exchange_ms
-                ask_ms = ts if "ask1Price" in incoming else previous.ask_exchange_ms
-                bid_mono = now if "bid1Price" in incoming else previous.bid_received_monotonic
-                ask_mono = now if "ask1Price" in incoming else previous.ask_received_monotonic
-                fresh = (
-                    bid is not None and ask is not None and bid <= ask
-                    and 0 <= now - bid_mono <= self._max_age
-                    and 0 <= now - ask_mono <= self._max_age
-                    and -5 <= self._wall() - bid_ms / 1000 <= self._max_age
-                    and -5 <= self._wall() - ask_ms / 1000 <= self._max_age
-                )
-                if not fresh:
+                complete = set(incoming) == {"bid1Price", "ask1Price"}
+                if previous is None and not complete:
                     self._quotes.pop(symbol, None)
-                    return False
-                self._quotes[symbol] = Quote(
-                    symbol, bid, ask, ts, now, generation,
-                    bid_ms, ask_ms, bid_mono, ask_mono,
-                )
+                else:
+                    now = self._mono()
+                    bid = incoming.get("bid1Price", previous.bid if previous else None)
+                    ask = incoming.get("ask1Price", previous.ask if previous else None)
+                    if bid > ask:
+                        self._quotes.pop(symbol, None)
+                    else:
+                        bid_ms = ts if "bid1Price" in incoming else previous.bid_exchange_ms
+                        ask_ms = ts if "ask1Price" in incoming else previous.ask_exchange_ms
+                        bid_mono = now if "bid1Price" in incoming else previous.bid_received_monotonic
+                        ask_mono = now if "ask1Price" in incoming else previous.ask_received_monotonic
+                        # Keep independently timestamped sides even during a
+                        # stale interval. quote() still denies them; subsequent
+                        # partial deltas can recover each side without waiting
+                        # forever for an unsolicited full exchange snapshot.
+                        self._quotes[symbol] = Quote(
+                            symbol, bid, ask, ts, now, generation,
+                            bid_ms, ask_ms, bid_mono, ask_mono,
+                        )
+                        changed = changed or (
+                            0 <= now - bid_mono <= self._max_age
+                            and 0 <= now - ask_mono <= self._max_age
+                            and -5 <= self._wall() - bid_ms / 1000 <= self._max_age
+                            and -5 <= self._wall() - ask_ms / 1000 <= self._max_age
+                        )
+            if not changed:
+                return False
         if self.on_update is not None:
             try:
                 self.on_update("tickers", symbol)
@@ -223,8 +235,9 @@ class BybitQuoteStream:
 
         Never reuse or restamp old observations. A bounded unsubscribe/
         resubscribe on the established public socket asks Bybit to send a
-        fresh snapshot when a mark has expired. Each symbol is throttled to
-        one recovery request per 6 seconds, not once per scheduler cycle.
+        fresh snapshot before independent mark or quote sides expire. Each symbol is throttled to
+        one recovery request per second. Refresh begins before expiry,
+        allowing a quiet symbol to retain genuine independent observations.
         The subsequent genuine WebSocket event is still required before
         margin/risk becomes available again.
         """
@@ -241,12 +254,20 @@ class BybitQuoteStream:
             for symbol in sorted(set(symbols) & self._subscriptions):
                 row = self._marks.get(symbol)
                 fresh = (row is not None and row[3] == self._generation
-                         and 0 <= now - row[2] <= self._max_age
-                         and -5 <= wall - row[1] / 1000 <= self._max_age)
-                if fresh or now < self._mark_refresh_due.get(symbol, 0):
+                         and 0 <= now - row[2] < self._max_age / 2
+                         and -5 <= wall - row[1] / 1000 < self._max_age / 2)
+                quote = self._quotes.get(symbol)
+                quote_fresh = (
+                    quote is not None and quote.generation == self._generation
+                    and 0 <= now - quote.bid_received_monotonic < self._max_age / 2
+                    and 0 <= now - quote.ask_received_monotonic < self._max_age / 2
+                    and -5 <= wall - quote.bid_exchange_ms / 1000 < self._max_age / 2
+                    and -5 <= wall - quote.ask_exchange_ms / 1000 < self._max_age / 2
+                )
+                if (fresh and quote_fresh) or now < self._mark_refresh_due.get(symbol, 0):
                     continue
                 stale.append(symbol)
-                self._mark_refresh_due[symbol] = now + 6.0
+                self._mark_refresh_due[symbol] = now + 1.0
             if not stale:
                 return 0
             try:
@@ -258,8 +279,12 @@ class BybitQuoteStream:
                     self._socket.send(json.dumps({"op": "unsubscribe", "args": topics}))
                     self._socket.send(json.dumps({"op": "subscribe", "args": topics}))
             except Exception as exc:
+                socket = self._socket
                 self.disconnect()
-                raise StreamUnavailable("Bybit mark refresh subscription failed") from exc
+                try:
+                    socket.close()
+                finally:
+                    raise StreamUnavailable("Bybit mark refresh subscription failed") from exc
             return len(stale)
 
     def mark(self, symbol):
@@ -313,9 +338,11 @@ class BybitQuoteStream:
         while not self._stop.is_set():
             started = time.monotonic()
             self.disconnect()
+            # Bind this session into callback defaults: loop-local variables
+            # otherwise alias the NEXT socket after a reconnect.
             state = {"generation": None}
 
-            def on_open(ws):
+            def on_open(ws, state=state):
                 if self._stop.is_set():
                     ws.close()
                     return
@@ -329,7 +356,7 @@ class BybitQuoteStream:
                         "args": topics[index:index + self.MAX_SUB_PER_MSG],
                     }))
 
-            def on_message(ws, raw):
+            def on_message(ws, raw, state=state):
                 try:
                     payload = json.loads(raw)
                 except (TypeError, ValueError):
@@ -342,7 +369,7 @@ class BybitQuoteStream:
                     return
                 self.ingest(payload, generation=state["generation"])
 
-            def on_close(ws, code, reason):
+            def on_close(ws, code, reason, state=state):
                 self.disconnect(generation=state["generation"])
 
             ws = websocket_app_factory(self.ENDPOINT, on_open=on_open,

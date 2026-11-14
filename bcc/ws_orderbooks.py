@@ -219,9 +219,11 @@ class BybitOrderbookWS:
         while not self._stop.is_set():
             started = time.monotonic()
             self.disconnect()
+            # Bind this session into callback defaults: loop-local variables
+            # otherwise alias the NEXT socket after a reconnect.
             state = {"generation": None}
 
-            def opened(ws):
+            def opened(ws, state=state):
                 generation = self.connect(ws)
                 state["generation"] = generation
                 with self._lock:
@@ -231,7 +233,7 @@ class BybitOrderbookWS:
                         self._invalidate()
                         ws.close()
 
-            def received(ws, raw):
+            def received(ws, raw, state=state):
                 try:
                     message = json.loads(raw)
                 except (TypeError, ValueError):
@@ -244,7 +246,7 @@ class BybitOrderbookWS:
                     return
                 self.ingest(message, generation=state["generation"])
 
-            def closed(ws, code, reason):
+            def closed(ws, code, reason, state=state):
                 self.disconnect(generation=state["generation"])
 
             socket = websocket_app_factory(

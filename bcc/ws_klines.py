@@ -184,9 +184,11 @@ class BybitKlineWS:
         while not self._stop.is_set():
             started = time.monotonic()
             self.disconnect()
+            # Bind this session into callback defaults: loop-local variables
+            # otherwise alias the NEXT socket after a reconnect.
             state = {"generation": None}
 
-            def opened(socket):
+            def opened(socket, state=state):
                 if self._stop.is_set():
                     socket.close()
                     return
@@ -195,7 +197,7 @@ class BybitKlineWS:
                 with self._lock:
                     self._send(socket, sorted(self._symbols))
 
-            def received(socket, raw):
+            def received(socket, raw, state=state):
                 try:
                     message = json.loads(raw)
                 except (TypeError, ValueError):
@@ -208,7 +210,7 @@ class BybitKlineWS:
                     return
                 self.ingest(message, generation=state["generation"])
 
-            def closed(socket, code, reason):
+            def closed(socket, code, reason, state=state):
                 self.disconnect(generation=state["generation"])
 
             socket = websocket_app_factory(

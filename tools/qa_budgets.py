@@ -16,6 +16,7 @@ WINDOWS_QA_TIMEOUTS = {
     "tests": ((REGRESSION_GROUPS + 1) * REGRESSION_SHARD_TIMEOUT
               + RESOURCE_REPLAY_TIMEOUT + REGRESSION_REPORT_MARGIN),
     "gui": 120,
+    "bybit_ws": 180,
     "public_sources": 90,
 }
 AUTOMATED_QA_TIMEOUT = sum(WINDOWS_QA_TIMEOUTS.values()) + 90

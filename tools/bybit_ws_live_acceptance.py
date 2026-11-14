@@ -17,6 +17,9 @@ from bcc.hub_supervisor import _matches, ensure_hub
 from bcc.market import PublicData, DataUnavailable
 from bcc.market_clock import book_is_fresh
 from bcc.storage import atomic_json
+from tools.verify_package import verify, assert_same_snapshot
+
+MIN_ROUNDS = 24
 
 URL = "https://api.bybit.com/v5/market/orderbook"
 SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT",
@@ -77,12 +80,63 @@ def stop_owned_hub(root):
         process.wait(timeout=8)
 
 
+def validate_report(report, manifest_sha256):
+    """Require every symbol/mark in sustained, source-bound transport evidence."""
+    import math
+    errors = []
+    if not isinstance(report, dict):
+        return ["Bybit WS report is not an object"]
+    if (report.get("status") != "PUBLIC_WS_HUB_CLIENT_PASS"
+            or report.get("require_mark") is not True
+            or report.get("real_orders") is not False
+            or report.get("isolated_hub_retired") is not True):
+        errors.append("Bybit WS status, mark verification or owned cleanup incomplete")
+    for key in ("source_integrity", "source_integrity_final"):
+        record = report.get(key)
+        if (not isinstance(record, dict) or record.get("status") != "PASS"
+                or record.get("manifest_sha256") != manifest_sha256):
+            errors.append("Bybit WS source snapshot mismatch: " + key)
+    rounds = report.get("rounds")
+    requested = report.get("requested_rounds")
+    if (type(requested) is not int or not MIN_ROUNDS <= requested <= 120
+            or not isinstance(rounds, list) or len(rounds) != requested):
+        return errors + ["Bybit WS sustained round inventory incomplete"]
+    steady = []
+    for index, batch in enumerate(rounds):
+        if (not isinstance(batch, list) or len(batch) != len(SYMBOLS)
+                or any(not isinstance(row, dict) for row in batch)
+                or sorted(str(row.get("symbol")) for row in batch) != sorted(SYMBOLS)):
+            errors.append("Bybit WS symbol inventory incomplete")
+            continue
+        for row in batch:
+            if row.get("status") != "PASS" or row.get("mark_price_verified") is not True:
+                errors.append("Bybit WS symbol or independent mark failed")
+            for key in ("mark_age_seconds", "age_upper_seconds", "received_in_seconds"):
+                value = row.get(key)
+                if type(value) not in (int, float) or not math.isfinite(value):
+                    errors.append("Bybit WS timing missing or invalid")
+                elif key != "received_in_seconds" and not -.5 <= value <= 3:
+                    errors.append("Bybit WS exchange observation expired")
+                elif key == "received_in_seconds":
+                    if value < 0 or (index and value > 1.5):
+                        errors.append("Bybit WS delivery latency exceeded")
+                    if index:
+                        steady.append(value)
+    if not steady or report.get("steady_state_max_seconds") != max(steady):
+        errors.append("Bybit WS steady-state latency evidence inconsistent")
+    return errors
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--require-mark", action="store_true",
                         help="Also require independently timestamped live Bybit WS mark-price")
+    parser.add_argument("--rounds", type=int, default=MIN_ROUNDS,
+                        help="Sustained public-data sampling rounds (minimum 24)")
     args = parser.parse_args(argv)
+    if not MIN_ROUNDS <= args.rounds <= 120:
+        parser.error("rounds must be between 24 and 120")
     out = args.output.resolve()
     if out.exists():
         raise RuntimeError("Refusing to reuse any existing Bybit acceptance output")
@@ -90,11 +144,14 @@ def main(argv=None):
     root = out / "isolated_hub"
     root.mkdir()
     cache = root / "market_cache.sqlite"
+    integrity = verify(Path(__file__).resolve().parents[1])
     report = {
         "at": datetime.now(timezone.utc).isoformat(),
         "scope": "BYBIT_PUBLIC_WS_BOOK_AND_MARK" if args.require_mark else "BYBIT_PUBLIC_WS_ONLY",
         "require_mark": args.require_mark,
         "real_orders": False,
+        "source_integrity": integrity,
+        "requested_rounds": args.rounds,
         "isolated_root": str(root),
         "release_ready": False,
         "symbols": list(SYMBOLS),
@@ -116,7 +173,7 @@ def main(argv=None):
         os.environ["BCC_BYBIT_WS_QUOTES"] = "1"
         os.environ["BCC_BYBIT_WS_BOOKS"] = "1"
         source = PublicData()
-        for iteration in range(3):
+        for iteration in range(args.rounds):
             with ThreadPoolExecutor(max_workers=len(SYMBOLS)) as pool:
                 rows = list(pool.map(
                     lambda symbol: probe(source, symbol,
@@ -126,7 +183,7 @@ def main(argv=None):
                 ))
             report["rounds"].append(rows)
             atomic_json(out / "live_ws_report.json", report)
-            if iteration != 2:
+            if iteration != args.rounds - 1:
                 time.sleep(2)
         # Initial subscription may require a handshake; once established,
         # repeated reads must be delivered promptly instead of waiting for
@@ -167,7 +224,19 @@ def main(argv=None):
                 log.read_text(encoding="utf-8", errors="replace")[-12000:],
                 encoding="utf-8",
             )
+        try:
+            report["source_integrity_final"] = assert_same_snapshot(
+                integrity, verify(Path(__file__).resolve().parents[1]))
+        except Exception as exc:
+            report["status"] = "BLOCKED_SOURCE_CHANGED"
+            report["source_error"] = str(exc)
         atomic_json(out / "live_ws_report.json", report)
+    if report["status"] == "PUBLIC_WS_HUB_CLIENT_PASS" and args.require_mark:
+        problems = validate_report(report, integrity["manifest_sha256"])
+        if problems:
+            report["status"] = "BLOCKED_INCOMPLETE_EVIDENCE"
+            report["evidence_errors"] = problems
+            atomic_json(out / "live_ws_report.json", report)
     print("Bybit public WS acceptance:", report["status"])
     print("Report:", (out / "live_ws_report.json"))
     return 0 if report["status"] == "PUBLIC_WS_HUB_CLIENT_PASS" else 1

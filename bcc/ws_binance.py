@@ -152,9 +152,11 @@ class BinanceTradeWS:
                 continue
             started = time.monotonic()
             self.disconnect()
+            # Bind this session into callback defaults: loop-local variables
+            # otherwise alias the NEXT socket after a reconnect.
             state = {"generation": None}
 
-            def opened(socket):
+            def opened(socket, state=state):
                 if self._stop.is_set():
                     socket.close()
                     return
@@ -162,7 +164,7 @@ class BinanceTradeWS:
                 with self._lock:
                     self._send(socket, sorted(self._symbols), "SUBSCRIBE")
 
-            def received(socket, raw):
+            def received(socket, raw, state=state):
                 try:
                     data = json.loads(raw)
                 except (TypeError, ValueError):
@@ -174,7 +176,7 @@ class BinanceTradeWS:
                     return
                 self.ingest(data, generation=state["generation"])
 
-            def closed(socket, code, reason):
+            def closed(socket, code, reason, state=state):
                 self.disconnect(generation=state["generation"])
 
             socket = websocket_app_factory(

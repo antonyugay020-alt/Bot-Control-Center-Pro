@@ -1,4 +1,4 @@
-param([switch]$AutomatedOnly)
+param([switch]$AutomatedOnly, [ValidateSet('all', 'bybit')][string]$Venue = 'all')
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 try {
@@ -17,7 +17,7 @@ try {
         }
     }
     if (-not $python) { throw 'Python 3.10+ was not found. Install Python 3.12 with Python Launcher, then run CHECK_WINDOWS.bat again.' }
-    $runArgs = @('tools\windows_check.py')
+    $runArgs = @('tools\windows_check.py', '--venue', $Venue)
     if ($AutomatedOnly) { $runArgs += '--automated-only' }
     & $python @prefix @runArgs
     exit $LASTEXITCODE

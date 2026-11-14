@@ -61,3 +61,55 @@ class StaleCloseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+import json
+import pytest
+
+
+@pytest.mark.parametrize('kind', ['quote', 'depth', 'kline', 'clob', 'binance'])
+def test_real_reconnect_callbacks_keep_their_original_socket_generation(kind):
+    constructors = {
+        'quote': BybitQuoteStream, 'depth': BybitOrderbookWS,
+        'kline': BybitKlineWS, 'clob': PolymarketMarketWS,
+        'binance': BinanceTradeWS,
+    }
+    stream = constructors[kind]()
+    stream.subscribe('123' if kind == 'clob' else 'ADAUSDT')
+    apps = []
+    checked = []
+
+    class App:
+        def __init__(self, endpoint, *, on_open, on_message, on_close):
+            self.opened, self.received, self.closed = on_open, on_message, on_close
+            apps.append(self)
+
+        def send(self, data):
+            pass
+
+        def close(self):
+            pass
+
+        def run_forever(self, **kwargs):
+            self.opened(self)
+            if len(apps) == 1:
+                return  # Transport loss starts a genuinely new run-loop iteration.
+            current = stream._generation
+            old = apps[0]
+            try:
+                old.closed(old, 1006, 'delayed old close')
+                assert stream._connected
+                assert stream._generation == current
+                old.received(old, json.dumps({
+                    'op': 'subscribe', 'success': False,
+                    'code': 1, 'msg': 'late error', 'event_type': 'error',
+                }))
+                assert stream._connected
+                assert stream._generation == current
+                checked.append(True)
+            finally:
+                stream.stop()
+
+    stream.run(websocket_app_factory=App, retry_delay=.1)
+    assert checked == [True]
+    assert len(apps) == 2
