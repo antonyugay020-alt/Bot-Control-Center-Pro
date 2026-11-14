@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_BYBIT_NATIVE_AUTOMATED_PASS_20261114_NOT_RELEASE",
+  "checkpoint": "BCC_BYBIT_WS_REQUIRED_FOR_NEW_WORKERS_20261114_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -72,11 +72,11 @@
     "bcc/funding.py": "a52f6023260951eac98f77028b26a09d2eb5c64eeb18c1374ea5590da95072b8",
     "bcc/gui_check.py": "4394ec3e4ebedb54515cd2955f38972eff72bf66da4ab9a64598888b9ba445c0",
     "bcc/health.py": "cb4e9cddde1e7f9991b584a0ad09b07f3e496d2d8d01951d76ce80fa4cb118c0",
-    "bcc/hub_supervisor.py": "c58ea6eb9880a5d6e892f9e71dc133bcbee41f1a97332a8968de964474bd45db",
+    "bcc/hub_supervisor.py": "4be919d56cf8934763a7a87754806b66bd1ef048fb69a955ca068871432bf411",
     "bcc/indicators.py": "7b906a08f76a78cc7dead46d5c976d6442cbea95d303348ac962fd132137c48a",
     "bcc/inspection.py": "b2f1d65d90c875220c83ab27ac585c422749c8e00dc41656b3beba0d5ff467a4",
     "bcc/launch_claim.py": "b70b233d0bd38c2f42b7ad72b3583d60c7600ddf7ae8c0ee0ad281e643ec6ecf",
-    "bcc/lifecycle.py": "a2a96045689576175bbbbe9797811ba533626a94464321e541ab3b69b15a950b",
+    "bcc/lifecycle.py": "ad60ddfac8c4bf30ad186d92c8e6a5b6f53ab11bea64a8c32be4a215e271c2c6",
     "bcc/liquidation.py": "35a68b2c9278f2e8e4625b037a10846cf5d28f87fa0683d63da1402dea25c39f",
     "bcc/margin.py": "1c40aaf85be8038bcd30bb96a6afbc81fe73713ef80d581136e738243a5303a4",
     "bcc/market.py": "d4638d678196bd84b7851eff820bfacb77f1737afd95d4cfa5d3573d1571d4df",
@@ -149,6 +149,7 @@
     "tests/test_atomic_operator_command_plane.py": "67d4e917daac268aa560af684bb9314f783d8afb5dde14751cf52882fe7f3ed7",
     "tests/test_audit_regressions.py": "d9f7c03896655acbc244b0e7ed78e9a68c2136b90362b778af3e674ee64815eb",
     "tests/test_bybit_phase_isolation.py": "7e77b8b6235f4718e00a7306c03651e6877d1d14cbca9f9d339e9936d8540d16",
+    "tests/test_bybit_ws_mandatory_lifecycle.py": "92ef0d8c1670dc2cb122ed2e71e33ec522f2d1225914dfce62c9b0e4d5f50c6c",
     "tests/test_cached_read_during_cooldown.py": "ed97d1e4b103cb96d2af86ea36cf7f50039525db2a76559ba8a9328865953e04",
     "tests/test_chart_storage.py": "270a2753af356649dde426c2b8b8e94282e495067914b2fc37af5951ceb27c6b",
     "tests/test_clock_diagnostics.py": "bd6cdd40e6046d00364f8d3a8d504cd0274ea4dd1d2a7552e79832b2dcec2147",
