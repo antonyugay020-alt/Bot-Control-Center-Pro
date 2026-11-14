@@ -59,7 +59,7 @@ def _provider_interval(provider, result, wall, anchor):
             # equivalent to the uncertainty of the final two-provider UTC.
             # Permit bounded slow connections here; _clock_consensus keeps
             # the <=0.5 second executable trading-time requirement.
-            or not 0 <= sample["round_trip_seconds"] <= 1.5
+            or not 0 <= sample["round_trip_seconds"] <= 1
             or not 0 < sample["server_precision_seconds"] <= 0.001
         ):
             raise ClockUnavailable("Нет двух точных некэшированных ответов времени " + provider)
@@ -80,7 +80,7 @@ def _provider_interval(provider, result, wall, anchor):
     # to trade. Do not reject two internally consistent uncached samples
     # merely because their shared network envelope is wider than 0.5s.
     # The independent-provider intersection below MUST still be <=0.5s.
-    if not 0 <= high - low <= 1.5:
+    if not 0 <= high - low <= 1:
         raise ClockUnavailable("Два ответа источника не согласуются: " + provider)
     return low, high
 
