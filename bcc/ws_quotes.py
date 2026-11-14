@@ -58,6 +58,9 @@ class BybitQuoteStream:
         self._connected = False
         self._subscriptions = set()
         self._quotes = {}
+        # Exchange mark-price has its own event clock and must never be
+        # fabricated from best bid/ask or renewed by quote-only deltas.
+        self._marks = {}
         self._socket = None
         self._stop = threading.Event()
 
@@ -100,6 +103,7 @@ class BybitQuoteStream:
             self._connected = False
             self._socket = None
             self._quotes.clear()
+            self._marks.clear()
 
     def connect(self, socket=None):
         with self._lock:
@@ -109,6 +113,7 @@ class BybitQuoteStream:
             self._connected = True
             self._socket = socket
             self._quotes.clear()
+            self._marks.clear()
             return self._generation
 
     def ingest(self, payload, *, generation):
@@ -139,7 +144,20 @@ class BybitQuoteStream:
                 if self._connected and generation == self._generation:
                     self._quotes.pop(symbol, None)
             return False
-        if not incoming:
+        # Mark-price can arrive alone in a delta. Track it independently of
+        # bid and ask, which may be absent or have their own older timestamps.
+        mark = None
+        if "markPrice" in row:
+            try:
+                mark = float(row["markPrice"])
+                if not math.isfinite(mark) or mark <= 0:
+                    raise ValueError("invalid Bybit mark-price")
+            except (ValueError, TypeError, OverflowError):
+                with self._lock:
+                    if self._connected and generation == self._generation:
+                        self._marks.pop(symbol, None)
+                return False
+        if not incoming and mark is None:
             return False
         with self._lock:
             if (not self._connected or generation != self._generation or
@@ -148,41 +166,69 @@ class BybitQuoteStream:
             previous = self._quotes.get(symbol)
             if previous is not None and ts < previous.exchange_ms:
                 return False
-            if kind == "snapshot":
-                # The first quote of a generation must contain both sides.
-                if set(incoming) != {"bid1Price", "ask1Price"}:
+            if mark is not None:
+                old_mark = self._marks.get(symbol)
+                if old_mark is None or ts >= old_mark[1]:
+                    self._marks[symbol] = (mark, ts, self._mono(), generation)
+            if not incoming:
+                # The mark is separately sourced from a verified WS delta.
+                # Do not invent a new bid/ask observation.
+                published_mark_only = True
+            else:
+                published_mark_only = False
+            if incoming:
+                if kind == "snapshot":
+                    # The first quote of a generation must contain both sides.
+                    if set(incoming) != {"bid1Price", "ask1Price"}:
+                        self._quotes.pop(symbol, None)
+                        return False
+                    previous = None
+                elif previous is None:
+                    return False
+                now = self._mono()
+                bid = incoming.get("bid1Price", previous.bid if previous else None)
+                ask = incoming.get("ask1Price", previous.ask if previous else None)
+                bid_ms = ts if "bid1Price" in incoming else previous.bid_exchange_ms
+                ask_ms = ts if "ask1Price" in incoming else previous.ask_exchange_ms
+                bid_mono = now if "bid1Price" in incoming else previous.bid_received_monotonic
+                ask_mono = now if "ask1Price" in incoming else previous.ask_received_monotonic
+                fresh = (
+                    bid is not None and ask is not None and bid <= ask
+                    and 0 <= now - bid_mono <= self._max_age
+                    and 0 <= now - ask_mono <= self._max_age
+                    and -5 <= self._wall() - bid_ms / 1000 <= self._max_age
+                    and -5 <= self._wall() - ask_ms / 1000 <= self._max_age
+                )
+                if not fresh:
                     self._quotes.pop(symbol, None)
                     return False
-                previous = None
-            elif previous is None:
-                return False
-            now = self._mono()
-            bid = incoming.get("bid1Price", previous.bid if previous else None)
-            ask = incoming.get("ask1Price", previous.ask if previous else None)
-            bid_ms = ts if "bid1Price" in incoming else previous.bid_exchange_ms
-            ask_ms = ts if "ask1Price" in incoming else previous.ask_exchange_ms
-            bid_mono = now if "bid1Price" in incoming else previous.bid_received_monotonic
-            ask_mono = now if "ask1Price" in incoming else previous.ask_received_monotonic
-            fresh = (
-                bid is not None and ask is not None and bid <= ask
-                and 0 <= now - bid_mono <= self._max_age
-                and 0 <= now - ask_mono <= self._max_age
-                and -5 <= self._wall() - bid_ms / 1000 <= self._max_age
-                and -5 <= self._wall() - ask_ms / 1000 <= self._max_age
-            )
-            if not fresh:
-                self._quotes.pop(symbol, None)
-                return False
-            self._quotes[symbol] = Quote(
-                symbol, bid, ask, ts, now, generation,
-                bid_ms, ask_ms, bid_mono, ask_mono,
-            )
+                self._quotes[symbol] = Quote(
+                    symbol, bid, ask, ts, now, generation,
+                    bid_ms, ask_ms, bid_mono, ask_mono,
+                )
         if self.on_update is not None:
             try:
                 self.on_update("tickers", symbol)
             except Exception:
                 pass
         return True
+
+    def mark(self, symbol):
+        """Independent real Bybit WS mark-price with its original event time.
+
+        Quote-only updates never refresh this observation. A reconnect or a
+        delta lacking markPrice does not create fresh collateral evidence.
+        """
+        with self._lock:
+            row = self._marks.get(symbol)
+            if not self._connected or row is None or row[3] != self._generation:
+                raise StreamUnavailable("Bybit WebSocket mark-price absent")
+            price, exchange_ms, received_mono, _ = row
+            now = self._mono()
+            if (not 0 <= now - received_mono <= self._max_age
+                    or not -5 <= self._wall() - exchange_ms / 1000 <= self._max_age):
+                raise StreamUnavailable("Bybit WebSocket mark-price stale")
+            return price, exchange_ms / 1000
 
     def quote(self, symbol):
         with self._lock:
