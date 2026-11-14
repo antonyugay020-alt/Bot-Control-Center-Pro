@@ -95,6 +95,48 @@ def test_provider_policy_read_never_assumes_permission_on_persistent_busy(
         cache.close()
 
 
+def test_ready_shared_cache_schema_admits_new_workers_without_writer_lock(tmp_path):
+    """A ready WAL database must not serialize every new process through DDL."""
+    path = tmp_path / "fleet.sqlite"
+    first = PublicCache(path)
+    try:
+        assert first.denied_status(HOST) is None
+    finally:
+        first.close()
+    second = PublicCache(path)
+    statements = []
+    try:
+        with second.db() as db:
+            db.set_trace_callback(statements.append)
+        assert second.denied_status(HOST) is None
+        assert not any(
+            statement.lstrip().upper().startswith("BEGIN IMMEDIATE")
+            for statement in statements
+        )
+        assert second._ready
+    finally:
+        second.close()
+
+
+def test_partial_provider_schema_still_migrates_with_atomic_writer(tmp_path):
+    """An old policy table must never pass the no-writer fast path."""
+    path = tmp_path / "fleet.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "CREATE TABLE provider_denial("
+            "host TEXT PRIMARY KEY,status INTEGER NOT NULL,until_mono REAL NOT NULL)"
+        )
+    cache = PublicCache(path)
+    try:
+        with cache.db() as db:
+            assert not cache._schema_current(db)
+        cache.denied_status(HOST)
+        with cache.db() as db:
+            assert cache._schema_current(db)
+    finally:
+        cache.close()
+
+
 def test_existing_three_column_policy_table_migrates_without_losing_denial(tmp_path):
     path = tmp_path / "fleet.sqlite"
     with sqlite3.connect(path) as db:
