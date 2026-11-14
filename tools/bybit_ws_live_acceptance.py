@@ -14,7 +14,7 @@ from pathlib import Path
 
 from bcc import process_os as psutil
 from bcc.hub_supervisor import _matches, ensure_hub
-from bcc.market import PublicData
+from bcc.market import PublicData, DataUnavailable
 from bcc.market_clock import book_is_fresh
 from bcc.storage import atomic_json
 
@@ -23,7 +23,7 @@ SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT",
            "DOGEUSDT", "ADAUSDT", "LINKUSDT", "AVAXUSDT")
 
 
-def probe(source, symbol):
+def probe(source, symbol, *, require_mark=False, initial=False):
     started = time.monotonic()
     try:
         # The route is WS-only in this strict client mode. An unverified
@@ -39,9 +39,22 @@ def probe(source, symbol):
         ask = float(book["a"][0][0])
         if not 0 < bid <= ask:
             raise ValueError("Invalid executable spread")
-        return {"symbol": symbol, "status": "PASS",
-                "received_in_seconds": round(time.monotonic() - started, 3),
-                "age_upper_seconds": round(time.time() - float(book["ts"]) / 1000, 3)}
+        row = {"symbol": symbol, "status": "PASS",
+               "age_upper_seconds": round(time.time() - float(book["ts"]) / 1000, 3)}
+        if require_mark:
+            deadline = time.monotonic() + (4.0 if initial else 1.0)
+            while True:
+                try:
+                    mark = source._ws_position_mark(symbol)
+                    row["mark_price_verified"] = True
+                    row["mark_age_seconds"] = round(time.time() - mark["at"], 3)
+                    break
+                except DataUnavailable:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(.1)
+        row["received_in_seconds"] = round(time.monotonic() - started, 3)
+        return row
     except Exception as exc:
         return {"symbol": symbol, "status": "FAIL",
                 "error": f"{type(exc).__name__}: {exc}"[:400],
@@ -67,6 +80,8 @@ def stop_owned_hub(root):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--require-mark", action="store_true",
+                        help="Also require independently timestamped live Bybit WS mark-price")
     args = parser.parse_args(argv)
     out = args.output.resolve()
     if out.exists():
@@ -77,7 +92,8 @@ def main(argv=None):
     cache = root / "market_cache.sqlite"
     report = {
         "at": datetime.now(timezone.utc).isoformat(),
-        "scope": "BYBIT_PUBLIC_WS_ONLY",
+        "scope": "BYBIT_PUBLIC_WS_BOOK_AND_MARK" if args.require_mark else "BYBIT_PUBLIC_WS_ONLY",
+        "require_mark": args.require_mark,
         "real_orders": False,
         "isolated_root": str(root),
         "release_ready": False,
@@ -102,7 +118,12 @@ def main(argv=None):
         source = PublicData()
         for iteration in range(3):
             with ThreadPoolExecutor(max_workers=len(SYMBOLS)) as pool:
-                rows = list(pool.map(lambda symbol: probe(source, symbol), SYMBOLS))
+                rows = list(pool.map(
+                    lambda symbol: probe(source, symbol,
+                                         require_mark=args.require_mark,
+                                         initial=iteration == 0),
+                    SYMBOLS,
+                ))
             report["rounds"].append(rows)
             atomic_json(out / "live_ws_report.json", report)
             if iteration != 2:
