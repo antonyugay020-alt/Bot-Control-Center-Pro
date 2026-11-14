@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .data_cache import CacheBusy, ProviderDenied, PublicCache
+from .data_cache import CacheBusy, CacheContention, ProviderDenied, PublicCache
 from .market_clock import book_is_fresh, clock, market_now, observed_quote, utc_bounds
 
 
@@ -735,8 +735,10 @@ class PublicData:
             # A lease means another worker is already fetching this *same*
             # public response. Wait briefly for its committed shared result
             # instead of discarding the symbol's entire scheduler tick.
-            # Other cache failures (host budget/cooldown, SQLite busy) must
-            # remain hard denials; never bypass the cross-process limiter.
+            # Only SQLite lock conflicts and this request's in-flight lease
+            # can wait inside a bounded window. Provider budgets, cooldowns,
+            # 403/451 policy and integrity failures never grant permission.
+            # Re-admit through the full shared-cache transaction every retry.
             lease_deadline = time.monotonic() + 13.0
             while True:
                 if self.stop_event.is_set():
@@ -752,8 +754,11 @@ class PublicData:
                 except ProviderDenied as exc:
                     raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as e:
-                    if (str(e) != "Данные уже запрашиваются другим ботом"
-                            or time.monotonic() >= lease_deadline):
+                    retryable = (
+                        isinstance(e, CacheContention)
+                        or str(e) == "Данные уже запрашиваются другим ботом"
+                    )
+                    if not retryable or time.monotonic() >= lease_deadline:
                         raise DataUnavailable(str(e)) from e
                     if self.stop_event.wait(0.075):
                         raise DataUnavailable("Получение данных остановлено")
