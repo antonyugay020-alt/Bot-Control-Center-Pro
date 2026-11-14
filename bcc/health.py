@@ -120,10 +120,13 @@ def check_signal_source():
         source.close()
 
 
+# Resolve callbacks at execution time. Tests, operator instrumentation and
+# external plugin transports must observe the selected provider's current
+# callable, rather than a stale function captured at module import.
 SOURCE_CHECKS = {
-    "bybit": ("Bybit USDT Futures", check_bybit),
-    "polymarket": ("Polymarket Gamma + CLOB", check_polymarket),
-    "binance": ("Binance spot impulse", check_signal_source),
+    "bybit": ("Bybit USDT Futures", "check_bybit"),
+    "polymarket": ("Polymarket Gamma + CLOB", "check_polymarket"),
+    "binance": ("Binance spot impulse", "check_signal_source"),
 }
 
 
@@ -155,7 +158,8 @@ def check_sources(*, venues=("bybit", "polymarket", "binance")):
         result["elapsed_seconds"] = round(time.monotonic() - start, 3)
         return result
 
-    callbacks = [SOURCE_CHECKS[venue] for venue in venues]
+    callbacks = [(SOURCE_CHECKS[venue][0], globals()[SOURCE_CHECKS[venue][1]])
+                 for venue in venues]
     with ThreadPoolExecutor(max_workers=len(callbacks)) as pool:
         checks = list(pool.map(run, callbacks))
     report = {
