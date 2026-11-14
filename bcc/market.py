@@ -1004,7 +1004,11 @@ class PublicData:
         prior = getattr(self._thread, 'position_mark', False)
         self._thread.position_mark = True
         try:
-            return self.orderbook(symbol)
+            # An existing PAPER position needs a verified executable WebSocket
+            # book promptly. The full risk-tier/portfolio ticker scan is
+            # performed by normal admission reads and must not hold the
+            # protective mark lane hostage on every 0.5s refresh.
+            return self.orderbook(symbol, position_only=True)
         finally:
             self._thread.position_mark = prior
 
@@ -1068,7 +1072,9 @@ class PublicData:
             account_marks=account_marks,
         )
 
-    def orderbook(self, symbol):
+    def orderbook(self, symbol, *, position_only=False):
+        if type(position_only) is not bool:
+            raise ValueError("Invalid position market-data intent")
         clock.ensure()
         instrument = self.get(
             "https://api.bybit.com/v5/market/instruments-info",
@@ -1088,10 +1094,11 @@ class PublicData:
         # Margin data is independent of executable liquidity. Its failure must
         # block increases in exposure without blocking protective exits.
         margin_data, margin_error = None, ""
-        try:
-            margin_data = self.margin_snapshot(symbol)
-        except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
-            margin_error = str(exc)
+        if not position_only:
+            try:
+                margin_data = self.margin_snapshot(symbol)
+            except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
+                margin_error = str(exc)
         # Metadata may require a separate network round trip on the first read.
         # Fetch the executable snapshot only after that round trip has finished.
         response = self.bybit("orderbook", {
