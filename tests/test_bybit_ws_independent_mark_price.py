@@ -93,7 +93,9 @@ def test_verified_ws_mark_only_hub_snapshot_reaches_risk_reader_without_rest(tmp
             # A valid mark-only event may overwrite the ticker cache entry
             # without manufacturing bid1/ask1 observations.
             c.wall += .01
-            c.mono += .01
+            # The executable quote stream has stopped while the mark stream
+            # still receives its own current exchange event.
+            c.mono += 3.0
             assert feed(stream, c, generation, "delta", markPrice="100.7")
             assert hub.publish_ws_event("tickers", "BTCUSDT")
             updated = reader._ws_position_mark("BTCUSDT")
