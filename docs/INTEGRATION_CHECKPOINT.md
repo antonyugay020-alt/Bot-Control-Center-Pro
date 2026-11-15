@@ -1,3 +1,5 @@
+> Latest Bybit integration and operator evidence: [BYBIT_PORTFOLIO_COHORT_CHECKPOINT_20261115.md](BYBIT_PORTFOLIO_COHORT_CHECKPOINT_20261115.md). Earlier notes below are historical, not current acceptance status.
+
 # Controlled integration checkpoint — 2026-11-12
 
 **DEVELOPMENT / NOT RELEASE.** Branch `codex/architecture-consolidation-20261107`, draft PR #11. No merge, releases, paid Actions or real orders.

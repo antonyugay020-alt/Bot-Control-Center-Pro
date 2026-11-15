@@ -1,0 +1,61 @@
+{
+  "source_commit": "8ada7975ea52e46b44e7265d6a9e7fe754b2e920",
+  "source_integrity": {
+    "status": "PASS",
+    "verified_files": 453,
+    "checkpoint": "BCC_BYBIT_SHORT_ASSET_DEPTH_RECOVERY_20261115_NOT_RELEASE",
+    "manifest_sha256": "95bb8647e296ec8a4e295509e38e258a04276fa07c389730174ecdca68bc59ed"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.14.8 x64",
+  "automated_status": "BYBIT_PHASE_AUTOMATED_PASS",
+  "regression": {
+    "tests": 3764,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 5
+  },
+  "bybit_ws_reads": 240,
+  "bybit_ws_status": "PUBLIC_WS_HUB_CLIENT_PASS",
+  "bybit_ws_max_steady_seconds": 0.989,
+  "public_rest_available": true,
+  "paper_actions": {
+    "CLOSE": 22,
+    "PARTIAL": 1,
+    "OPEN": 22
+  },
+  "paper_exit_reasons": {
+    "MANUAL_PAPER_CLOSE": 19,
+    "SIGNAL_EXIT": 4
+  },
+  "ending_positions": 0,
+  "ending_pending": 0,
+  "ledger_audit": "PASS (collector plus independent copied-ledger audit)",
+  "cash_and_realized_reconcile": true,
+  "execution_freshness": {
+    "status": "PASS",
+    "examined_fills": 45,
+    "with_age_evidence": 45,
+    "without_age_evidence": 0,
+    "invalid_event_ids": [],
+    "maximum_age_upper": 2.603306770324707
+  },
+  "configured_symbols": 821,
+  "symbols_with_diagnostics": 258,
+  "stale_mark_diagnostic_symbols": 199,
+  "stale_mark_diagnostic_rows": 792,
+  "candle_cache_error_symbols": [
+    "10000SATSUSDT",
+    "ETHUSDT",
+    "1000LUNCUSDT",
+    "BMNUUSDT",
+    "BMTUSDT",
+    "BNBUSDT"
+  ],
+  "manual_session_status": "STOPPED_STATE_PRESERVED",
+  "owned_services_retired": true,
+  "dca_fills_observed": false,
+  "restart_observed": false,
+  "release_ready": false,
+  "uploaded_archive_sha256": "4dff2e776876b1086358f3044a4eb313e977550386e6e2f4a8194ed03740ec61"
+}
