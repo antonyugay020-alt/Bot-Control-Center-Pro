@@ -8,18 +8,17 @@ from __future__ import annotations
 import json
 import logging
 import math
-import re
 import threading
 import time
 from dataclasses import dataclass
-from .ws_dispatch import ReconnectBackoff
+from .ws_dispatch import ReconnectBackoff, request_snapshots
 
 
 class StreamUnavailable(RuntimeError):
     pass
 
 
-_SYMBOL = re.compile(r"[A-Z0-9]{2,24}USDT\Z")
+from .ws_symbols import USDT_SYMBOL as _SYMBOL
 
 
 @dataclass(frozen=True)
@@ -271,13 +270,8 @@ class BybitQuoteStream:
             if not stale:
                 return 0
             try:
-                for index in range(0, len(stale), self.MAX_SUB_PER_MSG):
-                    topics = [
-                        "tickers." + symbol
-                        for symbol in stale[index:index + self.MAX_SUB_PER_MSG]
-                    ]
-                    self._socket.send(json.dumps({"op": "unsubscribe", "args": topics}))
-                    self._socket.send(json.dumps({"op": "subscribe", "args": topics}))
+                request_snapshots(self._socket, "tickers", stale,
+                                  batch_size=self.MAX_SUB_PER_MSG)
             except Exception as exc:
                 socket = self._socket
                 self.disconnect()

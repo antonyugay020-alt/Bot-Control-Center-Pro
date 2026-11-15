@@ -10,15 +10,14 @@ from __future__ import annotations
 import json
 import logging
 import math
-import re
 import threading
 import time
 from dataclasses import dataclass
-from .ws_dispatch import ReconnectBackoff
+from .ws_dispatch import ReconnectBackoff, request_snapshots
 
 from .ws_quotes import StreamUnavailable
 
-_VALID = re.compile(r"[A-Z0-9]{2,24}USDT\Z")
+from .ws_symbols import USDT_SYMBOL as _VALID
 
 
 @dataclass(frozen=True)
@@ -50,6 +49,7 @@ class BybitOrderbookWS:
         self._connected = False
         self._symbols = set()
         self._books = {}
+        self._refresh_due = {}
 
     def subscribe(self, symbols):
         if type(symbols) is str:
@@ -61,6 +61,8 @@ class BybitOrderbookWS:
         with self._lock:
             fresh = sorted(set(symbols) - self._symbols)
             self._symbols.update(fresh)
+            for symbol in fresh:
+                self._refresh_due[symbol] = self._mono() + 3.0
             socket = self._socket if self._connected else None
             if socket is None:
                 return
@@ -86,6 +88,7 @@ class BybitOrderbookWS:
         self._connected = False
         self._socket = None
         self._books.clear()
+        self._refresh_due.clear()
 
     def disconnect(self, *, generation=None):
         with self._lock:
@@ -100,6 +103,7 @@ class BybitOrderbookWS:
             self._invalidate()
             self._connected = True
             self._socket = socket
+            self._refresh_due = {symbol: self._mono() + 3.0 for symbol in self._symbols}
             return self._generation
 
     @staticmethod
@@ -181,6 +185,11 @@ class BybitOrderbookWS:
                 # A malformed delta invalidates the whole chain: no partial book.
                 self._books.pop(symbol, None)
                 return False
+            if prior is None:
+                self._refresh_due[symbol] = min(
+                    self._refresh_due.get(symbol, new.received_mono + 1.0),
+                    new.received_mono + 1.0,
+                )
             self._books[symbol] = new
         if self.on_update is not None:
             try:
@@ -188,6 +197,40 @@ class BybitOrderbookWS:
             except Exception:
                 pass
         return True
+
+    def refresh_stale_books(self, symbols):
+        """Recover quiet depth through new WS events, never retimestamp depth."""
+        if (not isinstance(symbols, (tuple, list, set)) or
+                any(type(s) is not str or not _VALID.fullmatch(s) for s in symbols)):
+            raise ValueError("invalid book refresh symbols")
+        with self._lock:
+            if not self._connected or self._socket is None:
+                return 0
+            now, wall = self._mono(), self._wall()
+            lead_age = min(1.0, self._max_age / 2)
+            stale = []
+            for symbol in sorted(set(symbols) & self._symbols):
+                book = self._books.get(symbol)
+                fresh = (book is not None and book.generation == self._generation
+                         and 0 <= now - book.received_mono < lead_age
+                         and -.5 <= wall - book.ts < lead_age)
+                if fresh or now < self._refresh_due.get(symbol, 0):
+                    continue
+                stale.append(symbol)
+                self._refresh_due[symbol] = now + 1.0
+            if not stale:
+                return 0
+            socket = self._socket
+            try:
+                request_snapshots(socket, "orderbook.50", stale,
+                                  batch_size=self.MAX_SUB_PER_MSG)
+            except Exception as exc:
+                self._invalidate()
+                try:
+                    socket.close()
+                finally:
+                    raise StreamUnavailable("orderbook refresh failed") from exc
+            return len(stale)
 
     def get_orderbook(self, symbol):
         with self._lock:

@@ -650,6 +650,7 @@ class MarketDataHub:
         self._ws_subscription_scan_due = 0.0
         self._ws_mark_scan_due = 0.0
         self._ws_quote_symbols = ()
+        self._ws_book_symbols = ()
         self.lease_renew_interval = 5.0
         self.source = source or PublicData()
         if self.source.shared is None:
@@ -846,19 +847,21 @@ class MarketDataHub:
             return
         now = time.monotonic()
         ticker = getattr(self.source, "_quote_stream", None)
-        # Recovery has a shorter cadence than SQLite subscription discovery.
-        # A one-second discovery tick can miss the entire remaining lead time
-        # of a two-second mark. Reuse the validated demand set between scans;
-        # do not multiply database work or create per-worker WS connections.
-        if (ticker is not None and self._ws_quote_symbols
-                and now >= self._ws_mark_scan_due
-                and hasattr(ticker, "refresh_stale_marks")):
+        orderbook = getattr(self.source, "_orderbook_stream", None)
+        # Recovery of quiet prices uses cached demand at a shorter cadence
+        # than SQLite discovery. Both marks and depth require genuine events.
+        if now >= self._ws_mark_scan_due:
             self._ws_mark_scan_due = now + .25
             from .ws_quotes import StreamUnavailable
-            try:
-                ticker.refresh_stale_marks(self._ws_quote_symbols)
-            except (ValueError, StreamUnavailable):
-                pass
+            for stream, symbols, method in (
+                    (ticker, self._ws_quote_symbols, "refresh_stale_marks"),
+                    (orderbook, self._ws_book_symbols, "refresh_stale_books")):
+                refresh = getattr(stream, method, None)
+                if symbols and callable(refresh):
+                    try:
+                        refresh(symbols)
+                    except (ValueError, StreamUnavailable):
+                        pass
         if now < self._ws_subscription_scan_due:
             return
         self._ws_subscription_scan_due = now + 1.0
@@ -904,8 +907,11 @@ class MarketDataHub:
             for symbol in sorted(books):
                 if _SYMBOL.fullmatch(symbol):
                     valid_books.append(symbol)
+            self._ws_book_symbols = tuple(valid_books)
             try:
                 orderbook.subscribe(valid_books)
+                if hasattr(orderbook, "refresh_stale_books"):
+                    orderbook.refresh_stale_books(valid_books)
             except (ValueError, StreamUnavailable):
                 pass
         if kline is not None:

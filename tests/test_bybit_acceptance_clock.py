@@ -69,3 +69,21 @@ def test_missing_vetted_clock_blocks_probe_without_reading_data(feed, monkeypatc
     monkeypatch.setattr(qa, 'clock', SimpleNamespace(ensure=unavailable))
     result = qa.probe(source,'ADAUSDT',require_mark=True)
     assert result['status']=='FAIL' and state.reads == 0
+
+
+def test_mark_wait_uses_the_declared_overall_steady_delivery_budget(feed, monkeypatch):
+    state, source = feed
+    elapsed = [0.]
+    monkeypatch.setattr(qa.time, 'monotonic', lambda: elapsed[0])
+    def sleep(seconds):
+        elapsed[0] += seconds
+        state.now += seconds
+    monkeypatch.setattr(qa.time, 'sleep', sleep)
+    def late_mark(symbol):
+        if elapsed[0] < 1.2:
+            raise qa.DataUnavailable('Real mark has not arrived')
+        return {'at':state.now,'bid':.405,'ask':.405}
+    source._ws_position_mark = late_mark
+    result = qa.probe(source,'ADAUSDT',require_mark=True)
+    assert result['status']=='PASS',result
+    assert 1.2 <= result['received_in_seconds'] <= qa.STEADY_READ_BUDGET

@@ -20,10 +20,11 @@ from bcc.storage import atomic_json
 from tools.verify_package import verify, assert_same_snapshot
 
 MIN_ROUNDS = 24
+STEADY_READ_BUDGET = 1.5
 
 URL = "https://api.bybit.com/v5/market/orderbook"
 SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT",
-           "DOGEUSDT", "ADAUSDT", "LINKUSDT", "AVAXUSDT")
+           "DOGEUSDT", "ADAUSDT", "LINKUSDT", "AVAXUSDT", "AUSDT", "4USDT")
 
 
 def _record_age(row, lower_key, upper_key, stamp):
@@ -45,7 +46,8 @@ def probe(source, symbol, *, require_mark=False, initial=False):
         value = source.get(URL, params)
         mark = None
         if require_mark:
-            deadline = time.monotonic() + (4.0 if initial else 1.0)
+            deadline = (time.monotonic() + 4.0 if initial
+                        else started + STEADY_READ_BUDGET)
             while True:
                 try:
                     mark = source._ws_position_mark(symbol)
@@ -53,7 +55,7 @@ def probe(source, symbol, *, require_mark=False, initial=False):
                 except DataUnavailable:
                     if time.monotonic() >= deadline:
                         raise
-                    time.sleep(.1)
+                    time.sleep(min(.1, max(0., deadline - time.monotonic())))
             # A book read before waiting for the mark may have expired.
             # Re-read the real WS cache; never restamp the old observation.
             value = source.get(URL, params)
@@ -130,7 +132,7 @@ def validate_report(report, manifest_sha256):
                 elif key != "received_in_seconds" and not -.5 <= value <= 3:
                     errors.append("Bybit WS exchange observation expired")
                 elif key == "received_in_seconds":
-                    if value < 0 or (index and value > 1.5):
+                    if value < 0 or (index and value > STEADY_READ_BUDGET):
                         errors.append("Bybit WS delivery latency exceeded")
                     if index:
                         steady.append(value)
@@ -210,7 +212,7 @@ def main(argv=None):
         )
         if (all(row["status"] == "PASS"
                 for batch in report["rounds"] for row in batch)
-                and report["steady_state_max_seconds"] <= 1.5):
+                and report["steady_state_max_seconds"] <= STEADY_READ_BUDGET):
             report["status"] = "PUBLIC_WS_HUB_CLIENT_PASS"
         else:
             report["status"] = "PUBLIC_WS_DELIVERY_INCOMPLETE"

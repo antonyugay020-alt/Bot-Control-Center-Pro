@@ -6,14 +6,13 @@ Uses no credentials, private endpoints or order channels.
 from __future__ import annotations
 import json
 import math
-import re
 import threading
 import time
 from dataclasses import dataclass
 from .ws_dispatch import ReconnectBackoff
 from .ws_quotes import StreamUnavailable
 
-_SYMBOL = re.compile(r"[A-Z0-9]{2,24}USDT\Z")
+from .ws_symbols import USDT_SYMBOL as _SYMBOL
 
 
 @dataclass(frozen=True)

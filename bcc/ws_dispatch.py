@@ -16,6 +16,15 @@ URGENT = frozenset({"polybook", "depth50"})
 REGULAR = frozenset({"tickers", "binance_trade", "kline1"})
 
 
+def request_snapshots(socket, topic, symbols, *, batch_size=10):
+    """Ask the established public socket for new exchange snapshots in batches."""
+    import json
+    for index in range(0, len(symbols), batch_size):
+        topics = [topic + "." + symbol for symbol in symbols[index:index + batch_size]]
+        socket.send(json.dumps({"op": "unsubscribe", "args": topics}))
+        socket.send(json.dumps({"op": "subscribe", "args": topics}))
+
+
 class ReconnectBackoff:
     """Shared capped retry policy, independent of provider or credentials."""
 
