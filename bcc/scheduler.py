@@ -150,6 +150,9 @@ class MarketScheduler:
                 + list(state.get("pending", {}).values())
             )
         )
+        set_positions = getattr(self.source, 'set_position_symbols', None)
+        if self._separate_quotes and callable(set_positions):
+            set_positions(priority)
         priority_set = set(priority)
         scan = [s for s in symbols if s not in priority_set]
         # A portfolio with unmarked/unfresh positions is in risk-management

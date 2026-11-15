@@ -91,6 +91,12 @@ def process_tick(cfg, store, engine, tick):
         book = dict(book, margin_data=tick.margin_data)
     with risk_transaction(store) as (state, events):
         attach_snapshot(state, symbol, book)
+        exposed = {p["symbol"] for p in state["positions"].values()}
+        for other, quote in book.get("portfolio_quotes", {}).items():
+            old = state["marks"].get(other)
+            if (other in exposed and quote_is_recent(quote, maximum=3)
+                    and (not quote_is_recent(old, maximum=3) or quote["at"] >= old["at"])):
+                state["marks"][other] = dict(quote)
         state["marks"][symbol] = observed_quote(
             {"bid": bid, "ask": ask, "at": book["at"]}
         )

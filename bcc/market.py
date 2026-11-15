@@ -316,6 +316,8 @@ class PublicData:
         self._hub_renew_at = {}
         self._hub_priority_until = {}
         self._risk_refresh_due = {}
+        self._position_symbols = ()
+        self._portfolio_ws_cache = None
         path = os.environ.get("BCC_PUBLIC_CACHE")
         if path:
             from .data_cache import PublicCache
@@ -659,7 +661,8 @@ class PublicData:
             # This is a bounded queue wait, NOT permission to use an expired
             # market snapshot. In an overloaded system the client fails closed.
             deadline = time.monotonic() + (
-                0.8 if getattr(self._thread, "mark_intent", False) else 8.0
+                (4.0 if getattr(self._thread, "mark_subscription_warmup", False) else 0.8)
+                if getattr(self._thread, "mark_intent", False) else 8.0
             )
             while not self.stop_event.is_set():
                 try:
@@ -1054,6 +1057,29 @@ class PublicData:
             tiers = parse_tiers(rows, symbol)
         except MarginUnavailable as exc:
             raise DataUnavailable(str(exc)) from exc
+        if getattr(self._thread, "risk_metadata_only", False):
+            if risk_at is None or not -0.5 <= market_now() - risk_at <= 300:
+                raise DataUnavailable("Устарели ступени риска Bybit")
+            return dict(symbol=symbol, tiers=tiers, risk_at=risk_at)
+        if (os.environ.get("BCC_MARKET_HUB_MODE") == "client"
+                and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"):
+            # Scanner admission and position protection share one authority.
+            # REST tier responses cannot refresh portfolio mark timestamps.
+            if risk_at is None or not -0.5 <= market_now() - risk_at <= 300:
+                raise DataUnavailable("Устарели ступени риска Bybit")
+            account_marks, _ = self._ws_portfolio_observations()
+            # A new scanner symbol must first traverse the one-second Hub
+            # discovery scan and receive a genuine subscription snapshot.
+            # This grace belongs to the slow lane, never position protection.
+            warmup = getattr(self._thread, "mark_subscription_warmup", False)
+            self._thread.mark_subscription_warmup = True
+            try:
+                mark = self._ws_position_mark(symbol)
+            finally:
+                self._thread.mark_subscription_warmup = warmup
+            account_marks = {**account_marks, symbol: mark}
+            return dict(symbol=symbol, tiers=tiers, risk_at=risk_at,
+                        quote=mark, account_marks=account_marks)
         ticker = self.get(
             "https://api.bybit.com/v5/market/tickers", {"category": "linear"}, ttl=0.5
         )
@@ -1097,12 +1123,16 @@ class PublicData:
                 return None
             # Admit one independent refresh per symbol, never an HTTP stampede.
             self._risk_refresh_due[symbol] = now + 120
+        prior = getattr(self._thread, "risk_metadata_only", False)
+        self._thread.risk_metadata_only = True
         try:
             snapshot = self.margin_snapshot(symbol)
         except (DataUnavailable, ValueError, KeyError, TypeError):
             with self._lock:
                 self._risk_refresh_due[symbol] = time.monotonic() + 15
             raise
+        finally:
+            self._thread.risk_metadata_only = prior
         # REST may validate the long-lived risk tiers, but cannot renew
         # markPrice collateral in strict Bybit WS mode. Only the independent
         # original-timestamp ticker WebSocket may supply a tradable mark.
@@ -1125,10 +1155,16 @@ class PublicData:
             )
         finally:
             self._thread.mark_intent = previous
+        return self._decode_ws_position_mark(symbol, value)
+
+    @staticmethod
+    def _decode_ws_position_mark(symbol, value):
         if value.get("_bcc_ws_mark") is not True:
             raise DataUnavailable("Bybit WebSocket markPrice not confirmed")
-        rows = value.get("result", {}).get("list", [])
-        if len(rows) != 1 or rows[0].get("symbol") != symbol:
+        result = value.get("result")
+        rows = result.get("list") if isinstance(result, dict) else None
+        if (not isinstance(rows, list) or len(rows) != 1
+                or not isinstance(rows[0], dict) or rows[0].get("symbol") != symbol):
             raise DataUnavailable("Bybit WebSocket markPrice wrong symbol")
         try:
             mark = float(rows[0]["markPrice"])
@@ -1138,6 +1174,66 @@ class PublicData:
         if not math.isfinite(mark) or mark <= 0 or not book_is_fresh(at):
             raise DataUnavailable("Bybit WebSocket markPrice stale")
         return observed_quote({"bid": mark, "ask": mark, "at": at})
+
+    def set_position_symbols(self, symbols):
+        """Account-owned exposure inventory, supplied by the serial scheduler."""
+        from .ws_symbols import USDT_SYMBOL
+        selected = tuple(sorted(set(symbols)))
+        if any(type(symbol) is not str or not USDT_SYMBOL.fullmatch(symbol) for symbol in selected):
+            raise ValueError("invalid position symbols")
+        with self._lock:
+            if selected != self._position_symbols:
+                self._position_symbols = selected
+                self._portfolio_ws_cache = None
+
+    def _ws_portfolio_observations(self):
+        """Nonblocking coherent WS marks/quotes; preserve original receipt ages.
+
+        A serial per-position sweep cannot keep N independent three-second
+        marks fresh under load. Read the already admitted Hub cache together
+        and let the owning worker commit all valid observations together.
+        """
+        if self.shared is None:
+            return {}, {}
+        self._assert_provider_allowed("api.bybit.com")
+        with self._lock:
+            symbols = self._position_symbols
+            now = time.monotonic()
+            cached = self._portfolio_ws_cache
+            if cached is not None and cached[0] == symbols and now < cached[1]:
+                return cached[2], cached[3]
+            url = "https://api.bybit.com/v5/market/tickers"
+            try:
+                values = self.shared.read_fresh_many(
+                    [(url, {"category": "linear", "symbol": symbol}) for symbol in symbols],
+                    "api.bybit.com",
+                )
+            except ProviderDenied as exc:
+                raise SourceAccessDenied(exc.host, exc.http_status) from exc
+            except CacheBusy as exc:
+                raise DataUnavailable("Portfolio WS cache unavailable: " + str(exc)) from exc
+            marks, quotes = {}, {}
+            for symbol, value in zip(symbols, values):
+                if not isinstance(value, dict):
+                    continue
+                try:
+                    marks[symbol] = self._decode_ws_position_mark(symbol, value)
+                except DataUnavailable:
+                    pass
+                if value.get("_bcc_ws_quote") is True:
+                    try:
+                        rows = value["result"]["list"]
+                        bid, ask = float(rows[0]["bid1Price"]), float(rows[0]["ask1Price"])
+                        at = float(value["time"]) / 1000
+                        if (len(rows) == 1 and rows[0].get("symbol") == symbol
+                                and all(math.isfinite(x) for x in (bid, ask, at))
+                                and 0 < bid <= ask and book_is_fresh(at)):
+                            quotes[symbol] = observed_quote({"bid": bid, "ask": ask, "at": at})
+                    except (ValueError, TypeError, KeyError, IndexError, OverflowError):
+                        pass
+            # Memoization coalesces concurrent readers, not observation time.
+            self._portfolio_ws_cache = (symbols, now + .1, marks, quotes)
+            return marks, quotes
 
     def orderbook(self, symbol, *, position_only=False):
         if type(position_only) is not bool:
@@ -1163,10 +1259,15 @@ class PublicData:
         # public Bybit ticker WS channel; bid/ask can never substitute for it.
         margin_data, margin_error = None, ""
         ws_mark = None
+        portfolio_marks, portfolio_quotes = {}, {}
         if (position_only and os.environ.get("BCC_MARKET_HUB_MODE") == "client"
                 and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"):
             try:
-                ws_mark = self._ws_position_mark(symbol)
+                portfolio_marks, portfolio_quotes = self._ws_portfolio_observations()
+                ws_mark = portfolio_marks.get(symbol)
+                if ws_mark is None:
+                    ws_mark = self._ws_position_mark(symbol)
+                portfolio_marks = {**portfolio_marks, symbol: ws_mark}
             except DataUnavailable as exc:
                 margin_error = str(exc)
         if not position_only:
@@ -1207,11 +1308,22 @@ class PublicData:
             "Bybit",
             {**transport, "response_minus_book_seconds": response_at - stamp},
         )
+        if (position_only and os.environ.get("BCC_MARKET_HUB_MODE") == "client"
+                and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"):
+            try:
+                latest_marks, latest_quotes = self._ws_portfolio_observations()
+                portfolio_marks = {**portfolio_marks, **latest_marks}
+                portfolio_quotes = latest_quotes
+            except SourceAccessDenied:
+                raise
+            except DataUnavailable as exc:
+                margin_error = str(exc)
         result = dict(
             margin_required=True,
             margin_data=margin_data,
             margin_marks=(margin_data.pop("account_marks", {}) if margin_data
-                          else {symbol: ws_mark} if ws_mark is not None else {}),
+                          else portfolio_marks),
+            portfolio_quotes=portfolio_quotes,
             margin_error=margin_error,
             bids=bids,
             asks=asks,

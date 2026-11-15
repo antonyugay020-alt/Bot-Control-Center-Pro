@@ -331,6 +331,37 @@ class PublicCache:
             ).fetchone()
         return json.loads(row[0]) if row else None
 
+    def read_fresh_many(self, requests, host):
+        """One read snapshot for a portfolio; no HTTP, leases or budget debit."""
+        from .market import PublicData
+        keys = []
+        for url, params in requests:
+            if PublicData.validated_public_request(url, params) != host:
+                raise ValueError("mixed cache hosts")
+            keys.append(hashlib.sha256(json.dumps([url, params], sort_keys=True).encode()).hexdigest())
+        if not keys:
+            return []
+        self._ensure_schema()
+        rows = {}
+        with self.db() as db:
+            db.execute("BEGIN")
+            try:
+                status = self._denied(db, host)
+                if status is not None:
+                    raise ProviderDenied(host, status)
+                now = time.time()
+                unique = list(dict.fromkeys(keys))
+                for index in range(0, len(unique), 200):
+                    batch = unique[index:index + 200]
+                    placeholders = ",".join("?" for _ in batch)
+                    rows.update(db.execute(
+                        "SELECT k,value FROM cache WHERE host=? AND until>? AND k IN (" + placeholders + ")",
+                        [host, now, *batch],
+                    ).fetchall())
+            finally:
+                db.rollback()
+        return [json.loads(rows[key]) if key in rows else None for key in keys]
+
     def publish_websocket(self, url, params, host, value, *, ttl, leader_owner, leader_token):
         """Atomic event-driven publication fenced by Hub leader and subscription.
 

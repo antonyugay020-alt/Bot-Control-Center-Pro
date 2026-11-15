@@ -367,11 +367,22 @@ def margin_status(state):
 def attach_snapshot(state, symbol, book):
     if book.get("margin_required"):
         state["margin_model"] = MODEL
+    def newer(current, incoming):
+        return (quote_is_recent(incoming, maximum=3)
+                and (not quote_is_recent(current, maximum=3)
+                     or incoming["at"] >= current["at"]))
     if book.get("margin_data"):
-        state.setdefault("margin_data", {})[symbol] = deepcopy(book["margin_data"])
+        data = deepcopy(book["margin_data"])
+        previous = state.get("margin_data", {}).get(symbol, {}).get("quote")
+        incoming = data.get("quote")
+        # Tier refresh and price observation have independent clocks. A slow
+        # history result cannot erase or roll back a newer valid WS mark.
+        if newer(incoming, previous):
+            data["quote"] = deepcopy(previous)
+        state.setdefault("margin_data", {})[symbol] = data
     for sym, data in state.get("margin_data", {}).items():
         quote = book.get("margin_marks", {}).get(sym)
-        if quote:
+        if newer(data.get("quote"), quote):
             data["quote"] = deepcopy(quote)
     retained = (
         {symbol}

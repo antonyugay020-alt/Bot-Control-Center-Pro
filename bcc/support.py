@@ -340,6 +340,13 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     report = collect(args.root, args.output)
+    # The Windows checker uses this CLI, while the UI report exporter already
+    # includes shared-Hub evidence. Keep queue/source diagnostics in BOTH paths
+    # without exporting raw cache payloads or touching service processes.
+    report["app_diagnostics"] = _collect_app_diagnostics(
+        args.root, args.output / "app_diagnostics"
+    )
+    atomic_json(args.output / "collection.json", report)
     return 1 if report["errors"] else 0
 
 
