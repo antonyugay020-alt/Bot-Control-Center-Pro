@@ -506,6 +506,47 @@ class HubRegistry:
                 continue
         return symbols
 
+    def stream_demand(self):
+        """Validated active event keys and short-lived owned-exposure priority."""
+        from .market import PublicData
+        from .ws_symbols import USDT_SYMBOL
+        with self._connect() as db:
+            now = time.time()
+            rows = db.execute(
+                "SELECT url,params,priority_until FROM hub_subscriptions WHERE active_until>?",
+                (now,),
+            ).fetchall()
+        active, priority = set(), set()
+        base = "https://api.bybit.com/v5/market/"
+        for url, raw, urgent in rows:
+            try:
+                params = json.loads(raw)
+                PublicData.validated_public_request(url, params)
+                if not isinstance(params, dict):
+                    continue
+                key = None
+                if params.get("category") == "linear" and USDT_SYMBOL.fullmatch(params.get("symbol", "")):
+                    if url == base + "tickers" and set(params) == {"category", "symbol"}:
+                        key = ("tickers", params["symbol"])
+                    elif (url == base + "orderbook" and set(params) == {"category", "symbol", "limit"}
+                          and params["limit"] == 50):
+                        key = ("depth50", params["symbol"])
+                    elif (url == base + "kline" and set(params) == {"category", "symbol", "interval", "limit"}
+                          and params["interval"] == "1" and params["limit"] == 10):
+                        key = ("kline1", params["symbol"])
+                elif url == "https://clob.polymarket.com/book" and set(params) == {"token_id"}:
+                    key = ("polybook", params["token_id"])
+                elif (url == "https://api.binance.com/api/v3/ticker/price"
+                      and set(params) == {"symbol"} and USDT_SYMBOL.fullmatch(params["symbol"])):
+                    key = ("binance_trade", params["symbol"])
+                if key is not None:
+                    active.add(key)
+                    if urgent > now:
+                        priority.add(key)
+            except (ValueError, TypeError, KeyError):
+                continue
+        return active, priority
+
     def has_active_subscriptions(self):
         """Read-only liveness probe for the independent producer lifecycle.
 
@@ -651,6 +692,7 @@ class MarketDataHub:
         self._ws_mark_scan_due = 0.0
         self._ws_quote_symbols = ()
         self._ws_book_symbols = ()
+        self._ws_dispatcher = None
         self.lease_renew_interval = 5.0
         self.source = source or PublicData()
         if self.source.shared is None:
@@ -773,7 +815,9 @@ class MarketDataHub:
                     "time": int((at if bid is not None else mark_at) * 1000),
                     "result": {"list": [row]},
                 }
-                ttl = .75
+                # Bridge genuine one-second recovery snapshots without
+                # discarding otherwise fresh independent quote/mark clocks.
+                ttl = 1.5
             elif kind == "kline1":
                 candle = stream.get_candle(symbol)
                 stamp = candle.message_ms / 1000
@@ -805,12 +849,10 @@ class MarketDataHub:
                         "u": book["u"], "seq": book["seq"],
                     },
                 }
-                # The position scheduler samples at up to 0.5s intervals.
-                # A 0.2s cache residence expired between valid WS events
-                # even though the original exchange snapshot remained fresh.
-                # Residence never renews the exchange timestamp: the worker
-                # still rejects books older than the strict 3s freshness gate.
-                ttl = .75
+                # Quiet depth recovery runs at one-second cadence. Cache
+                # residence bridges it; ORIGINAL exchange timestamps still
+                # face the strict three-second worker/executor age fence.
+                ttl = 1.5
         except (StreamUnavailable, ValueError, KeyError, TypeError):
             return False
         from .data_cache import CacheBusy
@@ -841,6 +883,10 @@ class MarketDataHub:
             routes.append("https://api.binance.com/api/v3/ticker/price")
         return tuple(routes)
 
+    def set_ws_dispatcher(self, dispatcher):
+        self._ws_dispatcher = dispatcher
+        self._ws_subscription_scan_due = 0.
+
     def subscribe_active_websockets(self):
         """Pre-register every demanded symbol on the shared WS producers."""
         if self._leader_token is None:
@@ -865,6 +911,13 @@ class MarketDataHub:
         if now < self._ws_subscription_scan_due:
             return
         self._ws_subscription_scan_due = now + 1.0
+        prioritize_marks = getattr(ticker, "set_priority_symbols", None)
+        if self._ws_dispatcher is not None or callable(prioritize_marks):
+            active, priority = self.registry.stream_demand()
+            if self._ws_dispatcher is not None:
+                self._ws_dispatcher.configure(active, priority)
+            if callable(prioritize_marks):
+                prioritize_marks([symbol for kind, symbol in priority if kind == "tickers"])
         ticker = getattr(self.source, "_quote_stream", None)
         orderbook = getattr(self.source, "_orderbook_stream", None)
         kline = getattr(self.source, "_kline_stream", None)
@@ -886,7 +939,9 @@ class MarketDataHub:
             self._ws_mark_scan_due = now + .25
             from .ws_quotes import StreamUnavailable
             try:
-                if hasattr(ticker, "subscribe_many"):
+                if hasattr(ticker, "sync_symbols"):
+                    ticker.sync_symbols(validated)
+                elif hasattr(ticker, "subscribe_many"):
                     ticker.subscribe_many(validated)
                 else:
                     for symbol in validated:
@@ -909,7 +964,10 @@ class MarketDataHub:
                     valid_books.append(symbol)
             self._ws_book_symbols = tuple(valid_books)
             try:
-                orderbook.subscribe(valid_books)
+                if hasattr(orderbook, "sync_symbols"):
+                    orderbook.sync_symbols(valid_books)
+                else:
+                    orderbook.subscribe(valid_books)
                 if hasattr(orderbook, "refresh_stale_books"):
                     orderbook.refresh_stale_books(valid_books)
             except (ValueError, StreamUnavailable):
@@ -921,7 +979,10 @@ class MarketDataHub:
                 if _SYMBOL.fullmatch(symbol):
                     valid_klines.append(symbol)
             try:
-                kline.subscribe(valid_klines)
+                if hasattr(kline, "sync_symbols"):
+                    kline.sync_symbols(valid_klines)
+                else:
+                    kline.subscribe(valid_klines)
             except (ValueError, StreamUnavailable):
                 pass
         if binance is not None:

@@ -1205,7 +1205,9 @@ class PublicData:
             url = "https://api.bybit.com/v5/market/tickers"
             try:
                 values = self.shared.read_fresh_many(
-                    [(url, {"category": "linear", "symbol": symbol}) for symbol in symbols],
+                    [(url, {"category": "linear", "symbol": symbol}) for symbol in symbols]
+                    + [("https://api.bybit.com/v5/market/orderbook",
+                        {"category": "linear", "symbol": symbol, "limit": 50}) for symbol in symbols],
                     "api.bybit.com",
                 )
             except ProviderDenied as exc:
@@ -1213,7 +1215,7 @@ class PublicData:
             except CacheBusy as exc:
                 raise DataUnavailable("Portfolio WS cache unavailable: " + str(exc)) from exc
             marks, quotes = {}, {}
-            for symbol, value in zip(symbols, values):
+            for symbol, value in zip(symbols, values[:len(symbols)]):
                 if not isinstance(value, dict):
                     continue
                 try:
@@ -1231,6 +1233,26 @@ class PublicData:
                             quotes[symbol] = observed_quote({"bid": bid, "ask": ask, "at": at})
                     except (ValueError, TypeError, KeyError, IndexError, OverflowError):
                         pass
+            # Execution spread has its own depth channel. A mark-only ticker
+            # delta must not hide fresh held-position bid/ask from depth50.
+            # Both channels come from the SAME SQLite read snapshot; no extra
+            # GET, network wait or ticker-derived synthetic book is involved.
+            for symbol, value in zip(symbols, values[len(symbols):]):
+                if not isinstance(value, dict) or value.get("_bcc_ws_book") is not True:
+                    continue
+                try:
+                    book = value["result"]
+                    bid, bid_qty = map(float, book["b"][0])
+                    ask, ask_qty = map(float, book["a"][0])
+                    at = float(book["ts"]) / 1000
+                    if (book.get("s") == symbol and 0 < bid <= ask
+                            and bid_qty > 0 and ask_qty > 0
+                            and all(math.isfinite(x) for x in (bid, ask, bid_qty, ask_qty, at))
+                            and book_is_fresh(at)
+                            and (symbol not in quotes or at >= quotes[symbol]["at"])):
+                        quotes[symbol] = observed_quote({"bid": bid, "ask": ask, "at": at})
+                except (ValueError, TypeError, KeyError, IndexError, OverflowError):
+                    pass
             # Memoization coalesces concurrent readers, not observation time.
             self._portfolio_ws_cache = (symbols, now + .1, marks, quotes)
             return marks, quotes

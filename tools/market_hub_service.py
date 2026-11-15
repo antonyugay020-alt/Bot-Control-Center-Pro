@@ -105,6 +105,7 @@ def main():
                             kline_stream=kline_stream, polymarket_stream=poly_stream,
                             binance_stream=binance_stream)
         hub = MarketDataHub(args.cache, source=source, max_workers=args.concurrency)
+        hub.set_ws_dispatcher(ws_updates)
         for label, stream in (('tickers', quote_stream), ('depth50', book_stream),
                               ('kline1', kline_stream), ('polybook', poly_stream),
                               ('binance_trade', binance_stream)):

@@ -272,3 +272,38 @@ def test_execution_depth_cache_does_not_retain_an_entire_portfolio_per_symbol():
     assert reference() is None
     assert cached['bids']==[[100,10]] and cached['asks']==[[101,10]]
     assert cached['qty_step']==.001
+
+
+def test_mark_only_ticker_cannot_hide_independently_fresh_held_depth(portfolio):
+    symbols,reader,hub,stream=portfolio
+    symbol=symbols[0]
+    stream._quotes.pop(symbol,None)  # Independent ticker sides are absent.
+    assert stream.ingest({'type':'snapshot','topic':'tickers.'+symbol,'ts':int(time.time()*1000),
+                          'data':{'symbol':symbol,'markPrice':'100.45'}},generation=stream._generation)
+    assert hub.publish_ws_event('tickers',symbol)
+    marks,quotes=reader._ws_portfolio_observations()
+    assert symbol in marks and symbol in quotes
+    assert quotes[symbol]['bid']==100.4 and quotes[symbol]['ask']==100.5
+
+
+@pytest.mark.parametrize('fault',['rest','symbol','crossed','old','quantity','nonfinite'])
+def test_invalid_depth_cannot_value_a_mark_only_ticker(portfolio,monkeypatch,fault):
+    symbols,reader,hub,stream=portfolio;symbol=symbols[0]
+    stream._quotes.pop(symbol,None)
+    assert stream.ingest({'type':'snapshot','topic':'tickers.'+symbol,'ts':int(time.time()*1000),
+                          'data':{'symbol':symbol,'markPrice':'100.45'}},generation=stream._generation)
+    assert hub.publish_ws_event('tickers',symbol)
+    original=reader.shared.read_fresh_many
+    def corrupted(*args,**kwargs):
+        from copy import deepcopy
+        rows=deepcopy(original(*args,**kwargs));book=rows[len(symbols)]
+        if fault=='rest':book.pop('_bcc_ws_book')
+        if fault=='symbol':book['result']['s']='OTHERUSDT'
+        if fault=='crossed':book['result']['b'][0][0]='200'
+        if fault=='old':book['result']['ts']=int((time.time()-4)*1000)
+        if fault=='quantity':book['result']['a'][0][1]='0'
+        if fault=='nonfinite':book['result']['a'][0][0]='nan'
+        return rows
+    monkeypatch.setattr(reader.shared,'read_fresh_many',corrupted)
+    marks,quotes=reader._ws_portfolio_observations()
+    assert symbol in marks and symbol not in quotes

@@ -395,8 +395,13 @@ class PublicCache:
                      params.get("interval") == "1" and params.get("limit") == 10))
                 and (url.endswith("/tickers") is False or
                     set(params) == {"category", "symbol"}))
+        # Quiet Bybit books/tickers are resnapshotted at one-second cadence.
+        # Their residence must bridge that interval; consumers independently
+        # enforce ORIGINAL exchange ages (including each quote side/mark).
+        # Other feeds retain their existing maximum residence.
+        max_residence = 1.5 if bybit and url.endswith(("/tickers", "/orderbook")) else 1.
         if ((not poly and not bybit and not binance)
-                or type(ttl) not in (float, int) or not 0 < ttl <= 1
+                or type(ttl) not in (float, int) or not 0 < ttl <= max_residence
                 or type(leader_owner) is not str or not leader_owner
                 or type(leader_token) is not str or not leader_token):
             raise ValueError("Invalid WS publisher admission")

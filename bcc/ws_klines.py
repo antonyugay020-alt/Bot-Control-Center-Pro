@@ -53,6 +53,13 @@ class BybitKlineWS:
         self._socket = None
         self._candles = {}
 
+    def sync_symbols(self, symbols):
+        from .ws_dispatch import synchronize_bybit_symbols
+        return synchronize_bybit_symbols(
+            self, symbols, subscribed=self._symbols, topic="kline.1",
+            caches=("_candles",), subscribe=self.subscribe, error_type=StreamUnavailable,
+        )
+
     def subscribe(self, symbols):
         if isinstance(symbols, str):
             symbols = [symbols]
@@ -203,7 +210,7 @@ class BybitKlineWS:
                     return
                 if not isinstance(message, dict):
                     return
-                if message.get("op") == "subscribe" and message.get("success") is False:
+                if message.get("op") in ("subscribe", "unsubscribe") and message.get("success") is False:
                     self.disconnect(generation=state["generation"])
                     socket.close()
                     return

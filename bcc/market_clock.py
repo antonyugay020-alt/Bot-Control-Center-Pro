@@ -129,6 +129,7 @@ class MarketClock:
         self._reference = None
         self._attempted = None
         self.evidence = None
+        self._refresh_thread = None
 
     def _bounds(self):
         if self._reference is None:
@@ -147,8 +148,38 @@ class MarketClock:
             return self._bounds()
 
     def ensure(self):
-        # A slow public probe must not block execution age checks/heartbeats.
-        # Readers retain the previous immutable reference until it expires.
+        # Cold/invalid references require a synchronous quorum. An already
+        # vetted reference remains usable only within its ORIGINAL lifetime;
+        # refreshing it must not stall WS recovery, publication or workers.
+        with self._lock:
+            try:
+                self._bounds()
+            except ClockUnavailable:
+                pass
+            else:
+                now = time.monotonic()
+                if now - self._reference[3] < self.refresh_after:
+                    return
+                if self._attempted is not None and now - self._attempted < 10:
+                    return
+                if self._refresh_thread is None or not self._refresh_thread.is_alive():
+                    self._refresh_thread = threading.Thread(
+                        target=self._refresh_background,
+                        name="public-clock-refresh", daemon=True,
+                    )
+                    self._refresh_thread.start()
+                return
+        self._ensure_synchronous()
+
+    def _refresh_background(self):
+        try:
+            self._ensure_synchronous()
+        except Exception as exc:
+            # No new reference was authorized. Readers still enforce expiry
+            # and wall-clock jumps, even while a network probe is in flight.
+            logging.warning("CLOCK background refresh unavailable: %s", exc)
+
+    def _ensure_synchronous(self):
         with self._sync_lock:
             mono = time.monotonic()
             try:

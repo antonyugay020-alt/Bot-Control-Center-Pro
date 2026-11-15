@@ -56,6 +56,7 @@ class BybitQuoteStream:
         self._generation = 0
         self._connected = False
         self._subscriptions = set()
+        self._priority_symbols = frozenset()
         self._quotes = {}
         # Exchange mark-price has its own event clock and must never be
         # fabricated from best bid/ask or renewed by quote-only deltas.
@@ -64,8 +65,27 @@ class BybitQuoteStream:
         self._socket = None
         self._stop = threading.Event()
 
+    def sync_symbols(self, symbols):
+        from .ws_dispatch import synchronize_bybit_symbols
+        return synchronize_bybit_symbols(
+            self, symbols, subscribed=self._subscriptions, topic="tickers",
+            caches=("_quotes", "_marks", "_mark_refresh_due"), subscribe=self.subscribe_many, error_type=StreamUnavailable,
+        )
+
     def subscribe(self, symbol):
         self.subscribe_many([symbol])
+
+    def set_priority_symbols(self, symbols):
+        """Trusted Hub exposure demand, never a priority supplied by a frame."""
+        if not isinstance(symbols, (list, tuple, set)) or any(
+                type(symbol) is not str or not _SYMBOL.fullmatch(symbol) for symbol in symbols):
+            raise ValueError("invalid priority symbols")
+        with self._lock:
+            selected = frozenset(symbols)
+            for symbol in selected - self._priority_symbols:
+                self._mark_refresh_due[symbol] = min(
+                    self._mark_refresh_due.get(symbol, self._mono() + .5), self._mono() + .5)
+            self._priority_symbols = selected
 
     def subscribe_many(self, symbols):
         """One validated batched subscription change for an entire bot fleet."""
@@ -182,10 +202,9 @@ class BybitQuoteStream:
                         # Handshake grace ends once the first genuine mark
                         # arrives. Keeping the initial three-second deadline
                         # would otherwise outlive its two-second evidence TTL.
+                        grace = .5 if symbol in self._priority_symbols else 1.
                         self._mark_refresh_due[symbol] = min(
-                            self._mark_refresh_due.get(symbol, received + 1.0),
-                            received + 1.0,
-                        )
+                            self._mark_refresh_due.get(symbol, received + grace), received + grace)
                     changed = True
             # Quote and mark ordering are independent. A newer executable
             # quote cannot suppress an otherwise newer mark observation.
@@ -234,8 +253,9 @@ class BybitQuoteStream:
 
         Never reuse or restamp old observations. A bounded unsubscribe/
         resubscribe on the established public socket asks Bybit to send a
-        fresh snapshot before independent mark or quote sides expire. Each symbol is throttled to
-        one recovery request per second. Refresh begins before expiry,
+        fresh snapshot before independent mark or quote sides expire. Background
+        symbols are throttled to one recovery per second; owned exposure has a
+        half-second lead/cooldown and is sent first. Refresh begins before expiry,
         allowing a quiet symbol to retain genuine independent observations.
         The subsequent genuine WebSocket event is still required before
         margin/risk becomes available again.
@@ -250,23 +270,26 @@ class BybitQuoteStream:
             now = self._mono()
             wall = self._wall()
             stale = []
-            for symbol in sorted(set(symbols) & self._subscriptions):
+            for symbol in sorted(set(symbols) & self._subscriptions,
+                                 key=lambda symbol: (symbol not in self._priority_symbols, symbol)):
+                priority = symbol in self._priority_symbols
+                lead_age = self._max_age / (4 if priority else 2)
                 row = self._marks.get(symbol)
                 fresh = (row is not None and row[3] == self._generation
-                         and 0 <= now - row[2] < self._max_age / 2
-                         and -5 <= wall - row[1] / 1000 < self._max_age / 2)
+                         and 0 <= now - row[2] < lead_age
+                         and -5 <= wall - row[1] / 1000 < lead_age)
                 quote = self._quotes.get(symbol)
                 quote_fresh = (
                     quote is not None and quote.generation == self._generation
-                    and 0 <= now - quote.bid_received_monotonic < self._max_age / 2
-                    and 0 <= now - quote.ask_received_monotonic < self._max_age / 2
-                    and -5 <= wall - quote.bid_exchange_ms / 1000 < self._max_age / 2
-                    and -5 <= wall - quote.ask_exchange_ms / 1000 < self._max_age / 2
+                    and 0 <= now - quote.bid_received_monotonic < lead_age
+                    and 0 <= now - quote.ask_received_monotonic < lead_age
+                    and -5 <= wall - quote.bid_exchange_ms / 1000 < lead_age
+                    and -5 <= wall - quote.ask_exchange_ms / 1000 < lead_age
                 )
                 if (fresh and quote_fresh) or now < self._mark_refresh_due.get(symbol, 0):
                     continue
                 stale.append(symbol)
-                self._mark_refresh_due[symbol] = now + 1.0
+                self._mark_refresh_due[symbol] = now + (.5 if priority else 1.)
             if not stale:
                 return 0
             try:
@@ -357,7 +380,7 @@ class BybitQuoteStream:
                     return
                 if not isinstance(payload, dict):
                     return
-                if payload.get("op") == "subscribe" and payload.get("success") is False:
+                if payload.get("op") in ("subscribe", "unsubscribe") and payload.get("success") is False:
                     self.disconnect(generation=state["generation"])
                     ws.close()
                     return

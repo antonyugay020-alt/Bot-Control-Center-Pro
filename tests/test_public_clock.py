@@ -136,6 +136,8 @@ def test_failed_refresh_retains_only_unexpired_reference(measured, monkeypatch):
     timer["mono"] += 31
     monkeypatch.setattr(mc, "probe_source", lambda p: {"source": p, "samples": []})
     reference.ensure()
+    reference._refresh_thread.join(timeout=2)
+    assert not reference._refresh_thread.is_alive()
     assert reference.bounds()[0] > 1031
     timer["wall"] += 30
     timer["mono"] += 30

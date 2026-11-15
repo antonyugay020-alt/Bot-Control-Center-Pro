@@ -216,6 +216,10 @@ def _public_market_diagnostics(root, dest):
                         "SELECT COUNT(*), SUM(CASE WHEN last_error != '' THEN 1 ELSE 0 END), "
                         "SUM(CASE WHEN active_until > ? THEN 1 ELSE 0 END) "
                         "FROM hub_subscriptions", (time.time(),)).fetchone()
+                    # WS routes publish on events and intentionally do not
+                    # advance REST next_due. These are raw deadline counts,
+                    # not a count of failed/stalled WS publications.
+                    info["deadline_counts_include_event_streams"] = True
                     info["subscriptions_total"] = row[0]
                     info["subscriptions_with_error"] = row[1] or 0
                     info["subscriptions_active"] = row[2] or 0
