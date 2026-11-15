@@ -14,7 +14,8 @@ from pathlib import Path
 
 from bcc import process_os as psutil
 from bcc.hub_supervisor import _matches, ensure_hub
-from bcc.market import PublicData, DataUnavailable
+from bcc.data_cache import CacheBusy, ProviderDenied
+from bcc.market import PublicData, DataUnavailable, SourceAccessDenied
 from bcc.market_clock import clock, book_age_bounds
 from bcc.storage import atomic_json
 from tools.verify_package import verify, assert_same_snapshot
@@ -35,6 +36,42 @@ def _record_age(row, lower_key, upper_key, stamp):
                          + lower_key + f" [{low:.3f}, {high:.3f}]")
 
 
+def _sample_pair(source, symbol, row):
+    """Sample both independent channels in one SQLite read transaction.
+
+    A successful scalar mark read cannot remain the authority after a later
+    blocking depth read. Use the same bulk-cache boundary as the worker's
+    portfolio observer, then validate both original exchange timestamps.
+    """
+    source._assert_provider_allowed('api.bybit.com')
+    value, ticker = source.shared.read_fresh_many([
+        (URL, {'category':'linear','symbol':symbol,'limit':50}),
+        ('https://api.bybit.com/v5/market/tickers',
+         {'category':'linear','symbol':symbol}),
+    ], 'api.bybit.com')
+    if value is None or ticker is None:
+        raise DataUnavailable('Independent WS book/mark cache snapshot incomplete')
+    _record_book(row, symbol, value)
+    if ticker.get('_bcc_ws_mark') is not True:
+        raise ValueError('No verified Bybit WS mark provenance')
+    _record_age(row, 'mark_age_lower_seconds', 'mark_age_seconds',
+                float(ticker['_bcc_ws_mark_at']) / 1000)
+    source._decode_ws_position_mark(symbol, ticker)
+    row['mark_price_verified'] = True
+
+
+def _record_book(row, symbol, value):
+    if value.get('_bcc_ws_book') is not True:
+        raise ValueError('No verified Bybit WS provenance')
+    book = value['result']
+    if book.get('s') != symbol:
+        raise ValueError('Wrong symbol')
+    _record_age(row, 'book_age_lower_seconds', 'age_upper_seconds', float(book['ts']) / 1000)
+    bid, ask = float(book['b'][0][0]), float(book['a'][0][0])
+    if not 0 < bid <= ask:
+        raise ValueError('Invalid executable spread')
+
+
 def probe(source, symbol, *, require_mark=False, initial=False):
     started = time.monotonic()
     row = {"symbol": symbol, "status": "FAIL"}
@@ -44,33 +81,42 @@ def probe(source, symbol, *, require_mark=False, initial=False):
         clock.ensure()
         params = {"category": "linear", "symbol": symbol, "limit": 50}
         value = source.get(URL, params)
-        mark = None
         if require_mark:
             deadline = (time.monotonic() + 4.0 if initial
                         else started + STEADY_READ_BUDGET)
             while True:
                 try:
-                    mark = source._ws_position_mark(symbol)
+                    source._ws_position_mark(symbol)
                     break
+                except SourceAccessDenied:
+                    raise
                 except DataUnavailable:
-                    if time.monotonic() >= deadline:
+                    if time.monotonic() >= deadline or source.stop_event.is_set():
                         raise
                     time.sleep(min(.1, max(0., deadline - time.monotonic())))
-            # A book read before waiting for the mark may have expired.
-            # Re-read the real WS cache; never restamp the old observation.
-            value = source.get(URL, params)
-        if value.get("_bcc_ws_book") is not True:
-            raise ValueError("No verified Bybit WS provenance")
-        book = value["result"]
-        if book.get("s") != symbol:
-            raise ValueError("Wrong symbol")
-        _record_age(row, "book_age_lower_seconds", "age_upper_seconds", float(book["ts"]) / 1000)
-        bid, ask = float(book["b"][0][0]), float(book["a"][0][0])
-        if not 0 < bid <= ask:
-            raise ValueError("Invalid executable spread")
-        if mark is not None:
-            _record_age(row, "mark_age_lower_seconds", "mark_age_seconds", mark["at"])
-            row["mark_price_verified"] = True
+            attempts = 0
+            while True:
+                candidate = {}
+                attempts += 1
+                try:
+                    _sample_pair(source, symbol, candidate)
+                    row.update(candidate)
+                    break
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
+                except SourceAccessDenied:
+                    raise
+                except (DataUnavailable, CacheBusy, ValueError):
+                    if time.monotonic() >= deadline or source.stop_event.is_set():
+                        row.update(candidate)
+                        raise
+                    # Retry only within the declared overall delivery budget.
+                    # Only a new genuine cache snapshot may resolve expiry.
+                    time.sleep(min(.05, max(0., deadline-time.monotonic())))
+                finally:
+                    row['snapshot_attempts'] = attempts
+        else:
+            _record_book(row, symbol, value)
         row["status"] = "PASS"
     except Exception as exc:
         row["error"] = f"{type(exc).__name__}: {exc}"[:400]

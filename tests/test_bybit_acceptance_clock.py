@@ -1,5 +1,6 @@
 """Raw WS QA must use the same vetted trading UTC as the producer/worker."""
 from types import SimpleNamespace
+import threading
 
 import pytest
 
@@ -20,6 +21,17 @@ def feed(monkeypatch):
         else (state.now + state.local_offset,) * 2))
 
     class Source:
+        stop_event = threading.Event()
+        def __init__(self):
+            self.shared = SimpleNamespace(read_fresh_many=self.read_pair)
+        def _assert_provider_allowed(self, host):
+            assert host == 'api.bybit.com'
+        def _decode_ws_position_mark(self, symbol, value):
+            return {'at':float(value['_bcc_ws_mark_at'])/1000}
+        def read_pair(self, *args):
+            book = self.get()
+            stamp = 10000. if state.old_mark else state.now
+            return [book, {'_bcc_ws_mark':True,'_bcc_ws_mark_at':int(stamp*1000)}]
         def get(self, *args, **kwargs):
             state.reads += 1
             stamp = 10000. if state.old_book else state.now

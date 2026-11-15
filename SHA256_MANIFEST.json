@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_BYBIT_RISK_MAINTENANCE_STORAGE_20261115_NOT_RELEASE",
+  "checkpoint": "BCC_BYBIT_COHERENT_WS_ACCEPTANCE_20261115_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -424,7 +424,7 @@
     "tools/acceptance_session.py": "5dbf9742fd82c44c42640371140d5f7fa528c472597512d8b95207d2d6a9e7a4",
     "tools/ai_dev_pipeline.py": "07f009404fdfbf242f50c1f709b60e1fd2d6b7066e893cab93cfbbc50115769d",
     "tools/audit20.py": "ee6aff07f9c4b3f06eca3634f45cd0ead133c0618199854e1d900dd0c5a2719d",
-    "tools/bybit_ws_live_acceptance.py": "57f6749d764feb28f54ca07c2e298756cc7a11873eb2db57d930934c002c742e",
+    "tools/bybit_ws_live_acceptance.py": "af8546cc854f8745831a675fb70298f28d7cb21a066d1f000f61684c3de43786",
     "tools/collect_test_inventory.py": "78cd4aede5152e392319616f29eb05ef549949d3ed375d9339d12c0ca99259d4",
     "tools/export_test_report.py": "09f85e9ae97cf7bf0ba689d3a5f3603a6e915a37ae5fb2f78c735503574d9b4b",
     "tools/market_hub_service.py": "3a50014f4141f59d457de93bdb07fda3bfdb7adeaac178cdef21185a56be768e",
@@ -446,7 +446,7 @@
     "BYBIT_WINDOWS_QA_RU.md": "2dd7ac54274072bc050f6cbb30434f751cc5b151ee91904c4c62290518b0aee5",
     "docs/BYBIT_FINAL_INTEGRATION_20261114.md": "d8997f20113cc8e1e7c98b87acbad5925be30bc1da79a18ea97a9c7a66ee3d7e",
     "docs/BYBIT_QA_EVIDENCE_20261114.json": "f3af6eade2c5749c311b6ddd4b22eb3dc10f1ba208e2ff6dc319b858423d1e41",
-    "tests/test_bybit_acceptance_clock.py": "aed1667447821304205747b6a4f159fd33c44755416d562973371694b6db6e7e",
+    "tests/test_bybit_acceptance_clock.py": "a97a8de88761de63334649ebfda0d22c02283248d604923303826a069051d8e4",
     "docs/BYBIT_CLOCK_RECOVERY_20261115.md": "192efb970ebe6590fbe774e7bfe19373a9331c04dc09d6d90c78f0eeb8799846",
     "docs/WINDOWS_BYBIT_RECEIPT_20261115.json": "6ef817217315b344a362b403e2931c9945b29cf9662d4554df06a9e1071dc70c",
     "bcc/ws_symbols.py": "b15a76d5f850ba964efa5470ef19cb572385bae91777fc9228a9d1b2a08baa79",
@@ -479,6 +479,7 @@
     "tests/test_risk_maintenance_lifecycle.py": "b6e68bc0b32928afdcd82b987459a9cde5159d905f5606ebf416fe567099b381",
     "docs/BYBIT_RISK_MAINTENANCE_CHECKPOINT_20261115.md": "c6d0212a2ade1386ba4b9b1da9505d6c985780e9612645f90147b4e4495f33c8",
     "docs/BYBIT_RISK_MAINTENANCE_QA_20261115.json": "09e5e117624c6766fa2dfe18a1b8ece816b8374422e97cda9d56061383eb2afd",
-    "docs/WINDOWS_LONG_RUN_RECEIPT_20261115.json": "c8154248375bc6a515accb401c16a49b2eb029f9f4153b311431bd8c6754c5f3"
+    "docs/WINDOWS_LONG_RUN_RECEIPT_20261115.json": "c8154248375bc6a515accb401c16a49b2eb029f9f4153b311431bd8c6754c5f3",
+    "tests/test_bybit_coherent_acceptance.py": "c5303caafaa085a867e5d5c1087a2176b1616def21c358871ca5b6fa5225ea15"
   }
 }
