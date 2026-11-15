@@ -1,0 +1,53 @@
+{
+  "source_directory_ref": "c93649c2da15feb2240bba8933a2189e6754bcce",
+  "executable_fingerprint": "2dde5984350c7ec914cd46a594ad8e407d3ea8c4b612ce3ead378f4f0740e3fc",
+  "source_integrity_result": "FAIL (unmanifested temporary report staging, not an executable fingerprint mismatch)",
+  "source_integrity_error_kind": "TEMPORARY_REPORT_INSIDE_IMMUTABLE_SOURCE",
+  "native_automated_regression_not_in_upload": true,
+  "platform": "Windows-11-10.0.26300-SP0",
+  "worker_status": "RUNNING",
+  "workers_stopped_for_report": false,
+  "open_positions": 17,
+  "exposed_symbols": 15,
+  "paper_events": {
+    "FUNDING": 3,
+    "OPEN": 23,
+    "CLOSE": 6,
+    "DCA": 1
+  },
+  "fills": {
+    "status": "PASS",
+    "examined_fills": 30,
+    "with_age_evidence": 30,
+    "without_age_evidence": 0,
+    "invalid_event_ids": [],
+    "maximum_age_upper": 2.764157295227051
+  },
+  "ledger_audit": "PASS (collector and independent copied-SQLite audit)",
+  "valuation_source_timestamp_spread_seconds": 0.848,
+  "valuation_receipt_spread_seconds": 0.000173,
+  "all_quotes_fresh_at_latest_saved_observation_receipt": true,
+  "maximum_valuation_age_upper_at_receipt_seconds": 1.192586,
+  "maximum_collateral_age_upper_at_receipt_seconds": 2.704586,
+  "observation_reference": "latest stored receipt monotonic; NOT report-generation completion time",
+  "last_perf": {
+    "processed": 421,
+    "cohort_commits": 144,
+    "refreshed": 20,
+    "deferred_refreshes": 20,
+    "data_errors": 5,
+    "max_tick_ms": 449.531
+  },
+  "queue_pending_peak": 46,
+  "critical_dispatch_wait_max_seconds": 0.252,
+  "dropped_notifications": 0,
+  "expired_background_events_filtered": 59,
+  "diagnostic_counts": {
+    "rate_limit_rows": 7,
+    "stale_mark_rows": 80,
+    "hub_cache_miss_rows": 7
+  },
+  "uploaded_archive_sha256": "5a7d13e3c3aa31f652207094a6fa4e3ce5e7966caec659b5b77846a52bfe1d13",
+  "new_source_windows_acceptance": "UNRUN",
+  "release_ready": false
+}

@@ -1,0 +1,53 @@
+{
+  "baseline_commit": "c93649c2da15feb2240bba8933a2189e6754bcce",
+  "implementation_commit": "d8aea3fec60546d25760d24889970efc8ad94e5a",
+  "executable_fingerprint": "c7191ee1b3174e554053aeed5f41fc4a60d43a75c91c1738a3e5c96f139f7197",
+  "platform": "Linux Python 3.12.14 / Qt 6.12.0 offscreen / pytest 9.2.0",
+  "tested_source_integrity": {
+    "status": "PASS",
+    "verified_files": 470,
+    "checkpoint": "BCC_BYBIT_CACHED_HANDOFF_RATE_FEEDBACK_20261115_NOT_RELEASE",
+    "manifest_sha256": "b5ab7b8f394ad37b92a8735980e7ff28cb6d96b4fb5f15ef8e1b90c5d35b3996"
+  },
+  "regression": {
+    "tests": 3846,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exact_collected_executed_inventory": 3846,
+    "all_eight_shards": "PASS",
+    "inventory_sha256": "ab702df40cad37d91809cdbf87779aa76700e7f811cdb0f0669b5fd051e7bc59",
+    "junit_sha256": "df24cd5558052ca8a2505d469ea5402fcf3848864ffe287023c699b3288e7d5f"
+  },
+  "new_regressions": {
+    "cases_added": 26,
+    "transport_business_error_cache_and_cooldown": 13,
+    "current_cached_depth_and_owner_handoff": 12,
+    "repeated_report_export_source_boundary": 1,
+    "real_worker_twenty_position_saturation_test_still_passes": true,
+    "explicit_403_451_fences_still_pass": true
+  },
+  "negative_reproduction": {
+    "source_fingerprint": "2dde5984350c7ec914cd46a594ad8e407d3ea8c4b612ce3ead378f4f0740e3fc",
+    "case": "test_rate_feedback_gates_http_fleet_without_publishing_error_payload[10006-200]",
+    "expected_failure": "Bybit 10006 was returned as successful HTTP data instead of rejecting it before cache publication",
+    "result": "EXPECTED FAILURE (DID NOT RAISE DataUnavailable)",
+    "log_sha256": "f8780da05079fd827d018cd415757e92e5c33c7376aed06b3157b4ef8f5e72eb"
+  },
+  "live_ws": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "book_plus_independent_mark_reads": 240,
+    "steady_state_max_seconds": 0.408,
+    "owned_hub_retired": true,
+    "report_sha256": "3244a1a25d9ee8566d96b415ec8a3740de1579531bd52704f15a3f23e91da59c"
+  },
+  "offscreen_qt": {
+    "status": "PASS",
+    "native_windows": false,
+    "report_sha256": "5827179c1522ddaccbc7e37b4c58c57f7cd003ff5e42ffe0e89d0c2e4b987896"
+  },
+  "new_source_windows_acceptance": "UNRUN",
+  "real_grid_pump_cycles": "UNCONFIRMED",
+  "independent_review": "UNRUN",
+  "release_ready": false
+}
