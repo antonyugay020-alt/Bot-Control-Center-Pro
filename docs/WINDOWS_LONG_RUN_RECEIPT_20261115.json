@@ -1,0 +1,90 @@
+{
+  "baseline_commit": "d0e393f1288caf2267b8dab75d26708a379d00cb",
+  "reports": [
+    {
+      "file": "BCC_CURRENT_REPORT_20261115_175534.zip",
+      "at": "2026-11-15T12:55:52.154342+00:00",
+      "native_platform": "Windows-11-10.0.26300-SP0",
+      "source_integrity": {
+        "status": "PASS",
+        "verified_files": 473,
+        "checkpoint": "BCC_BYBIT_CACHED_HANDOFF_RATE_FEEDBACK_20261115_NOT_RELEASE",
+        "manifest_sha256": "25f152a48473c724c6b66c38bd3fcbd1ce5397fc5aead7e73d020c3f1443bf2e"
+      },
+      "executable_fingerprint": "c7191ee1b3174e554053aeed5f41fc4a60d43a75c91c1738a3e5c96f139f7197",
+      "workers_stopped": false,
+      "open_positions": 15,
+      "held_symbols": 15,
+      "fills": {
+        "OPEN": 16,
+        "CLOSE": 1
+      },
+      "fill_book_age_evidence_max_upper_seconds": 1.4131367206573486,
+      "fill_book_age_evidence_rows": 17,
+      "independent_copied_ledger_audit": "PASS",
+      "valuation_upper_age_range_at_latest_saved_receipt": [
+        0.36020302888937294,
+        1.811203423771076
+      ],
+      "collateral_upper_age_range_at_latest_saved_receipt": [
+        0.6692033857107162,
+        2.8071243403246626
+      ],
+      "risk_tier_upper_age_range_at_latest_saved_receipt": [
+        441.56320333480835,
+        489.9292035102844
+      ],
+      "risk_tier_source_timestamp_range": [
+        1794746859.909,
+        1794746908.275
+      ],
+      "diagnostic_symbols": 385,
+      "diagnostic_expanded_json_bytes": 3159407,
+      "configured_symbols": 821
+    },
+    {
+      "file": "BCC_CURRENT_REPORT_20261115_175859.zip",
+      "at": "2026-11-15T12:59:12.270139+00:00",
+      "native_platform": "Windows-11-10.0.26300-SP0",
+      "source_integrity": {
+        "status": "PASS",
+        "verified_files": 473,
+        "checkpoint": "BCC_BYBIT_CACHED_HANDOFF_RATE_FEEDBACK_20261115_NOT_RELEASE",
+        "manifest_sha256": "25f152a48473c724c6b66c38bd3fcbd1ce5397fc5aead7e73d020c3f1443bf2e"
+      },
+      "executable_fingerprint": "c7191ee1b3174e554053aeed5f41fc4a60d43a75c91c1738a3e5c96f139f7197",
+      "workers_stopped": false,
+      "open_positions": 15,
+      "held_symbols": 15,
+      "fills": {
+        "OPEN": 16,
+        "CLOSE": 1
+      },
+      "fill_book_age_evidence_max_upper_seconds": 1.4131367206573486,
+      "fill_book_age_evidence_rows": 17,
+      "independent_copied_ledger_audit": "PASS",
+      "valuation_upper_age_range_at_latest_saved_receipt": [
+        0.5841763019561768,
+        2.0601209909655154
+      ],
+      "collateral_upper_age_range_at_latest_saved_receipt": [
+        1.3261208463227376,
+        2.62112098664511
+      ],
+      "risk_tier_upper_age_range_at_latest_saved_receipt": [
+        641.587176322937,
+        689.9531764984131
+      ],
+      "risk_tier_source_timestamp_range": [
+        1794746859.909,
+        1794746908.275
+      ],
+      "diagnostic_symbols": 465,
+      "diagnostic_expanded_json_bytes": 4804837,
+      "configured_symbols": 821
+    }
+  ],
+  "all_risk_tier_source_timestamps_unchanged_between_reports": true,
+  "limitation": "Saved observation receipt cohort only, not continuous operation or report completion time. UI-only reports contain no new native full regression.",
+  "release_ready": false
+}

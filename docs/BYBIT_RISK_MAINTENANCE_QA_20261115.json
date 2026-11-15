@@ -1,0 +1,197 @@
+{
+  "baseline_commit": "d0e393f1288caf2267b8dab75d26708a379d00cb",
+  "implementation_commit": "fbf8ed5b8bd02f21b0c7de9f5d1d1b1607bdd0e5",
+  "executable_fingerprint": "d9573c10ef3296f00a0c7c7c36b8abed4fa3d40a3968981a1125c76e6a9e256b",
+  "platform": "Linux Python 3.12.14 / Qt 6.12.0 offscreen / pytest 9.2.0",
+  "tested_source_integrity": {
+    "status": "PASS",
+    "verified_files": 476,
+    "checkpoint": "BCC_BYBIT_RISK_MAINTENANCE_STORAGE_20261115_NOT_RELEASE",
+    "manifest_sha256": "47d793d7b98882166618013ce32165f0df55f795273acd80c31d22e1a55c4dea"
+  },
+  "regression": {
+    "tests": 3864,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exact_collected_executed_inventory": 3864,
+    "all_eight_shards": "PASS",
+    "inventory_sha256": "2541c1a5032c05c4da82db9585ad6be9645b36a36d6768a0ea31c217653e83f6",
+    "junit_sha256": "4fb15cf164988eca0cd3ae12f5393ac0ca32d3147a309fd30ab01b6e9cafe6a1",
+    "sum_shard_seconds": 318.907,
+    "shards": [
+      {
+        "name": "shard_00",
+        "status": "PASS",
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "seconds": 12.062,
+        "timeout": 360
+      },
+      {
+        "name": "shard_01",
+        "status": "PASS",
+        "totals": {
+          "tests": 643,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "seconds": 90.652,
+        "timeout": 360
+      },
+      {
+        "name": "shard_02",
+        "status": "PASS",
+        "totals": {
+          "tests": 643,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "seconds": 52.513,
+        "timeout": 360
+      },
+      {
+        "name": "shard_03",
+        "status": "PASS",
+        "totals": {
+          "tests": 643,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "seconds": 33.769,
+        "timeout": 360
+      },
+      {
+        "name": "shard_04",
+        "status": "PASS",
+        "totals": {
+          "tests": 642,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "seconds": 48.788,
+        "timeout": 360
+      },
+      {
+        "name": "shard_05",
+        "status": "PASS",
+        "totals": {
+          "tests": 642,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "seconds": 53.095,
+        "timeout": 360
+      },
+      {
+        "name": "shard_06",
+        "status": "PASS",
+        "totals": {
+          "tests": 642,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "seconds": 17.893,
+        "timeout": 360
+      },
+      {
+        "name": "shard_07",
+        "status": "PASS",
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "seconds": 10.135,
+        "timeout": 600
+      }
+    ]
+  },
+  "new_regressions": {
+    "cases_added": 18,
+    "risk_metadata_owner_lifecycle_and_transport_isolation": 5,
+    "hub_cache_actual_deadline": 4,
+    "diagnostic_persistence_corruption_and_key_security": 9
+  },
+  "negative_reproduction": {
+    "source_commit": "d0e393f1288caf2267b8dab75d26708a379d00cb",
+    "source_fingerprint": "c7191ee1b3174e554053aeed5f41fc4a60d43a75c91c1738a3e5c96f139f7197",
+    "case": "test_real_owner_renews_twenty_expired_tiers_while_quotes_and_history_are_blocked",
+    "result": "EXPECTED FAILURE: held risk_at values remained old while quote/history workers blocked",
+    "log_sha256": "53772324dda51b99d35f96dbdeb53153aa02117543541036b6268d72ae25631d"
+  },
+  "live_ws": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "book_plus_independent_mark_reads": 240,
+    "steady_state_max_seconds": 0.529,
+    "owned_hub_retired": true,
+    "report_sha256": "80c849fd580a9a4e3c28a95137daea31fafe1fd96d7eb825becf21ae21994948",
+    "scope": "Actual public WS only; risk metadata responses in automated lifecycle/expiry tests are injected"
+  },
+  "offscreen_qt": {
+    "status": "PASS",
+    "native_windows": false,
+    "report_sha256": "5827179c1522ddaccbc7e37b4c58c57f7cd003ff5e42ffe0e89d0c2e4b987896",
+    "wizard_strategies": 8,
+    "fleet_monitor_rows": 20
+  },
+  "copied_account_codec_benchmark": {
+    "original_document_bytes": 3027093,
+    "new_document_bytes": 1381238,
+    "median_seconds": 0.29695480500231497,
+    "samples": [
+      0.30218504300137283,
+      0.29695480500231497,
+      0.4045972329986398,
+      0.2778754419996403,
+      0.2621610580026754
+    ],
+    "public_state_exactly_unchanged": true,
+    "audit": "PASS",
+    "baseline": {
+      "original_document_bytes": 3027093,
+      "median_seconds": 0.2690133459982462,
+      "samples": [
+        0.42940895599895157,
+        0.2584344790011528,
+        0.2690133459982462,
+        0.25644800499867415,
+        0.27167605300201103
+      ]
+    },
+    "scope": "Linux copied native account, five read plus no-op transaction cycles; no Windows speed guarantee"
+  },
+  "compileall": "PASS",
+  "diff_check": "PASS",
+  "previous_integration_cycle": {
+    "tests": 3863,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "final_cycle_supersedes": true
+  },
+  "commands": [
+    "QT_QPA_PLATFORM=offscreen python -m tools.collect_test_inventory --output INVENTORY.json",
+    "python -m tools.run_partitioned_tests --inventory INVENTORY.json --output QA",
+    "python -m tools.bybit_ws_live_acceptance --output NEW_DIRECTORY --require-mark",
+    "python -m bcc.gui_check --offscreen --output NEW_DIRECTORY",
+    "python -m tools.verify_package"
+  ],
+  "new_source_windows_acceptance": "UNRUN",
+  "full_native_821_symbol_scan": "UNCONFIRMED",
+  "native_stop_restart_network_recovery": "UNCONFIRMED",
+  "native_grid_pump_cycles": "UNCONFIRMED",
+  "independent_review": "UNRUN",
+  "release_ready": false
+}

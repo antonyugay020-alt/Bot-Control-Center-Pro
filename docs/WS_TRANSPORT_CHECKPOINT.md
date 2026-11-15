@@ -1,4 +1,4 @@
-> Latest Bybit integration and operator evidence: [BYBIT_CACHED_HANDOFF_CHECKPOINT_20261115.md](BYBIT_CACHED_HANDOFF_CHECKPOINT_20261115.md). Earlier notes below are historical, not current acceptance status.
+> Latest Bybit integration and operator evidence: [BYBIT_RISK_MAINTENANCE_CHECKPOINT_20261115.md](BYBIT_RISK_MAINTENANCE_CHECKPOINT_20261115.md). Earlier notes below are historical, not current acceptance status.
 
 # BCC WebSocket integration — isolated branch checkpoint
 
