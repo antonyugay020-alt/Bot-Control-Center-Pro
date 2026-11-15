@@ -242,3 +242,33 @@ def test_new_scanner_ticker_has_bounded_subscription_grace_off_the_fast_lane(por
     result=reader.margin_snapshot(symbols[0])
     assert result['quote']['bid']==100.45
     assert not getattr(reader._thread,'mark_subscription_warmup',False)
+
+
+def test_cohort_fast_path_still_renews_the_current_position_ticker_lease(portfolio):
+    symbols,reader,hub,_=portfolio
+    assert reader._ws_portfolio_observations()[0]
+    key=hub.registry.identity('https://api.bybit.com/v5/market/tickers',
+                              {'category':'linear','symbol':symbols[0]})[0]
+    with hub.registry._connect() as db:
+        assert db.execute('SELECT priority_until FROM hub_subscriptions WHERE k=?',(key,)).fetchone()[0]==0
+    reader.position_orderbook(symbols[0])
+    with hub.registry._connect() as db:
+        active,priority=db.execute('SELECT active_until,priority_until FROM hub_subscriptions WHERE k=?',(key,)).fetchone()
+    assert active > time.time() and priority > time.time()
+
+
+def test_execution_depth_cache_does_not_retain_an_entire_portfolio_per_symbol():
+    import gc,weakref
+    from bcc.runtime import _execution_depth
+    class Cohort(dict):pass
+    observations=Cohort({f'C{i}USDT':{'bid':100,'ask':101} for i in range(1000)})
+    reference=weakref.ref(observations)
+    book={'at':time.time(),'bids':[[100,10]],'asks':[[101,10]],
+          'qty_step':.001,'min_qty':.001,'min_notional':5,'tick_size':.01,
+          'portfolio_quotes':observations,'margin_marks':observations}
+    cached=_execution_depth(book)
+    del book,observations
+    gc.collect()
+    assert reference() is None
+    assert cached['bids']==[[100,10]] and cached['asks']==[[101,10]]
+    assert cached['qty_step']==.001

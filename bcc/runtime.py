@@ -220,6 +220,12 @@ def close_requested_positions(folder, store, books, *, control_revision=None):
     log_events(events)
 
 
+def _execution_depth(book):
+    """Retain depth for manual exits without N copies of portfolio cohorts."""
+    return {key: value for key, value in book.items()
+            if key not in ("portfolio_quotes", "margin_marks")}
+
+
 def run_loop(
     folder,
     cfg,
@@ -297,7 +303,7 @@ def run_loop(
                             market_health["last_valid_history_utc"] = time.time()
                         if tick.book is not None:
                             perf["processed"] += 1
-                            books[symbol] = tick.book
+                            books[symbol] = _execution_depth(tick.book)
                         else:
                             books.pop(symbol, None)
                             if tick.quote_error:

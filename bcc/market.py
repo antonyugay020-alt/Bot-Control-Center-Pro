@@ -1264,9 +1264,10 @@ class PublicData:
                 and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"):
             try:
                 portfolio_marks, portfolio_quotes = self._ws_portfolio_observations()
-                ws_mark = portfolio_marks.get(symbol)
-                if ws_mark is None:
-                    ws_mark = self._ws_position_mark(symbol)
+                # Keep the scalar subscription/urgent lease alive as before.
+                # A cache-only cohort read must not let live exposures expire
+                # from the producer's admitted demand after sixty seconds.
+                ws_mark = self._ws_position_mark(symbol)
                 portfolio_marks = {**portfolio_marks, symbol: ws_mark}
             except DataUnavailable as exc:
                 margin_error = str(exc)
