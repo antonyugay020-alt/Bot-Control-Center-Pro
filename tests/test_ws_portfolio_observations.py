@@ -72,7 +72,8 @@ def portfolio(tmp_path,monkeypatch):
         reader.close();hub.close();producer.close()
 
 
-def test_entire_exposure_updates_in_one_real_worker_sqlite_transaction(portfolio,tmp_path):
+@pytest.mark.parametrize('lagging_book',[False,True])
+def test_entire_exposure_updates_in_one_real_worker_sqlite_transaction(portfolio,tmp_path,lagging_book):
     symbols,reader,_,_=portfolio
     cfg=defaults('VELES');cfg['name']='Portfolio cohort';cfg['symbols']=symbols;cfg['sections']=[range_section(30,40)]
     cfg['settings']['orders']['count']=1
@@ -92,12 +93,17 @@ def test_entire_exposure_updates_in_one_real_worker_sqlite_transaction(portfolio
     assert 'mark-price' in margin_status(store.read())
     book=reader.position_orderbook(symbols[0])
     assert len(book['margin_marks'])==len(book['portfolio_quotes'])==20
+    if lagging_book:
+        # The real execution book is still admitted, while the independently
+        # timed quote already available to the worker is two seconds newer.
+        book['at']-=2
     process_tick(cfg,store,None,MarketTick(symbols[0],[],book,[],{}))
     restored=Store(folder);saved=restored.read()
     assert margin_status(saved)==''
     assert len(saved['positions'])==20
     assert len(restored.history())==20  # No unrequested fills from the price batch.
     assert all(quote_is_recent(saved['marks'][s],maximum=3) for s in symbols)
+    assert saved['marks'][symbols[0]]['at']>=book['portfolio_quotes'][symbols[0]]['at']
     restored.audit()
 
 

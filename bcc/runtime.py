@@ -97,9 +97,14 @@ def process_tick(cfg, store, engine, tick):
             if (other in exposed and quote_is_recent(quote, maximum=3)
                     and (not quote_is_recent(old, maximum=3) or quote["at"] >= old["at"])):
                 state["marks"][other] = dict(quote)
-        state["marks"][symbol] = observed_quote(
-            {"bid": bid, "ask": ask, "at": book["at"]}
-        )
+        # Execution still uses this exact book. Portfolio valuation must not
+        # roll a newer independently verified observation back to an older
+        # (but executable) book and become stale immediately afterwards.
+        current = state["marks"].get(symbol)
+        if not quote_is_recent(current, maximum=3) or book["at"] >= current["at"]:
+            state["marks"][symbol] = observed_quote(
+                {"bid": bid, "ask": ask, "at": book["at"]}
+            )
         state["_books"] = {symbol: book}
         apply_funding(state, events, symbol, tick.rates, tick.funding_marks, now)
         had_manual_pending = any(
