@@ -1,0 +1,43 @@
+{
+  "source_commit": "5d0ac68afd0797ad5a6376c7d4672f058fc881b2",
+  "source_integrity": {
+    "status": "PASS",
+    "verified_files": 448,
+    "checkpoint": "BCC_BYBIT_CLOCK_RECOVERY_20261115_NOT_RELEASE",
+    "manifest_sha256": "fc493331b2a8d178a3c75901a2ca5fcd7dc69a7c6767888631af76eac2690bcf"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.14.8 x64",
+  "automated_status": "BYBIT_PHASE_AUTOMATED_PASS",
+  "regression": {
+    "tests": 3734,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 5
+  },
+  "bybit_ws_status": "PUBLIC_WS_HUB_CLIENT_PASS",
+  "bybit_ws_reads": 192,
+  "bybit_ws_max_steady_seconds": 0.504,
+  "public_rest_status": "PASS",
+  "manual_session_status": "STOPPED_STATE_PRESERVED",
+  "owned_services_retired": true,
+  "paper_entries": [
+    "ASMLUSDT",
+    "AMZNUSDT"
+  ],
+  "paper_position_count": 2,
+  "ledger_audit": "PASS (collector and independent copied-ledger audit)",
+  "fees_balance_reconciled": true,
+  "maximum_valuation_age_at_final_snapshot": {
+    "AMZNUSDT": 0.7601320907706395,
+    "ASMLUSDT": 0.34316396713256836
+  },
+  "configured_symbols": 821,
+  "examined_symbol_diagnostics": 95,
+  "data_errors": [
+    "4USDT",
+    "AUSDT"
+  ],
+  "release_ready": false,
+  "uploaded_archive_sha256": "fd0eb571ef4c955454145663ac844526172e9344c327bd3cbf2762ebf522c7ef"
+}

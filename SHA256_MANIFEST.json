@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_BYBIT_CLOCK_RECOVERY_20261115_NOT_RELEASE",
+  "checkpoint": "BCC_BYBIT_SHORT_ASSET_DEPTH_RECOVERY_20261115_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -451,6 +451,8 @@
     "docs/WINDOWS_BYBIT_RECEIPT_20261115.json": "6ef817217315b344a362b403e2931c9945b29cf9662d4554df06a9e1071dc70c",
     "bcc/ws_symbols.py": "b15a76d5f850ba964efa5470ef19cb572385bae91777fc9228a9d1b2a08baa79",
     "tests/test_ws_single_asset_codes.py": "0c08e15ff9ebd0cf63a63f91f7cfc0f5df2f9fc7dea8e57a5f7886e22bed3d81",
-    "tests/test_ws_quiet_book_recovery.py": "26b0f0ad2628705eae890133ddf3596baead590de7435c4fdd1032370bc670ef"
+    "tests/test_ws_quiet_book_recovery.py": "26b0f0ad2628705eae890133ddf3596baead590de7435c4fdd1032370bc670ef",
+    "docs/BYBIT_SHORT_ASSET_RECOVERY_20261115.md": "5ba1ecaebf4e7305468fd7174de60a9bca3b77596ecd4c8f20fa4fc02dc2e0fa",
+    "docs/WINDOWS_BYBIT_PAPER_RECEIPT_20261115.json": "f528fcf81d6c07d026521b2b313eb2e809371bf469412c39edf4cbbec4ef1798"
   }
 }
