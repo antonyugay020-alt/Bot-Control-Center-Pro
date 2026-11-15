@@ -1,0 +1,75 @@
+{
+  "file": "BCC_VALIDATION_RESULTS_20261115_183820_129598.zip",
+  "baseline_commit": "1a91e7c4186e5e831a302f71156c83cb6a93701f",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.14.8 (tags/v3.14.8:8e6e75d, Sep 30 2026, 18:19:33) [MSC v.1944 64 bit (AMD64)]",
+  "executable_fingerprint": "d9573c10ef3296f00a0c7c7c36b8abed4fa3d40a3968981a1125c76e6a9e256b",
+  "source_integrity": {
+    "status": "PASS",
+    "verified_files": 479,
+    "checkpoint": "BCC_BYBIT_RISK_MAINTENANCE_STORAGE_20261115_NOT_RELEASE",
+    "manifest_sha256": "74e9df322a86b1eee4daf2e7e104bce2ac35040aa545096bb2c2f0f51071c364"
+  },
+  "source_integrity_final": {
+    "status": "PASS",
+    "verified_files": 479,
+    "checkpoint": "BCC_BYBIT_RISK_MAINTENANCE_STORAGE_20261115_NOT_RELEASE",
+    "manifest_sha256": "74e9df322a86b1eee4daf2e7e104bce2ac35040aa545096bb2c2f0f51071c364"
+  },
+  "status": "AUTOMATED_FAILED",
+  "automated_exit_code": 1,
+  "test_totals": {
+    "tests": 3864,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 5
+  },
+  "passed": 3859,
+  "exact_inventory_count": 3864,
+  "skipped_cases": [
+    "tests.test_r70_source_integrity::test_linked_directory_inside_package_is_rejected",
+    "tests.test_r611_qa_process_integrity::test_timeout_kills_descendant_process_group",
+    "tests.test_r611_qa_process_integrity::test_successful_exit_with_live_child_cannot_pass",
+    "tests.test_r611_qa_process_integrity::test_successful_exit_without_children_is_still_allowed",
+    "tests.test_r611_qa_process_integrity::test_successful_exit_with_detached_paper_child_cannot_pass"
+  ],
+  "junit_sha256": "d487600e377fd6e63a0a0d6f69f3053b17c0df419d70ace453248bc19bccbd62",
+  "inventory_sha256": "fbb7f874baec3a12d300525d7fae4e07b7424d49e2433dc6791c68498414e8bf",
+  "native_qt": {
+    "status": "PASS",
+    "native_windows": true,
+    "wizard_strategies": 8,
+    "fleet_monitor_rows": 20,
+    "report_sha256": "c616a5a915b873985de962497805bff1b7bb7a3731238f4a2d6a76ac5d74d6c7"
+  },
+  "live_ws": {
+    "status": "PUBLIC_WS_DELIVERY_INCOMPLETE",
+    "reads": 240,
+    "passed": 239,
+    "failed": [
+      {
+        "round": 18,
+        "symbol": "ADAUSDT",
+        "status": "FAIL",
+        "book_age_lower_seconds": 0.074,
+        "age_upper_seconds": 0.392,
+        "mark_age_lower_seconds": 2.705,
+        "mark_age_seconds": 3.023,
+        "error": "ValueError: Exchange observation outside vetted UTC freshness bounds: mark_age_lower_seconds [2.705, 3.023]",
+        "received_in_seconds": 0.129
+      }
+    ],
+    "steady_state_max_seconds": 0.507,
+    "owned_hub_retired": true,
+    "report_sha256": "b3dcc16d49308ab556c07f759fe4a0d58a8eeb07213a7c63d5f9819284d47e2b",
+    "evidence_errors": [
+      "Bybit WS status, mark verification or owned cleanup incomplete",
+      "Bybit WS symbol or independent mark failed",
+      "Bybit WS exchange observation expired"
+    ]
+  },
+  "public_sources": "NOT RUN: fail-fast after WS phase, absence is a consequence rather than evidence of a provider restriction",
+  "manual_paper": "NOT STARTED; no current bot/ledger snapshot in uploaded automated package",
+  "native_long_run_risk_renewal": "UNCONFIRMED",
+  "release_ready": false
+}

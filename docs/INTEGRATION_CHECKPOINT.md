@@ -1,4 +1,4 @@
-> Latest Bybit integration and operator evidence: [BYBIT_RISK_MAINTENANCE_CHECKPOINT_20261115.md](BYBIT_RISK_MAINTENANCE_CHECKPOINT_20261115.md). Earlier notes below are historical, not current acceptance status.
+> Latest Bybit integration and operator evidence: [BYBIT_COHERENT_ACCEPTANCE_CHECKPOINT_20261115.md](BYBIT_COHERENT_ACCEPTANCE_CHECKPOINT_20261115.md). Earlier notes below are historical, not current acceptance status.
 
 # Controlled integration checkpoint — 2026-11-12
 

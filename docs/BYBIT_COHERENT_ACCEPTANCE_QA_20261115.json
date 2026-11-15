@@ -1,0 +1,176 @@
+{
+  "baseline_commit": "1a91e7c4186e5e831a302f71156c83cb6a93701f",
+  "implementation_commit": "eda84c0ac7497bbd79e532ac9a21721f7ec343d7",
+  "executable_test_fingerprint": "e719ad30cac0d16e94d54225ee31628ebb0955bab7772e4081ce06864c2d1603",
+  "scope": "Automated public-WS acquisition tool and regression tests only; bcc/, app.py and launch.pyw unchanged from native baseline",
+  "production_application_files_unchanged": true,
+  "platform": "Linux / Python 3.12.14 / Qt 6.12.0 offscreen / pytest 9.2.0",
+  "tested_source_integrity": {
+    "status": "PASS",
+    "verified_files": 480,
+    "checkpoint": "BCC_BYBIT_COHERENT_WS_ACCEPTANCE_20261115_NOT_RELEASE",
+    "manifest_sha256": "7b82448c9b077d5057ea1a15e2340802fcbfc3fc6bdc7459f18909b2b94fa207"
+  },
+  "regression": {
+    "tests": 3873,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exact_collected_executed_inventory": 3873,
+    "all_eight_shards": "PASS",
+    "inventory_sha256": "d5ac549d528181b3314d0044c4b56eaca8b497d78cf9053352eb13d235dd076b",
+    "junit_sha256": "b615cf07ab22be1f3b161e83508064deae06bf57fa07e921d272be8a613eff29",
+    "shards": [
+      {
+        "name": "shard_00",
+        "status": "PASS",
+        "seconds": 11.488,
+        "timeout": 360,
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_01",
+        "status": "PASS",
+        "seconds": 30.212,
+        "timeout": 360,
+        "totals": {
+          "tests": 644,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_02",
+        "status": "PASS",
+        "seconds": 89.324,
+        "timeout": 360,
+        "totals": {
+          "tests": 644,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_03",
+        "status": "PASS",
+        "seconds": 41.954,
+        "timeout": 360,
+        "totals": {
+          "tests": 644,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_04",
+        "status": "PASS",
+        "seconds": 37.398,
+        "timeout": 360,
+        "totals": {
+          "tests": 644,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_05",
+        "status": "PASS",
+        "seconds": 42.724,
+        "timeout": 360,
+        "totals": {
+          "tests": 644,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_06",
+        "status": "PASS",
+        "seconds": 22.492,
+        "timeout": 360,
+        "totals": {
+          "tests": 644,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_07",
+        "status": "PASS",
+        "seconds": 9.124,
+        "timeout": 600,
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ]
+  },
+  "targeted_regression": {
+    "passed": 54,
+    "log_sha256": "02a20c7dd30da061eb67ded556bb79adecbf33f38d5bfacee264253a014f6966"
+  },
+  "new_regressions": 9,
+  "negative_reproduction": {
+    "baseline_commit": "1a91e7c4186e5e831a302f71156c83cb6a93701f",
+    "case": "test_delayed_second_scalar_depth_read_cannot_expire_the_already_read_mark",
+    "result": "EXPECTED FAILURE: new depth delivered after second scalar wait, retained old mark expired",
+    "log_sha256": "a2fcc2973e40759b33cb91b81216a159711ecaf92c6a05e097d79557dc062892"
+  },
+  "live_ws": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "book_plus_independent_mark_reads": 1200,
+    "rounds": 120,
+    "steady_state_max_seconds": 1.023,
+    "owned_hub_retired": true,
+    "reads_needing_snapshot_retry": 0,
+    "max_snapshot_attempts": 1,
+    "report_sha256": "934e8b14530aa343749677cc74f69cef9a46159ab88ed96b8d668b64a6f64344",
+    "real_orders": false
+  },
+  "offscreen_qt": {
+    "status": "PASS",
+    "native_windows": false,
+    "report_sha256": "5827179c1522ddaccbc7e37b4c58c57f7cd003ff5e42ffe0e89d0c2e4b987896"
+  },
+  "compileall": "PASS",
+  "package_seal": "PASS",
+  "diff_whitespace": "PASS",
+  "submitted_native_baseline": {
+    "regression": {
+      "tests": 3864,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 5
+    },
+    "passed": 3859,
+    "gui": "PASS",
+    "live_ws": "239/240: FAIL",
+    "overall": "AUTOMATED_FAILED"
+  },
+  "commands": [
+    "QT_QPA_PLATFORM=offscreen python -m tools.collect_test_inventory --output INVENTORY.json",
+    "python -m tools.run_partitioned_tests --inventory INVENTORY.json --output QA",
+    "python -m tools.bybit_ws_live_acceptance --output NEW_DIRECTORY --rounds 120 --require-mark",
+    "python -m bcc.gui_check --offscreen --output NEW_DIRECTORY",
+    "python -m tools.verify_package"
+  ],
+  "new_source_windows_acceptance": "UNRUN",
+  "native_long_running_risk_renewal": "UNCONFIRMED",
+  "native_live_strategy_paper_cycles": "UNCONFIRMED",
+  "independent_review": "UNRUN",
+  "release_ready": false
+}
