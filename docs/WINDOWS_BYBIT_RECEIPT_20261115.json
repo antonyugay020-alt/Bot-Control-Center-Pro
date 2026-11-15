@@ -1,0 +1,25 @@
+{
+  "source_commit": "429398fcd2e9925dbb0c517d49d0a74b1749fd96",
+  "manifest_sha256": "030f29b5a1ad5b5b4d9372ea5656520e5c977b0edc0cd154539df877e494e33d",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python_version": "3.14.8 x64",
+  "regression": {
+    "tests": 3726,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 5
+  },
+  "native_qt": "PASS",
+  "monitor_rows": 20,
+  "ws_readings": 192,
+  "ws_success": 4,
+  "ws_errors": {
+    "ValueError: Wrong symbol or expired exchange timestamp": 187,
+    "DataUnavailable: Bybit WebSocket markPrice stale": 1
+  },
+  "owned_hub_retired": true,
+  "public_rest": "NOT_RUN_AFTER_WS_FAILURE",
+  "manual_paper": "NOT_RUN_AFTER_WS_FAILURE",
+  "release_ready": false,
+  "uploaded_archive_sha256": "d31531fc030c8a8d4609e84648e53dd4107f1590383be47687af421c5faa8da6"
+}
