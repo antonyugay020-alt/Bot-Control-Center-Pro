@@ -1,0 +1,260 @@
+{
+  "source_commit": "577ff02a043aa530fe67239ac34658cd5f1560f2",
+  "executable_fingerprint": "e719ad30cac0d16e94d54225ee31628ebb0955bab7772e4081ce06864c2d1603",
+  "native_platform": "Windows-11-10.0.26300-SP0",
+  "source_integrity": {
+    "status": "PASS",
+    "verified_files": 483,
+    "checkpoint": "BCC_BYBIT_COHERENT_WS_ACCEPTANCE_20261115_NOT_RELEASE",
+    "manifest_sha256": "309d5049e145fd418842a240b554aee12ce2cb95c6ee7cb2c981302d914a715b"
+  },
+  "source_integrity_final": {
+    "status": "PASS",
+    "verified_files": 483,
+    "checkpoint": "BCC_BYBIT_COHERENT_WS_ACCEPTANCE_20261115_NOT_RELEASE",
+    "manifest_sha256": "309d5049e145fd418842a240b554aee12ce2cb95c6ee7cb2c981302d914a715b"
+  },
+  "automated": {
+    "status": "BYBIT_PHASE_AUTOMATED_PASS",
+    "totals": {
+      "tests": 3873,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 5
+    },
+    "passed": 3868,
+    "exact_inventory": 3873,
+    "junit_sha256": "7f4c80f673cbd4515bf71ed2e0f78d0e16b09d2150ad91ce204b033ab1d59efa",
+    "inventory_sha256": "f82405adf3a2fc4e44e9ce085641a0b52987aadf616d5145f9f8f15082d098fd",
+    "native_qt": "PASS",
+    "live_ws": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "live_ws_reads": 240,
+    "live_ws_steady_max_seconds": 0.956,
+    "owned_test_hub_retired": true,
+    "live_report_sha256": "cac1a8096224d8810620bbeba2af473e48adcd21fc45be216f25e9ceb65ae610",
+    "public_sources_scope": [
+      "bybit"
+    ],
+    "public_sources_available": true,
+    "public_sources_sha256": "59023858ded9053ffe49675eca6f5d76e5c8146aa12f96d80f0059f754973f11"
+  },
+  "snapshots": [
+    {
+      "file": "BCC_CURRENT_REPORT_20261115_202014.zip",
+      "open_positions": 6,
+      "held_symbols": 5,
+      "events": {
+        "DCA": 15,
+        "CLOSE": 3,
+        "OPEN": 9
+      },
+      "fills_with_age_evidence": 27,
+      "maximum_fill_book_upper_age": 1.1378931999206543,
+      "configured_symbols": 821,
+      "diagnostic_symbols": 821,
+      "charts": 821,
+      "clocks": 6576,
+      "captured_valuation_max_upper_age": 0.6238011494278908,
+      "captured_collateral_max_upper_age": 1.550800824421458,
+      "captured_tier_max_upper_age": 263.1728012561798,
+      "risk_source_timestamps": {
+        "0GUSDT": 1794755768.194,
+        "1000TOSHIUSDT": 1794756000.958,
+        "AKEUSDT": 1794755760.401,
+        "BATUSDT": 1794755768.192,
+        "BNBUSDT": 1794755784.578
+      },
+      "risk_metadata_errors": {},
+      "copied_ledger_audit": "PASS",
+      "last_runtime_performance": {
+        "processed": 2559,
+        "refreshed": 10,
+        "data_errors": 6,
+        "last_tick_ms": 1055.585,
+        "cohort_commits": 2295,
+        "deferred_refreshes": 10,
+        "cached_book_refreshes": 2557,
+        "risk_metadata_ticks": 89,
+        "risk_metadata_errors": 0,
+        "max_tick_ms": 4234.382,
+        "cache": {
+          "connections": 1,
+          "operations": 82036,
+          "local_busy": 4382,
+          "sqlite_busy": 0
+        }
+      },
+      "at": "2026-11-15T15:20:26.816902+00:00",
+      "source_integrity": {
+        "status": "PASS",
+        "verified_files": 483,
+        "checkpoint": "BCC_BYBIT_COHERENT_WS_ACCEPTANCE_20261115_NOT_RELEASE",
+        "manifest_sha256": "309d5049e145fd418842a240b554aee12ce2cb95c6ee7cb2c981302d914a715b"
+      }
+    },
+    {
+      "file": "BCC_CURRENT_REPORT_20261115_203450.zip",
+      "open_positions": 6,
+      "held_symbols": 5,
+      "events": {
+        "DCA": 16,
+        "CLOSE": 3,
+        "OPEN": 9
+      },
+      "fills_with_age_evidence": 28,
+      "maximum_fill_book_upper_age": 1.1378931999206543,
+      "configured_symbols": 821,
+      "diagnostic_symbols": 821,
+      "charts": 821,
+      "clocks": 6576,
+      "captured_valuation_max_upper_age": 1.17970428254921,
+      "captured_collateral_max_upper_age": 2.1467029994819313,
+      "captured_tier_max_upper_age": 133.1437041759491,
+      "risk_source_timestamps": {
+        "0GUSDT": 1794756785.57,
+        "1000TOSHIUSDT": 1794756771.026,
+        "AKEUSDT": 1794756803.625,
+        "BATUSDT": 1794756785.457,
+        "BNBUSDT": 1794756803.644
+      },
+      "risk_metadata_errors": {},
+      "copied_ledger_audit": "PASS",
+      "last_runtime_performance": {
+        "processed": 3103,
+        "refreshed": 12,
+        "data_errors": 6,
+        "last_tick_ms": 1828.433,
+        "cohort_commits": 2943,
+        "deferred_refreshes": 12,
+        "cached_book_refreshes": 3101,
+        "risk_metadata_ticks": 124,
+        "risk_metadata_errors": 0,
+        "max_tick_ms": 4234.382,
+        "cache": {
+          "connections": 1,
+          "operations": 97160,
+          "local_busy": 5854,
+          "sqlite_busy": 0
+        }
+      },
+      "at": "2026-11-15T15:35:06.725628+00:00",
+      "source_integrity": {
+        "status": "PASS",
+        "verified_files": 483,
+        "checkpoint": "BCC_BYBIT_COHERENT_WS_ACCEPTANCE_20261115_NOT_RELEASE",
+        "manifest_sha256": "309d5049e145fd418842a240b554aee12ce2cb95c6ee7cb2c981302d914a715b"
+      }
+    },
+    {
+      "file": "BCC_CURRENT_REPORT_20261115_203904.zip",
+      "open_positions": 6,
+      "held_symbols": 5,
+      "events": {
+        "DCA": 16,
+        "CLOSE": 3,
+        "OPEN": 9
+      },
+      "fills_with_age_evidence": 28,
+      "maximum_fill_book_upper_age": 1.1378931999206543,
+      "configured_symbols": 821,
+      "diagnostic_symbols": 821,
+      "charts": 821,
+      "clocks": 6576,
+      "captured_valuation_max_upper_age": 0.5763961091870442,
+      "captured_collateral_max_upper_age": 1.1583957077236846,
+      "captured_tier_max_upper_age": 113.54139614105225,
+      "risk_source_timestamps": {
+        "0GUSDT": 1794757057.743,
+        "1000TOSHIUSDT": 1794757041.64,
+        "AKEUSDT": 1794757072.524,
+        "BATUSDT": 1794757057.734,
+        "BNBUSDT": 1794757045.498
+      },
+      "risk_metadata_errors": {},
+      "copied_ledger_audit": "PASS",
+      "last_runtime_performance": {
+        "processed": 3252,
+        "refreshed": 12,
+        "data_errors": 6,
+        "last_tick_ms": 1274.796,
+        "cohort_commits": 3122,
+        "deferred_refreshes": 12,
+        "cached_book_refreshes": 3250,
+        "risk_metadata_ticks": 134,
+        "risk_metadata_errors": 0,
+        "max_tick_ms": 4234.382,
+        "cache": {
+          "connections": 1,
+          "operations": 101086,
+          "local_busy": 6170,
+          "sqlite_busy": 0
+        }
+      },
+      "at": "2026-11-15T15:39:18.556130+00:00",
+      "source_integrity": {
+        "status": "PASS",
+        "verified_files": 483,
+        "checkpoint": "BCC_BYBIT_COHERENT_WS_ACCEPTANCE_20261115_NOT_RELEASE",
+        "manifest_sha256": "309d5049e145fd418842a240b554aee12ce2cb95c6ee7cb2c981302d914a715b"
+      }
+    },
+    {
+      "file": "BCC_VALIDATION_RESULTS_20261115_191603_351193.zip",
+      "open_positions": 0,
+      "held_symbols": 0,
+      "events": {
+        "CLOSE": 9,
+        "DCA": 16,
+        "OPEN": 9
+      },
+      "fills_with_age_evidence": 34,
+      "maximum_fill_book_upper_age": 2.6810739040374756,
+      "configured_symbols": 821,
+      "diagnostic_symbols": 821,
+      "charts": 821,
+      "clocks": 6576,
+      "captured_valuation_max_upper_age": null,
+      "captured_collateral_max_upper_age": null,
+      "captured_tier_max_upper_age": null,
+      "risk_source_timestamps": {},
+      "risk_metadata_errors": {},
+      "copied_ledger_audit": "PASS",
+      "last_runtime_performance": {
+        "processed": 3294,
+        "refreshed": 12,
+        "data_errors": 6,
+        "last_tick_ms": 1069.084,
+        "cohort_commits": 3173,
+        "deferred_refreshes": 12,
+        "cached_book_refreshes": 3292,
+        "risk_metadata_ticks": 135,
+        "risk_metadata_errors": 0,
+        "max_tick_ms": 4234.382,
+        "cache": {
+          "connections": 1,
+          "operations": 102062,
+          "local_busy": 6243,
+          "sqlite_busy": 0
+        }
+      }
+    }
+  ],
+  "held_tier_source_timestamps_advance_in_all_three_snapshots": true,
+  "full_native_scan_821": "PASS",
+  "native_lifecycle": {
+    "start_local": "2026-11-15 19:36:46.884 +05:00",
+    "stop_local": "2026-11-15 20:39:56.024 +05:00",
+    "signal_closes": 3,
+    "manual_closes": 6,
+    "final_positions": 0,
+    "final_worker_status": "STOPPED",
+    "final_collector_audit": "AUDIT_PASS",
+    "manual_acceptance": "NOT_CONFIRMED"
+  },
+  "limitations": [
+    "Saved cohorts certify captured original ages, not uninterrupted future operation",
+    "One native VELES run; no native restart with held positions or forced network interruption proof",
+    "GRID/Pump live PAPER and independent review remain unconfirmed"
+  ],
+  "release_ready": false
+}

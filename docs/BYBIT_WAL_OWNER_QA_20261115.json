@@ -1,0 +1,231 @@
+{
+  "baseline_commit": "577ff02a043aa530fe67239ac34658cd5f1560f2",
+  "implementation_commit": "143f79c9fffc01fe1987d9c1cb17279d155046e9",
+  "executable_test_fingerprint": "8efa811b9db4c2d2af6cc800daa90b5134cb504792735e7c40217b157ce6dd18",
+  "platform": "Linux Python 3.12.14 / Qt 6.12.0 offscreen / pytest 9.2.0",
+  "tested_source_integrity": {
+    "status": "PASS",
+    "verified_files": 485,
+    "checkpoint": "BCC_BYBIT_WAL_READER_OWNER_RECOVERY_20261115_NOT_RELEASE",
+    "manifest_sha256": "cd3282b25192f53c205258963fd91e05788b7b104feb67198a09f29875cb5f32"
+  },
+  "regression": {
+    "tests": 3884,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exact_collected_executed_inventory": 3884,
+    "all_eight_shards": "PASS",
+    "junit_sha256": "6c41c936fa263fecae4c76dcee68f47d7eb650cca4158a16cb67492bec78343f",
+    "inventory_sha256": "97f12da9f0ab8eba84cfaff10ef8075fe589afd2963452b5fe986adb70e377d9",
+    "shards": [
+      {
+        "name": "shard_00",
+        "status": "PASS",
+        "seconds": 11.493,
+        "timeout": 360,
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_01",
+        "status": "PASS",
+        "seconds": 34.348,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_02",
+        "status": "PASS",
+        "seconds": 99.77,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_03",
+        "status": "PASS",
+        "seconds": 31.339,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_04",
+        "status": "PASS",
+        "seconds": 35.203,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_05",
+        "status": "PASS",
+        "seconds": 48.629,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_06",
+        "status": "PASS",
+        "seconds": 19.188,
+        "timeout": 360,
+        "totals": {
+          "tests": 645,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_07",
+        "status": "PASS",
+        "seconds": 8.583,
+        "timeout": 600,
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ]
+  },
+  "targeted_regression": {
+    "passed": 56,
+    "log_sha256": "68bbb3470663500ffe8171e5cd67a5911a21e797826223304bf512fc30a03cc2"
+  },
+  "new_regressions": 11,
+  "negative_reproduction": {
+    "baseline_commit": "577ff02a043aa530fe67239ac34658cd5f1560f2",
+    "case": "test_committed_reads_and_policy_checks_bypass_a_blocked_local_writer",
+    "result": "EXPECTED FAILURE: CacheContention while a committed snapshot should remain readable under WAL",
+    "log_sha256": "328bd2dc92def12ef7c617a3b290997a7a485d4945c7c27f58684d9aeea8b2ad"
+  },
+  "copied_full_scan_account_benchmark": {
+    "baseline": {
+      "median_seconds": 0.2668449269986013,
+      "samples": [
+        0.26956199699634453,
+        0.2646645950007951,
+        0.2780484719987726,
+        0.26906988399423426,
+        0.2668449269986013,
+        0.25938818600116065,
+        0.23582792799425079
+      ],
+      "scope": "Linux copy of actual 821-symbol native account: one read + one no-op financial transaction",
+      "diagnostic_symbols": 821,
+      "clocks": 6576,
+      "state_and_journal_exactly_unchanged": true,
+      "audit": "PASS"
+    },
+    "candidate": {
+      "median_seconds": 0.21213937900029123,
+      "samples": [
+        0.22296761699544732,
+        0.24262729399924865,
+        0.21213937900029123,
+        0.20130630599305732,
+        0.22681496899895137,
+        0.1903598709977814,
+        0.17649439399974653
+      ],
+      "scope": "Linux copy of actual 821-symbol native account: one read + one no-op financial transaction",
+      "diagnostic_symbols": 821,
+      "clocks": 6576,
+      "state_and_journal_exactly_unchanged": true,
+      "audit": "PASS"
+    },
+    "native_windows_performance_certified": false
+  },
+  "live_ws": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "rounds": 120,
+    "book_plus_independent_mark_reads": 1200,
+    "steady_state_max_seconds": 1.007,
+    "owned_hub_retired": true,
+    "report_sha256": "2dbfa13b16b7305c69fed49eb5be93b2c5018461f4fdb55ae6e03d0d3744616e",
+    "real_orders": false
+  },
+  "live_persistent_reader_recovery": {
+    "status": "PASS",
+    "native_windows": false,
+    "persistent_reader_reused": true,
+    "original_exchange_timestamps_advanced": true,
+    "expired_cache_rejected": true,
+    "read_connections": 1,
+    "owned_hub_retired": true,
+    "report_sha256": "c096d2fde13bdcd1bb3c2c7c86899578b5bfd7f2361d8132566646fa7d41769e",
+    "source_script_sha256": "9fa240a3563a641b9017ed67c5d4323f992e69620fdbab8568daea5ff32e8453"
+  },
+  "offscreen_qt": {
+    "status": "PASS",
+    "native_windows": false,
+    "report_sha256": "5827179c1522ddaccbc7e37b4c58c57f7cd003ff5e42ffe0e89d0c2e4b987896"
+  },
+  "compileall": "PASS",
+  "package_seal": "PASS",
+  "diff_whitespace": "PASS",
+  "first_integrated_cycle": {
+    "tests": 3884,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 0,
+    "result": "FAIL: new regression read_text omitted explicit UTF-8; corrected and full suite rerun",
+    "log_sha256": "6afbbb19651c12d680b216325c5a4c0510566e72bf33281e10fabc827cf7f949"
+  },
+  "accepted_native_baseline": {
+    "automated": "PASS",
+    "passed": 3868,
+    "skipped": 5,
+    "live_ws_reads": 240,
+    "full_scan_821": true,
+    "held_risk_renewal": true,
+    "veles_open": 9,
+    "veles_dca": 16,
+    "veles_close": 9,
+    "ledger": "AUDIT_PASS",
+    "stop_after_manual_closes": "PASS"
+  },
+  "commands": [
+    "QT_QPA_PLATFORM=offscreen python -m tools.collect_test_inventory --output INVENTORY.json",
+    "python -m tools.run_partitioned_tests --inventory INVENTORY.json --output QA",
+    "python -m tools.bybit_ws_live_acceptance --output NEW_DIRECTORY --rounds 120 --require-mark",
+    "python -m bcc.gui_check --offscreen --output NEW_DIRECTORY",
+    "python -m tools.verify_package"
+  ],
+  "new_source_windows_acceptance": "UNRUN",
+  "native_restart_with_held_positions": "UNCONFIRMED",
+  "native_network_interruption_recovery": "UNCONFIRMED",
+  "native_grid_pump_cycles": "UNCONFIRMED",
+  "native_funding": "UNCONFIRMED",
+  "independent_review": "UNRUN",
+  "release_ready": false
+}
