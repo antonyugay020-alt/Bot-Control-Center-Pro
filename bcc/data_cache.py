@@ -44,11 +44,19 @@ class PublicCache:
                 str(self.path.resolve()), threading.RLock()
             )
         self._connection = None
+        # WAL readers must not queue behind this process's HTTP lease/cache
+        # writer. A separate bounded connection retains the same SQL policy
+        # fences without sharing mutable connection transaction state.
+        self._reader_guard = threading.RLock()
+        self._reader_connection = None
         self.stats = {
             "connections": 0,
             "operations": 0,
             "local_busy": 0,
             "sqlite_busy": 0,
+            "read_connections": 0,
+            "read_operations": 0,
+            "read_local_busy": 0,
         }
 
     @staticmethod
@@ -232,8 +240,39 @@ class PublicCache:
             finally:
                 self._guard.release()
 
+    @contextmanager
+    def read_db(self):
+        if not self._reader_guard.acquire(timeout=.2):
+            self.stats['read_local_busy'] += 1
+            raise CacheContention('Чтение общего кэша занято другим читателем')
+        try:
+            if self._reader_connection is None:
+                self._reader_connection = sqlite3.connect(
+                    self.path.resolve().as_uri()+'?mode=ro',uri=True,
+                    timeout=.2,isolation_level=None,check_same_thread=False)
+                self._reader_connection.execute('PRAGMA query_only=ON')
+                self._reader_connection.execute('PRAGMA busy_timeout=200')
+                self.stats['read_connections'] += 1
+            self.stats['read_operations'] += 1
+            yield self._reader_connection
+        except sqlite3.Error as exc:
+            self.stats['sqlite_busy'] += 1
+            code = getattr(exc,'sqlite_errorcode',None)
+            is_lock = code is not None and (code & 0xff) in (sqlite3.SQLITE_BUSY,sqlite3.SQLITE_LOCKED)
+            raise (CacheContention if is_lock else CacheBusy)(
+                'Чтение общего кэша недоступно: '+str(exc)) from exc
+        finally:
+            try:
+                if self._reader_connection is not None and self._reader_connection.in_transaction:
+                    self._reader_connection.rollback()
+            finally:
+                self._reader_guard.release()
+
     def close(self):
-        with self._guard:
+        with self._guard, self._reader_guard:
+            if self._reader_connection is not None:
+                self._reader_connection.close()
+                self._reader_connection = None
             if self._connection is not None:
                 self._connection.close()
                 self._connection = None
@@ -288,7 +327,7 @@ class PublicCache:
         while True:
             try:
                 self._ensure_schema()
-                with self.db() as db:
+                with self.read_db() as db:
                     return self._denied(db, host)
             except CacheBusy:
                 if time.monotonic() >= deadline:
@@ -326,7 +365,8 @@ class PublicCache:
             json.dumps([url, params], sort_keys=True).encode()
         ).hexdigest()
         self._ensure_schema()
-        with self.db() as db:
+        with self.read_db() as db:
+            db.execute('BEGIN')
             status = self._denied(db, host)
             if status is not None:
                 raise ProviderDenied(host, status)
@@ -349,7 +389,7 @@ class PublicCache:
             return []
         self._ensure_schema()
         rows = {}
-        with self.db() as db:
+        with self.read_db() as db:
             db.execute("BEGIN")
             try:
                 status = self._denied(db, host)
@@ -376,7 +416,8 @@ class PublicCache:
             raise ValueError('Cache host mismatch')
         key = hashlib.sha256(json.dumps([url,params],sort_keys=True).encode()).hexdigest()
         self._ensure_schema()
-        with self.db() as db:
+        with self.read_db() as db:
+            db.execute('BEGIN')
             status = self._denied(db,host)
             if status is not None:
                 raise ProviderDenied(host,status)

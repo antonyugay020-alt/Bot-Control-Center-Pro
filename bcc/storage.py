@@ -12,7 +12,7 @@ import uuid
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
-from .config import reject_private_data, validate
+from .config import reject_private_data, is_secret_key, validate
 from .trade_fence import command_gate
 
 
@@ -451,10 +451,23 @@ class Store:
     def validate_state(state):
         if isinstance(state,dict) and '_diagnostics_v1' in state:
             raise AccountingError('Внутренний формат диагностики не является PAPER-состоянием')
-        try:
-            reject_private_data(state)
-        except ValueError as e:
-            raise AccountingError(str(e)) from e
+        def inspect(node, depth=0):
+            # Every node is inspected after each mutation. Combining the
+            # secret/depth/finite checks avoids walking a full 821-coin state
+            # twice; it never caches acceptance of mutable objects.
+            if depth > 40:
+                raise AccountingError('Слишком глубокая структура параметров')
+            if isinstance(node,dict):
+                for key,child in node.items():
+                    if is_secret_key(key):
+                        raise AccountingError('PAPER-конфигурация не должна содержать ключи доступа')
+                    inspect(child,depth+1)
+            elif isinstance(node,list):
+                for child in node:
+                    inspect(child,depth+1)
+            elif isinstance(node,float) and not math.isfinite(node):
+                raise AccountingError('Неконечное число в PAPER-состоянии')
+        inspect(state)
         if not isinstance(state, dict) or not isinstance(state.get("positions"), dict):
             raise AccountingError("Повреждена структура PAPER-счёта")
         # Every module relies on these mappings being present. The previous
@@ -510,20 +523,6 @@ class Store:
                     or (value <= 0 if field in ("qty", "average") else value < 0)
                 ):
                     raise AccountingError("Повреждена позиция: " + field)
-
-        def finite(node, depth=0):
-            if depth > 40:
-                raise AccountingError("Повреждена вложенность PAPER-состояния")
-            if isinstance(node, float) and not math.isfinite(node):
-                raise AccountingError("Неконечное число в PAPER-состоянии")
-            if isinstance(node, dict):
-                for v in node.values():
-                    finite(v, depth + 1)
-            elif isinstance(node, list):
-                for v in node:
-                    finite(v, depth + 1)
-
-        finite(state)
 
     def audit(self):
         with self.connect() as db:
@@ -730,7 +729,11 @@ class Store:
                 state["realized"] = before_realized + sum(
                     e.get("net_pnl", 0) for e in events
                 )
-                self.validate_state(state)
+                # The complete proposed document was validated above. Only
+                # this derived scalar changed since then; finite individual
+                # receipts can still overflow when summed, so check the sum.
+                if not math.isfinite(state['realized']):
+                    raise AccountingError('Повреждён PAPER-баланс')
                 db.execute(
                     "CREATE TABLE IF NOT EXISTS charts(symbol TEXT PRIMARY KEY,document TEXT NOT NULL)"
                 )

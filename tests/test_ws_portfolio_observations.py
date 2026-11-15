@@ -200,6 +200,7 @@ def test_large_cache_read_is_one_read_transaction_without_budget_or_leases(tmp_p
             db.executemany('INSERT INTO cache(k,value,until,host) VALUES(?,?,?,?)',[
                 (hashlib.sha256(json.dumps([url,p],sort_keys=True).encode()).hexdigest(),
                  json.dumps({'symbol':p['symbol']}),time.time()+60,'api.bybit.com') for url,p in requests])
+        with cache.read_db() as db:
             trace=[]
             db.set_trace_callback(trace.append)
         values=cache.read_fresh_many(requests,'api.bybit.com')

@@ -10,6 +10,7 @@ from .funding import apply_funding
 from .market import DataUnavailable, SourceAccessDenied, executable_quote
 from .data_cache import CacheBusy
 from .market_clock import book_is_fresh, market_now, observed_quote, quote_is_recent
+from .market_health import record_market_outcome
 from .margin import MODEL, attach_snapshot, margin_status
 from .liquidation import REASONS, is_liquidating, status as liquidation_status
 from .scheduler import MarketScheduler
@@ -301,7 +302,8 @@ def run_loop(
                 risk_metadata_ticks=0,risk_metadata_errors=0,max_tick_ms=0.)
     market_health = {"completed_ticks": 0, "valid_history_ticks": 0,
                      "market_errors": 0, "last_error": "", "last_symbol": "",
-                     "last_completed_utc": None, "last_valid_history_utc": None}
+                      "last_completed_utc": None, "last_valid_history_utc": None,
+                      "unavailable_symbols": {}}
 
     def heartbeat(force=False):
         nonlocal next_heartbeat
@@ -360,6 +362,7 @@ def run_loop(
                     if should_stop():
                         break
                     tick_start = time.monotonic()
+                    health_changed = False
                     try:
                         finish_requested(folder, store, expected_token=status.get("token"))
                         if error:
@@ -390,6 +393,9 @@ def run_loop(
                             perf['risk_metadata_errors'] += bool(tick.risk_error)
                         if not tick.risk_only:
                             seen.add(symbol)
+                            health_changed = record_market_outcome(market_health,symbol,
+                                quote='' if tick.book is not None else tick.quote_error or 'Нет стакана',
+                                history=tick.history_error or ('' if tick.bars else None))
                         market_health["completed_ticks"] += 1
                         market_health["last_completed_utc"] = time.time()
                         market_health["last_symbol"] = symbol
@@ -415,6 +421,7 @@ def run_loop(
                         market_health["market_errors"] += 1
                         market_health["last_symbol"] = symbol
                         market_health["last_error"] = str(exc)[:500]
+                        health_changed = record_market_outcome(market_health,symbol,quote=str(exc))
                         # Do not reuse even a recently accepted book for a
                         # manual close after a failed market refresh.
                         books.pop(symbol, None)
@@ -436,7 +443,7 @@ def run_loop(
                         (time.monotonic() - tick_start) * 1000, 3
                     )
                     perf['max_tick_ms'] = max(perf['max_tick_ms'], perf['last_tick_ms'])
-                    heartbeat(force=bool(error or (tick is not None and tick.history_error)))
+                    heartbeat(force=bool(health_changed or error or (tick is not None and tick.history_error)))
                 close_requested_positions(folder, store, books, control_revision=control_revision)
             elif time.monotonic() >= next_poly:
                 # External quote/settlement failures are recoverable; an
@@ -463,6 +470,7 @@ def run_loop(
                     market_health["market_errors"] += 1
                     market_health["last_symbol"] = "POLYMARKET"
                     market_health["last_error"] = f"{type(exc).__name__}: {exc}"[:500]
+                    record_market_outcome(market_health,'POLYMARKET',quote=str(exc))
                     perf["data_errors"] += 1
                     logging.warning("POLYMARKET public data unavailable, tick rolled back: %s", exc)
                     # The failure is durable even if the process is stopped
@@ -477,9 +485,11 @@ def run_loop(
                         market_health["market_errors"] += issues
                         market_health["last_error"] = "Нет подтверждённых данных по отдельным рынкам Polymarket"
                         market_health["last_symbol"] = "POLYMARKET"
+                        record_market_outcome(market_health,'POLYMARKET',quote=market_health['last_error'])
                         perf["data_errors"] += issues
                     else:
                         market_health["last_completed_utc"] = time.time()
+                        record_market_outcome(market_health,'POLYMARKET',quote='')
                     heartbeat(force=True)
                     next_poly = time.monotonic() + 2
             else:
