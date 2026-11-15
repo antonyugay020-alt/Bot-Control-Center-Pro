@@ -182,3 +182,40 @@ def test_independent_quiet_mark_recovers_through_real_hub_sqlite(tmp_path, monke
             reader.close()
         hub.close()
         producer.close()
+
+
+def test_hub_recovers_between_registry_scans_without_extra_sqlite_fanout(tmp_path, monkeypatch):
+    from bcc.market import PublicData
+    from bcc.market_hub import MarketDataHub
+    c, socket, stream, gen = setup()
+    source = PublicData(quote_stream=stream)
+    hub = MarketDataHub(tmp_path / 'isolated.sqlite', source=source)
+    calls = []
+    original_scan = hub.registry.active_bybit_symbols
+    def scan():
+        calls.append(c[1])
+        return original_scan()
+    monkeypatch.setattr(hub.registry, 'active_bybit_symbols', scan)
+    try:
+        hub.registry.subscribe('https://api.bybit.com/v5/market/tickers',
+                               {'category': 'linear', 'symbol': 'ADAUSDT'})
+        assert hub.acquire_leadership()
+        monkeypatch.setattr('bcc.market_hub.time.monotonic', lambda: c[1])
+        assert feed(stream, gen, c[0], 'snapshot', bid1Price='.4', ask1Price='.41', markPrice='.405')
+        hub.subscribe_active_websockets()
+        advance(c, .8)
+        assert feed(stream, gen, c[0], 'snapshot', bid1Price='.4', ask1Price='.41', markPrice='.405')
+        advance(c, .2)
+        hub.subscribe_active_websockets()
+        before = len(socket.sent)
+        advance(c, .81)
+        hub.subscribe_active_websockets()
+        assert len(socket.sent) == before + 2
+        assert len(calls) == 2  # SQLite discovery stays at one-second cadence.
+        assert stream.mark('ADAUSDT')[1] == pytest.approx(c[0] - 1.01)
+        advance(c, .1)
+        hub.subscribe_active_websockets()
+        assert len(socket.sent) == before + 2
+    finally:
+        hub.close()
+        source.close()

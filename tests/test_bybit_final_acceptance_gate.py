@@ -15,7 +15,8 @@ def report():
         'source_integrity': integrity, 'source_integrity_final': deepcopy(integrity),
         'requested_rounds': MIN_ROUNDS, 'steady_state_max_seconds': .1,
         'rounds': [[dict(symbol=symbol, status='PASS', mark_price_verified=True,
-                         mark_age_seconds=.2, age_upper_seconds=.1,
+                         mark_age_lower_seconds=.1, mark_age_seconds=.2,
+                         book_age_lower_seconds=0., age_upper_seconds=.1,
                          received_in_seconds=.1) for symbol in SYMBOLS]
                    for _ in range(MIN_ROUNDS)],
     }

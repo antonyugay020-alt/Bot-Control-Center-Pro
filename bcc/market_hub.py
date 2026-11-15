@@ -648,6 +648,8 @@ class MarketDataHub:
         self._leader_token = None
         self._prune_due = 0.0
         self._ws_subscription_scan_due = 0.0
+        self._ws_mark_scan_due = 0.0
+        self._ws_quote_symbols = ()
         self.lease_renew_interval = 5.0
         self.source = source or PublicData()
         if self.source.shared is None:
@@ -843,6 +845,20 @@ class MarketDataHub:
         if self._leader_token is None:
             return
         now = time.monotonic()
+        ticker = getattr(self.source, "_quote_stream", None)
+        # Recovery has a shorter cadence than SQLite subscription discovery.
+        # A one-second discovery tick can miss the entire remaining lead time
+        # of a two-second mark. Reuse the validated demand set between scans;
+        # do not multiply database work or create per-worker WS connections.
+        if (ticker is not None and self._ws_quote_symbols
+                and now >= self._ws_mark_scan_due
+                and hasattr(ticker, "refresh_stale_marks")):
+            self._ws_mark_scan_due = now + .25
+            from .ws_quotes import StreamUnavailable
+            try:
+                ticker.refresh_stale_marks(self._ws_quote_symbols)
+            except (ValueError, StreamUnavailable):
+                pass
         if now < self._ws_subscription_scan_due:
             return
         self._ws_subscription_scan_due = now + 1.0
@@ -863,6 +879,8 @@ class MarketDataHub:
             for symbol in sorted(tickers):
                 if _SYMBOL.fullmatch(symbol):
                     validated.append(symbol)
+            self._ws_quote_symbols = tuple(validated)
+            self._ws_mark_scan_due = now + .25
             from .ws_quotes import StreamUnavailable
             try:
                 if hasattr(ticker, "subscribe_many"):

@@ -15,7 +15,7 @@ from pathlib import Path
 from bcc import process_os as psutil
 from bcc.hub_supervisor import _matches, ensure_hub
 from bcc.market import PublicData, DataUnavailable
-from bcc.market_clock import book_is_fresh
+from bcc.market_clock import clock, book_age_bounds
 from bcc.storage import atomic_json
 from tools.verify_package import verify, assert_same_snapshot
 
@@ -26,42 +26,54 @@ SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT",
            "DOGEUSDT", "ADAUSDT", "LINKUSDT", "AVAXUSDT")
 
 
+def _record_age(row, lower_key, upper_key, stamp):
+    low, high = book_age_bounds(stamp)
+    row[lower_key], row[upper_key] = round(low, 3), round(high, 3)
+    if not -.5 <= low <= high <= 3:
+        raise ValueError("Exchange observation outside vetted UTC freshness bounds: "
+                         + lower_key + f" [{low:.3f}, {high:.3f}]")
+
+
 def probe(source, symbol, *, require_mark=False, initial=False):
     started = time.monotonic()
+    row = {"symbol": symbol, "status": "FAIL"}
     try:
-        # The route is WS-only in this strict client mode. An unverified
-        # REST-produced cache row fails the provenance check in PublicData.get.
+        # Every process consuming raw cache observations needs its own vetted
+        # UTC reference. The producer's clock is not inherited across a spawn.
+        clock.ensure()
         params = {"category": "linear", "symbol": symbol, "limit": 50}
         value = source.get(URL, params)
-        if value.get("_bcc_ws_book") is not True:
-            raise ValueError("No verified Bybit WS provenance")
-        book = value["result"]
-        if book.get("s") != symbol or not book_is_fresh(float(book["ts"]) / 1000):
-            raise ValueError("Wrong symbol or expired exchange timestamp")
-        bid = float(book["b"][0][0])
-        ask = float(book["a"][0][0])
-        if not 0 < bid <= ask:
-            raise ValueError("Invalid executable spread")
-        row = {"symbol": symbol, "status": "PASS",
-               "age_upper_seconds": round(time.time() - float(book["ts"]) / 1000, 3)}
+        mark = None
         if require_mark:
             deadline = time.monotonic() + (4.0 if initial else 1.0)
             while True:
                 try:
                     mark = source._ws_position_mark(symbol)
-                    row["mark_price_verified"] = True
-                    row["mark_age_seconds"] = round(time.time() - mark["at"], 3)
                     break
                 except DataUnavailable:
                     if time.monotonic() >= deadline:
                         raise
                     time.sleep(.1)
-        row["received_in_seconds"] = round(time.monotonic() - started, 3)
-        return row
+            # A book read before waiting for the mark may have expired.
+            # Re-read the real WS cache; never restamp the old observation.
+            value = source.get(URL, params)
+        if value.get("_bcc_ws_book") is not True:
+            raise ValueError("No verified Bybit WS provenance")
+        book = value["result"]
+        if book.get("s") != symbol:
+            raise ValueError("Wrong symbol")
+        _record_age(row, "book_age_lower_seconds", "age_upper_seconds", float(book["ts"]) / 1000)
+        bid, ask = float(book["b"][0][0]), float(book["a"][0][0])
+        if not 0 < bid <= ask:
+            raise ValueError("Invalid executable spread")
+        if mark is not None:
+            _record_age(row, "mark_age_lower_seconds", "mark_age_seconds", mark["at"])
+            row["mark_price_verified"] = True
+        row["status"] = "PASS"
     except Exception as exc:
-        return {"symbol": symbol, "status": "FAIL",
-                "error": f"{type(exc).__name__}: {exc}"[:400],
-                "received_in_seconds": round(time.monotonic() - started, 3)}
+        row["error"] = f"{type(exc).__name__}: {exc}"[:400]
+    row["received_in_seconds"] = round(time.monotonic() - started, 3)
+    return row
 
 
 def stop_owned_hub(root):
@@ -111,7 +123,7 @@ def validate_report(report, manifest_sha256):
         for row in batch:
             if row.get("status") != "PASS" or row.get("mark_price_verified") is not True:
                 errors.append("Bybit WS symbol or independent mark failed")
-            for key in ("mark_age_seconds", "age_upper_seconds", "received_in_seconds"):
+            for key in ("mark_age_lower_seconds", "mark_age_seconds", "book_age_lower_seconds", "age_upper_seconds", "received_in_seconds"):
                 value = row.get(key)
                 if type(value) not in (int, float) or not math.isfinite(value):
                     errors.append("Bybit WS timing missing or invalid")
@@ -124,7 +136,7 @@ def validate_report(report, manifest_sha256):
                         steady.append(value)
     if not steady or report.get("steady_state_max_seconds") != max(steady):
         errors.append("Bybit WS steady-state latency evidence inconsistent")
-    return errors
+    return list(dict.fromkeys(errors))
 
 
 def main(argv=None):
@@ -166,6 +178,8 @@ def main(argv=None):
     )}
     try:
         # This root has no MY_BOTS and cannot inherit the user's shared cache.
+        clock.ensure()
+        report["trading_clock"] = clock.evidence
         ensure_hub(root, bybit_ws=True)
         hub_started = True
         os.environ["BCC_PUBLIC_CACHE"] = str(cache)
@@ -174,6 +188,8 @@ def main(argv=None):
         os.environ["BCC_BYBIT_WS_BOOKS"] = "1"
         source = PublicData()
         for iteration in range(args.rounds):
+            clock.ensure()
+            report["trading_clock"] = clock.evidence
             with ThreadPoolExecutor(max_workers=len(SYMBOLS)) as pool:
                 rows = list(pool.map(
                     lambda symbol: probe(source, symbol,
