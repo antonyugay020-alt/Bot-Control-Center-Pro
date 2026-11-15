@@ -1,0 +1,74 @@
+{
+  "source_commit": "26e4ba86c6b4f332d53206002288f241cfe10ec5",
+  "source_integrity": {
+    "status": "PASS",
+    "verified_files": 457,
+    "checkpoint": "BCC_BYBIT_COHERENT_PORTFOLIO_20261115_NOT_RELEASE",
+    "manifest_sha256": "e6adcbf35f1aa0c36a0be2c1c616fcd9e58cf68d540cd21984b558cf90ccb398"
+  },
+  "executable_fingerprint": "55de15b72f2eb9025fbe0cdba0487443ad71e3bef6b3bb082c44fb59c0ffa81a",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.14.8 x64",
+  "automated_status": "BYBIT_PHASE_AUTOMATED_PASS",
+  "regression": {
+    "tests": 3781,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 5
+  },
+  "bybit_ws_reads": 240,
+  "bybit_ws_status": "PUBLIC_WS_HUB_CLIENT_PASS",
+  "bybit_ws_max_steady_seconds": 1.492,
+  "public_rest_status": "PASS",
+  "native_qt_status": "PASS",
+  "paper_actions": {
+    "CLOSE": 7,
+    "OPEN": 7,
+    "DCA": 1
+  },
+  "exit_reasons": {
+    "MANUAL_PAPER_CLOSE": 5,
+    "SIGNAL_EXIT": 2
+  },
+  "dca": {
+    "symbol": "BTWUSDT",
+    "quantity_added": 100,
+    "fill_status": "PARTIAL_IOC",
+    "position_quantity_before": 9150,
+    "position_quantity_after": 9250,
+    "final_close_quantity": 9250
+  },
+  "ending_positions": 0,
+  "ending_pending": 0,
+  "ledger_audit": "AUDIT_PASS (collector plus independent audit of a copied SQLite ledger)",
+  "execution_freshness": {
+    "status": "PASS",
+    "examined_fills": 15,
+    "with_age_evidence": 15,
+    "without_age_evidence": 0,
+    "invalid_event_ids": [],
+    "maximum_age_upper": 2.4049453735351562
+  },
+  "configured_symbols": 821,
+  "symbols_with_diagnostics": 279,
+  "stale_mark_diagnostic_rows": 475,
+  "symbols_reporting_stale_marks": 122,
+  "candle_cache_error_symbols": [
+    "BTWUSDT",
+    "CROSSUSDT"
+  ],
+  "hub_queue_pending_peak": 216,
+  "hub_observed_subscribed_peak": 286,
+  "hub_at_collection": {
+    "subscriptions_total": 1439,
+    "subscriptions_active": 188,
+    "cache_rows": 1082,
+    "deadline_counts_include_event_streams": true
+  },
+  "manual_session_status": "STOPPED_STATE_PRESERVED",
+  "owned_services_retired": true,
+  "restart_observed": false,
+  "updated_code_windows_acceptance": "UNRUN",
+  "release_ready": false,
+  "uploaded_archive_sha256": "3c15c3257cbd59988eecfe1fb241a95e714fe437a6311b3b1d909b8f5531d4e6"
+}

@@ -1,0 +1,152 @@
+{
+  "baseline_commit": "26e4ba86c6b4f332d53206002288f241cfe10ec5",
+  "implementation_commit": "6b45fccd634d67413dff7ac27c2eb366234df689",
+  "executable_fingerprint": "9bc48eed2e4a538dc776b43ed4433fb85b4d30b206d5169824d0fb467872b621",
+  "platform": "Linux Python 3.12.14, Qt 6.12.0 offscreen, pytest 9.2.0",
+  "tested_source_integrity": {
+    "status": "PASS",
+    "verified_files": 463,
+    "checkpoint": "BCC_BYBIT_EXPOSURE_QOS_CLOCK_COHORT_20261115_NOT_RELEASE",
+    "manifest_sha256": "818fa00c58d70c0c3cf2ffd046e932181ffb21d929f83318854f01a3c6d6362b"
+  },
+  "regression": {
+    "tests": 3814,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exact_collected_executed_inventory": 3814,
+    "junit_sha256": "f14831d80fb31f9960e1d21f9e0952859e7e478b9742d27263ff04e1b192fdff",
+    "inventory_sha256": "2712641d438b0fb06fce0c5f3fb4432b6e2f117453ba010a4f02dabe7ea3a7c1",
+    "all_eight_shards": "PASS"
+  },
+  "live_standard_probe": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "reads": 240,
+    "steady_state_max_seconds": 0.713,
+    "owned_hub_retired": true,
+    "report_sha256": "4c155d4252d796a58074cb9ff8e1ac4a47b0c53712f63fc83f8a4a95d46abaca"
+  },
+  "live_exposure_load": {
+    "scope": "PUBLIC_BYBIT_ORIGINAL_AGE_CONTINUITY_USING_PRODUCTION_MARGIN_RETAIN",
+    "real_orders": false,
+    "paper_state_or_orders_created": false,
+    "symbols": 166,
+    "held_control_symbols": [
+      "ALLOUSDT",
+      "ASTERUSDT",
+      "BEAMUSDT",
+      "BTWUSDT",
+      "CROSSUSDT",
+      "ADAUSDT"
+    ],
+    "active_channel_keys_under_load": 332,
+    "exposure_priority_keys": 12,
+    "rounds": 60,
+    "book_plus_independent_mark_reads": 360,
+    "read_failures": [],
+    "steady_state_max_seconds": 0.763,
+    "original_age_continuity_checks": 300,
+    "original_age_continuity_failures": [],
+    "unextended_authority_maximum_seconds": 3,
+    "raw_partial_cache_snapshots": [
+      {
+        "round": 23,
+        "missing_marks": [
+          "ADAUSDT"
+        ],
+        "missing_valuations": []
+      }
+    ],
+    "queue_pending_peak_observed": 66,
+    "max_critical_dispatch_wait_seconds": 0.787,
+    "active_channel_keys_after_background_expiry": 12,
+    "priority_keys_after_background_expiry": 12,
+    "owned_hub_retired": true,
+    "report_sha256": "c9765029f13e50b958fa4668574916b6de654cad8c5978a69292202b29e10a77",
+    "harness_sha256": "fc4b25994fa472a34dbab3ce68277124e42ad3c66efe058365c10ad4258cae90",
+    "financial_sqlite_or_qt_acceptance": false
+  },
+  "development_regression_stages": [
+    {
+      "stage": "exposure_queue_and_subscription_lifecycle",
+      "tests": 3798,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "stage": "nonblocking_periodic_clock",
+      "tests": 3803,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "stage": "cache_cadence_and_independent_depth_valuation",
+      "tests": 3812,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "stage": "exposure_recovery_lead_and_ordering",
+      "tests": 3813,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "stage": "monotonic_owning_worker_valuation",
+      "tests": 3814,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "reproduced_defects_before_final_source": {
+    "preclock_live_standard_latency_seconds": 1.562,
+    "preclock_load_failed_mark_reads": 2,
+    "preclock_load_slow_reads": 2,
+    "clock_only_load_raw_partial_cohorts": 28,
+    "residence_depth_load_partial_valuation_cohorts": 0,
+    "residence_depth_load_partial_mark_cohorts": 12
+  },
+  "updated_code_windows_acceptance": "UNRUN",
+  "independent_review": "UNRUN",
+  "release_ready": false,
+  "dedicated_qt": {
+    "status": "PASS",
+    "native_windows": false,
+    "report_sha256": "5827179c1522ddaccbc7e37b4c58c57f7cd003ff5e42ffe0e89d0c2e4b987896"
+  },
+  "implementation_commits": [
+    "d6dc92dc502ab65d0c375be52c89cf17cf6794a8",
+    "6b45fccd634d67413dff7ac27c2eb366234df689"
+  ],
+  "prior_package_load": {
+    "reads": 360,
+    "read_failures": [],
+    "steady_state_max_seconds": 0.711,
+    "raw_partial_cache_snapshots": [
+      {
+        "round": 48,
+        "missing_marks": [
+          "BTWUSDT"
+        ],
+        "missing_valuations": []
+      }
+    ],
+    "original_age_continuity_not_measured": true,
+    "owned_hub_retired": true,
+    "report_sha256": "2e54c6f641e5f2dbd9b856e668ce3169fad1e003ae1b7be4f50b45e3fed3c797",
+    "source_fingerprint": "f2e5c8c9aa9142583b42259a2c6ece5663d843bd69a8b258b4380d5031f55729"
+  },
+  "worker_valuation_negative_reproduction": {
+    "prior_source_fingerprint": "f2e5c8c9aa9142583b42259a2c6ece5663d843bd69a8b258b4380d5031f55729",
+    "case": "test_entire_exposure_updates_in_one_real_worker_sqlite_transaction[True]",
+    "expected_failure_observed": true,
+    "quote_rollback_seconds": 2,
+    "log_sha256": "21b486f0c98ed92648852c320273b050983325d656276c2b1b051a177e4816a9",
+    "final_regression_case_status": "PASS"
+  }
+}
