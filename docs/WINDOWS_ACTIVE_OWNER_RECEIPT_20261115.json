@@ -1,0 +1,58 @@
+{
+  "reported_source_directory_ref": "a8299228042edefb01b013a742bcb135e33a296b",
+  "source_integrity": "NOT_INCLUDED_IN_UPLOAD",
+  "source_directory_is_not_a_cryptographic_seal": true,
+  "platform": "Windows-11-10.0.26300-SP0",
+  "worker_status": "RUNNING",
+  "workers_stopped_for_report": false,
+  "open_positions": 8,
+  "exposed_symbols": 7,
+  "paper_executions": {
+    "DCA": 4,
+    "CLOSE": 3,
+    "OPEN": 11
+  },
+  "ledger_audit": "PASS (collector and independent audit of copied SQLite)",
+  "execution_freshness": {
+    "status": "PASS",
+    "examined_fills": 18,
+    "with_age_evidence": 18,
+    "without_age_evidence": 0,
+    "invalid_event_ids": [],
+    "maximum_age_upper": 2.8157460689544678
+  },
+  "stale_mark_diagnostic_rows": 1410,
+  "diagnostic_symbols": 238,
+  "valuation_age_pc_seconds_range": [
+    6.925,
+    33.025
+  ],
+  "collateral_age_pc_seconds_range": [
+    7.224,
+    8.616
+  ],
+  "worker_vetted_utc_minus_pc_seconds_range": [
+    1.056,
+    1.377
+  ],
+  "hub_connected_samples": 33,
+  "hub_health_samples": 34,
+  "queue_pending_peak": 76,
+  "critical_dispatch_wait_max_seconds": 0.376,
+  "dropped_notifications_max": 0,
+  "candle_cache_error_symbols": [
+    "0GUSDT",
+    "1000TURBOUSDT",
+    "AIOZUSDT"
+  ],
+  "final_perf_processed": 1302,
+  "final_perf_synchronous_refresh_count": 41,
+  "final_perf_data_errors": 0,
+  "uploaded_archive_sha256": "b31ca1091f5fddadb8293f2f6c7e7a52991ba424ff259dae1d436dc23af990c8",
+  "new_source_windows_acceptance": "UNRUN",
+  "release_ready": false,
+  "ages_measured_against_report_summary_pc_time": true,
+  "database_snapshot_capture_time_not_available": true,
+  "vetted_clock_offset_not_applied_to_age_ranges": true,
+  "within_snapshot_valuation_source_timestamp_spread_seconds": 26.1
+}

@@ -1,4 +1,4 @@
-> Latest Bybit integration and operator evidence: [BYBIT_EXPOSURE_PUBLICATION_CHECKPOINT_20261115.md](BYBIT_EXPOSURE_PUBLICATION_CHECKPOINT_20261115.md). Earlier notes below are historical, not current acceptance status.
+> Latest Bybit integration and operator evidence: [BYBIT_OWNER_NONBLOCKING_CHECKPOINT_20261115.md](BYBIT_OWNER_NONBLOCKING_CHECKPOINT_20261115.md). Earlier notes below are historical, not current acceptance status.
 
 # Controlled integration checkpoint — 2026-11-12
 

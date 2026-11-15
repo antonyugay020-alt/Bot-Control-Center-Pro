@@ -1,0 +1,63 @@
+{
+  "baseline_commit": "a8299228042edefb01b013a742bcb135e33a296b",
+  "implementation_commit": "6251163950f67ad07061df762abeb1f9bf463748",
+  "executable_fingerprint": "2dde5984350c7ec914cd46a594ad8e407d3ea8c4b612ce3ead378f4f0740e3fc",
+  "platform": "Linux Python 3.12.14 / Qt 6.12.0 offscreen / pytest 9.2.0",
+  "tested_source_integrity": {
+    "status": "PASS",
+    "verified_files": 464,
+    "checkpoint": "BCC_BYBIT_OWNER_NONBLOCKING_20261115_NOT_RELEASE",
+    "manifest_sha256": "8d5c24a6fc6effcd51ca65607cda5982eca3eac66d98f82403687cdba41db966"
+  },
+  "regression": {
+    "tests": 3820,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exact_collected_executed_inventory": 3820,
+    "all_eight_shards": "PASS",
+    "inventory_sha256": "6f85bbb696f118762659552da78240c1e88bc0912a126c19ba92e6e5b66abe97",
+    "junit_sha256": "32e5e1c6cc2aae426481d53b7363213b85d5f6537751549c67e8f41d9865c8d1"
+  },
+  "owner_integration": {
+    "status": "PASS",
+    "configured_symbols": 821,
+    "open_positions": 20,
+    "separate_exposed_symbols": 20,
+    "held_transport_retry_and_history_deliberately_blocked_seconds": 3.3,
+    "public_ws_frames": "INJECTED OFFLINE through actual decoders/Hub/SQLite",
+    "actual_worker_loop": true,
+    "owning_worker_financial_sqlite": true,
+    "display_pnl_function": true,
+    "qt_window_in_this_test": false,
+    "new_executions_while_only_observing": 0,
+    "all_twenty_collateral_and_valuation_original_ages_fresh": true,
+    "source_io_on_owner_thread": false,
+    "reopened_ledger_audit": "PASS",
+    "case_elapsed_seconds": 3.4,
+    "original_price_ttl_relaxed": false
+  },
+  "negative_reproduction": {
+    "source_fingerprint": "9bc48eed2e4a538dc776b43ed4433fb85b4d30b206d5169824d0fb467872b621",
+    "case": "test_actual_worker_keeps_twenty_sqlite_and_display_marks_fresh_while_all_transport_lanes_wait",
+    "result": "EXPECTED FAILURE: stale markPrice for all twenty positions despite active publisher",
+    "elapsed_seconds": 16.35,
+    "log_sha256": "5af48759137f5e9126ccb4a9a799cd474c9c3bf85318f1ae75f8ff8ad496d9c1"
+  },
+  "live_ws": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "book_plus_independent_mark_reads": 240,
+    "steady_state_max_seconds": 0.402,
+    "owned_hub_retired": true,
+    "report_sha256": "39b3b663a0d370be8a7b23baa6917e51db41e5ac0d8a4e1b800ad7a160361aef"
+  },
+  "offscreen_qt": {
+    "status": "PASS",
+    "native_windows": false,
+    "report_sha256": "5827179c1522ddaccbc7e37b4c58c57f7cd003ff5e42ffe0e89d0c2e4b987896"
+  },
+  "new_source_windows_acceptance": "UNRUN",
+  "real_grid_pump_cycles": "UNCONFIRMED",
+  "independent_review": "UNRUN",
+  "release_ready": false
+}
