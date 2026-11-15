@@ -1037,6 +1037,23 @@ class MarketDataHub:
             return "stale_subscription"
         return "lost_leader"
 
+    def _refresh_delay(self, url, params, *, failed=False):
+        delay = 2. if failed else 120. if '/risk-limit' in url else .25 if 'orderbook' in url or '/book' in url else 1.
+        remaining = getattr(getattr(self.source,'shared',None),'remaining_ttl',None)
+        if failed or not callable(remaining):
+            return delay
+        from .data_cache import CacheBusy, ProviderDenied
+        from .market import PublicData
+        try:
+            ttl = remaining(url,params,PublicData.validated_public_request(url,params))
+            if ttl is None:
+                return delay  # Legacy/custom adapters may not publish a row.
+            # Rechecking cached risk data must not postpone its real renewal
+            # for another whole poll interval after that cache has expired.
+            return max(.05,min(delay,ttl+.025))
+        except (CacheBusy,ProviderDenied):
+            return min(delay,2.)
+
     def run_once(self, limit=32):
         if self.max_workers > 1:
             return self._run_parallel(limit)
@@ -1051,7 +1068,6 @@ class MarketDataHub:
                 skip_ws_routes=self._websocket_queue_exclusions()):
             if not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
-            delay = 120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0)
             stop_renewal = threading.Event()
             lease_lost = threading.Event()
 
@@ -1084,7 +1100,7 @@ class MarketDataHub:
             if lease_lost.is_set() or not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                 break
             outcome = self._acknowledge(
-                key, 2.0 if error is not None else delay,
+                key, self._refresh_delay(url,params,failed=error is not None),
                 str(error) if error is not None else "",
                 token=token, generation=generation,
             )
@@ -1133,9 +1149,9 @@ class MarketDataHub:
             key, url, params, urgent, generation = request
             try:
                 self._fetch_public(url, params, urgent=urgent)
-                return key, url, generation, None
+                return key, url, params, generation, None
             except Exception as exc:
-                return key, url, generation, exc
+                return key, url, params, generation, exc
 
         keeper = threading.Thread(target=keep_leader, name='hub-lease-renewal', daemon=True)
         keeper.start()
@@ -1143,15 +1159,12 @@ class MarketDataHub:
         try:
             futures = [self._pool.submit(fetch, request) for request in due]
             for future in as_completed(futures):
-                key, url, generation, error = future.result()
+                key, url, params, generation, error = future.result()
                 if lost.is_set() or not self.registry.renew_leader(self.owner, token=token, lifetime=120):
                     lost.set()
                     break
-                delay = 120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0)
-                if error is not None:
-                    delay = 2.0
                 outcome = self._acknowledge(
-                    key, delay, str(error) if error is not None else "",
+                    key, self._refresh_delay(url,params,failed=error is not None), str(error) if error is not None else "",
                     token=token, generation=generation,
                 )
                 if outcome == "lost_leader":
@@ -1193,7 +1206,7 @@ class MarketDataHub:
         self._maintain_registry()
         self.subscribe_active_websockets()
         results = []
-        for key, (future, url, is_urgent, launched_token, generation) in list(self._inflight.items()):
+        for key, (future, url, is_urgent, launched_token, generation, params) in list(self._inflight.items()):
             if not future.done():
                 continue
             del self._inflight[key]
@@ -1206,10 +1219,8 @@ class MarketDataHub:
                 error = future.result()
             except Exception as exc:
                 error = exc
-            delay = (2.0 if error is not None else
-                     120.0 if '/risk-limit' in url else (.25 if 'orderbook' in url or '/book' in url else 1.0))
             outcome = self._acknowledge(
-                key, delay, str(error) if error is not None else "",
+                key, self._refresh_delay(url,params,failed=error is not None), str(error) if error is not None else "",
                 token=launched_token, generation=generation,
             )
             if outcome == "lost_leader":
@@ -1254,7 +1265,7 @@ class MarketDataHub:
                 except Exception as exc:
                     return exc
             self._inflight[key] = (self._pool.submit(fetch), url, is_urgent,
-                                   self._leader_token, generation)
+                                   self._leader_token, generation, params)
             urgent_inflight += bool(is_urgent)
             regular_inflight += not is_urgent
             free -= 1

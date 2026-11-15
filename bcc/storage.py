@@ -204,7 +204,65 @@ class Store:
             raise AccountingError("Повреждён JSON PAPER-счёта") from exc
         if not isinstance(value, dict):
             raise AccountingError("Повреждена структура PAPER-счёта")
+        if '_diagnostics_v1' in value:
+            packed = value.pop('_diagnostics_v1')
+            try:
+                if ('diagnostics' in value or not isinstance(packed,dict)
+                        or set(packed)!={'reasons','rows'} or not isinstance(packed['reasons'],list)
+                        or any(type(s) is not str for s in packed['reasons'])
+                        or not isinstance(packed['rows'],dict)):
+                    raise ValueError('invalid diagnostic envelope')
+                diagnostics = {}
+                for symbol, entries in packed['rows'].items():
+                    if not isinstance(entries,list):
+                        raise ValueError('invalid diagnostic rows')
+                    rows = []
+                    for entry in entries:
+                        if (not isinstance(entry,list) or len(entry)!=2
+                                or type(entry[0]) is not int or not 0<=entry[0]<len(packed['reasons'])
+                                or not isinstance(entry[1],dict) or 'reason' in entry[1]):
+                            raise ValueError('invalid diagnostic reference')
+                        rows.append({**entry[1],'reason':packed['reasons'][entry[0]]})
+                    diagnostics[symbol] = rows
+                value['diagnostics'] = diagnostics
+            except (ValueError,TypeError,KeyError,IndexError) as exc:
+                raise AccountingError('Повреждены сохранённые диагностические сообщения') from exc
         return value
+
+    @staticmethod
+    def _encode_document(state):
+        """Intern repeated diagnostics on disk; public state stays unchanged.
+
+        Account-wide risk messages were serialized once per section per coin.
+        This exact reversible representation bounds that amplification without
+        truncating diagnostics or weakening any financial validation.
+        """
+        document = {k:v for k,v in state.items() if k!='charts'}
+        diagnostics = document.get('diagnostics')
+        if isinstance(diagnostics,dict):
+            reasons, indices, rows = [], {}, {}
+            repeated_bytes = 0
+            eligible = True
+            for symbol, entries in diagnostics.items():
+                if not isinstance(entries,list):
+                    eligible = False;break
+                result = []
+                for entry in entries:
+                    if not isinstance(entry,dict) or type(entry.get('reason')) is not str:
+                        eligible = False;break
+                    reason = entry['reason']
+                    if reason not in indices:
+                        indices[reason] = len(reasons);reasons.append(reason)
+                    else:
+                        repeated_bytes += len(reason)
+                    result.append([indices[reason],{k:v for k,v in entry.items() if k!='reason'}])
+                if not eligible:break
+                rows[symbol] = result
+            if eligible and repeated_bytes>64:
+                document.pop('diagnostics')
+                document['_diagnostics_v1'] = {'reasons':reasons,'rows':rows}
+        document['_chart_table'] = 1
+        return json.dumps(document,ensure_ascii=False,allow_nan=False,separators=(',',':'))
 
     @staticmethod
     def _decode_event(raw):
@@ -391,6 +449,8 @@ class Store:
 
     @staticmethod
     def validate_state(state):
+        if isinstance(state,dict) and '_diagnostics_v1' in state:
+            raise AccountingError('Внутренний формат диагностики не является PAPER-состоянием')
         try:
             reject_private_data(state)
         except ValueError as e:
@@ -688,11 +748,7 @@ class Store:
                     db.execute(
                         "INSERT OR REPLACE INTO charts VALUES(?,?)", (symbol, encoded)
                     )
-                document = {k: v for k, v in state.items() if k != "charts"}
-                document["_chart_table"] = 1
-                data = json.dumps(
-                    document, ensure_ascii=False, allow_nan=False, separators=(",", ":")
-                )
+                data = self._encode_document(state)
                 for row in event_rows:
                     db.execute("INSERT INTO executions VALUES(?,?,?,?,?,?)", row)
                 db.execute("UPDATE state SET document=? WHERE id=1", (data,))

@@ -3,6 +3,7 @@
 import math
 import re
 from copy import deepcopy
+from functools import lru_cache
 
 TIMEFRAMES = (1, 2, 5, 10, 15, 30)
 STRATEGIES = (
@@ -29,7 +30,14 @@ STRATEGY_NAMES = {
 
 
 def is_secret_key(key):
-    normalized = re.sub(r"[^a-z]", "", str(key).lower())
+    return _secret_key_text(str(key))
+
+
+@lru_cache(maxsize=8192)
+def _secret_key_text(key):
+    # Only immutable key classification is cached. Every account/config
+    # value is still traversed and validated after every mutation.
+    normalized = re.sub(r"[^a-z]", "", key.lower())
     # A PAPER export may contain fields added by external bots or imported
     # formats. Exact-name checks miss namespaced secrets such as
     # ``polymarket_relayer_api_key`` and ``walletPrivateKey``.

@@ -369,6 +369,20 @@ class PublicCache:
         values = [json.loads(rows[key]) if key in rows else None for key in keys]
         return [value if self._accepted_payload(host,value) else None for value in values]
 
+    def remaining_ttl(self, url, params, host):
+        """Read the actual residence deadline; a cache hit never renews it."""
+        from .market import PublicData
+        if PublicData.validated_public_request(url,params)!=host:
+            raise ValueError('Cache host mismatch')
+        key = hashlib.sha256(json.dumps([url,params],sort_keys=True).encode()).hexdigest()
+        self._ensure_schema()
+        with self.db() as db:
+            status = self._denied(db,host)
+            if status is not None:
+                raise ProviderDenied(host,status)
+            row = db.execute('SELECT until FROM cache WHERE k=? AND host=?',(key,host)).fetchone()
+            return max(0.,row[0]-time.time()) if row else None
+
     def publish_websocket(self, url, params, host, value, *, ttl, leader_owner, leader_token):
         """Atomic event-driven publication fenced by Hub leader and subscription.
 

@@ -20,6 +20,8 @@ class MarketTick:
     quote_error: str = ""
     margin_data: dict | None = None
     refresh_attempted: bool = False
+    risk_only: bool = False
+    risk_error: str = ''
 
 
 class MarketScheduler:
@@ -59,6 +61,16 @@ class MarketScheduler:
         self._quote_ready = {}
         self._retry_ticks = {}
         self._retry_jobs = {}
+        self.risk_pool = None
+        self.risk_jobs = {}
+        self.risk_due = {}
+        self.risk_capacity = max(1,workers//4)
+
+    def _risk(self, symbol):
+        try:
+            return self.source.refresh_position_risk(symbol), ''
+        except (DataUnavailable,ValueError,KeyError,TypeError) as exc:
+            return None, str(exc)
 
     def retry_tick(self, tick):
         """Retry an aged handoff on its transport pool, never on the owner."""
@@ -193,6 +205,39 @@ class MarketScheduler:
         # Drain finished jobs before admitting new work. Without this, an
         # already-finished future occupies a slot for a whole collect cycle.
         completed = []
+        # Tier renewal is not a strategy-history task. It must run even if
+        # candles or executable quote jobs are blocked, or risk mode is on.
+        for symbol, job in list(self.risk_jobs.items()):
+            if not job.done():
+                continue
+            del self.risk_jobs[symbol]
+            self.risk_due[symbol] = time.monotonic()+15
+            try:
+                metadata,error = job.result()
+                if symbol in priority_set and (metadata is not None or error):
+                    completed.append((symbol,MarketTick(symbol,[],None,[],{},
+                        margin_data=metadata,risk_only=True,risk_error=error),None))
+            except Exception as exc:
+                completed.append((symbol,None,exc))
+        if self.risk_pool is not None:
+            self.risk_pool.collect()
+        enabled = getattr(self.source,'risk_maintenance_enabled',lambda:True)
+        if callable(getattr(self.source,'refresh_position_risk',None)) and enabled():
+            try:
+                utc = market_now()
+            except ValueError:
+                utc = None
+            for symbol in priority:
+                if len(self.risk_jobs)>=self.risk_capacity:
+                    break
+                at = state.get('margin_data',{}).get(symbol,{}).get('risk_at')
+                if (symbol in self.risk_jobs or time.monotonic()<self.risk_due.get(symbol,0)
+                        or (utc is not None and type(at) in (int,float) and -0.5<=utc-at<90)):
+                    continue
+                if self.risk_pool is None:
+                    self.risk_pool = StrategyDispatcher(workers=self.risk_capacity,
+                        maximum_pending=self.risk_capacity,thread_name_prefix='position-risk')
+                self.risk_jobs[symbol] = self.risk_pool.submit(symbol,self._risk,symbol)
         primary_drained = set()
         def drain():
             for symbol, job in list(self.jobs.items()):
@@ -392,7 +437,7 @@ class MarketScheduler:
             self.cursor = (self.cursor + 1) % len(scan)
             admitted_scans += int(submit(symbol))
         pending_jobs = [*self.jobs.values(), *self.quote_jobs.values(),
-                        *(job for job, _ in self._retry_jobs.values())]
+                        *(job for job, _ in self._retry_jobs.values()),*self.risk_jobs.values()]
         if pending_jobs:
             wait(pending_jobs, timeout=timeout, return_when=FIRST_COMPLETED)
         else:
@@ -401,7 +446,7 @@ class MarketScheduler:
         drain_quotes()
         self.last_pressure.update(quote_jobs=len(self.quote_jobs), quote_capacity=self.quote_capacity,
                                   history_jobs=len(self.jobs), history_capacity=self.capacity,
-                                  deferred_refreshes=len(self._retry_ticks))
+                                  deferred_refreshes=len(self._retry_ticks),risk_jobs=len(self.risk_jobs))
         completed.sort(key=lambda row: (row[0] not in priority_set,))
         return completed
 
@@ -414,6 +459,10 @@ class MarketScheduler:
             job.cancel()
         for job, _ in self._retry_jobs.values():
             job.cancel()
+        for job in self.risk_jobs.values():
+            job.cancel()
         self.pool.close(wait=True)
         if self.quote_pool is not None:
             self.quote_pool.close(wait=True)
+        if self.risk_pool is not None:
+            self.risk_pool.close(wait=True)

@@ -373,7 +373,14 @@ def attach_snapshot(state, symbol, book):
                      or incoming["at"] >= current["at"]))
     if book.get("margin_data"):
         data = deepcopy(book["margin_data"])
-        previous = state.get("margin_data", {}).get(symbol, {}).get("quote")
+        previous_row = state.get('margin_data',{}).get(symbol,{})
+        previous = previous_row.get("quote")
+        old_at, new_at = previous_row.get('risk_at'), data.get('risk_at')
+        if (type(old_at) in (int,float) and type(new_at) in (int,float)
+                and math.isfinite(old_at) and math.isfinite(new_at) and new_at<old_at):
+            # Slow history/maintenance completions cannot roll newer verified
+            # tier evidence back. This preserves its original expiry as well.
+            data = deepcopy(previous_row)
         incoming = data.get("quote")
         # Tier refresh and price observation have independent clocks. A slow
         # history result cannot erase or roll back a newer valid WS mark.

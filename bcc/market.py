@@ -1152,8 +1152,14 @@ class PublicData:
             account_marks=account_marks,
         )
 
+    def risk_maintenance_enabled(self):
+        # An adapter replacing Bybit depth must explicitly implement its own
+        # metadata reader; it cannot inherit background Bybit requests.
+        return (getattr(self.orderbook,'__func__',None) is PublicData.orderbook
+                or getattr(self.refresh_position_risk,'__func__',None) is not PublicData.refresh_position_risk)
+
     def refresh_position_risk(self, symbol):
-        """Slow independent risk-tier refresh, called only on the history lane.
+        """Independent risk-tier refresh on bounded background transport lanes.
 
         A fast book never waits for this HTTP work. Failed refreshes do not
         extend stale collateral: the normal 300s exchange risk timestamp still
@@ -1166,15 +1172,23 @@ class PublicData:
             # Admit one independent refresh per symbol, never an HTTP stampede.
             self._risk_refresh_due[symbol] = now + 120
         prior = getattr(self._thread, "risk_metadata_only", False)
+        priority = getattr(self._thread, 'position_mark', False)
         self._thread.risk_metadata_only = True
+        self._thread.position_mark = True
         try:
             snapshot = self.margin_snapshot(symbol)
+            # A cache hit does not renew the source's risk timestamp. Revisit
+            # old cached tiers soon enough to obtain a real refresh by expiry.
+            age = market_now()-snapshot.get('risk_at',market_now())
+            with self._lock:
+                self._risk_refresh_due[symbol] = time.monotonic()+min(120,max(5,240-age))
         except (DataUnavailable, ValueError, KeyError, TypeError):
             with self._lock:
                 self._risk_refresh_due[symbol] = time.monotonic() + 15
             raise
         finally:
             self._thread.risk_metadata_only = prior
+            self._thread.position_mark = priority
         # REST may validate the long-lived risk tiers, but cannot renew
         # markPrice collateral in strict Bybit WS mode. Only the independent
         # original-timestamp ticker WebSocket may supply a tradable mark.

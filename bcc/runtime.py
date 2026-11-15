@@ -58,6 +58,23 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
     now = market_now()
     symbol = tick.symbol
     book = tick.book
+    if tick.risk_only:
+        if tick.margin_data is None and not tick.risk_error:
+            return
+        with risk_transaction(store) as (state, _):
+            exposed = {p['symbol'] for p in [*state['positions'].values(),*state.get('pending',{}).values()]}
+            errors = state.setdefault('risk_metadata_errors',{})
+            for old in set(errors)-exposed:
+                errors.pop(old,None)
+            if symbol in exposed:
+                if tick.risk_error:
+                    errors[symbol] = tick.risk_error
+                elif tick.margin_data is not None:
+                    errors.pop(symbol,None)
+                    attach_snapshot(state,symbol,{'margin_required':True,'margin_data':tick.margin_data})
+                _apply_observations(state,observations)
+                update_equity_metrics(state)
+        return
     if book is None:
         # Published funding is still valid accounting evidence when the book is
         # unavailable, or the coin was removed after its last trade was closed.
@@ -280,7 +297,8 @@ def run_loop(
     observations = None
     cohort_error = None
     perf = {"processed": 0, "refreshed": 0, "data_errors": 0, "last_tick_ms": 0.0}
-    perf.update(cohort_commits=0, deferred_refreshes=0, cached_book_refreshes=0, max_tick_ms=0.)
+    perf.update(cohort_commits=0, deferred_refreshes=0, cached_book_refreshes=0,
+                risk_metadata_ticks=0,risk_metadata_errors=0,max_tick_ms=0.)
     market_health = {"completed_ticks": 0, "valid_history_ticks": 0,
                      "market_errors": 0, "last_error": "", "last_symbol": "",
                      "last_completed_utc": None, "last_valid_history_utc": None}
@@ -367,7 +385,11 @@ def run_loop(
                                 continue
                             raise DataUnavailable('Стакан устарел после фонового обновления')
                         process_tick(cfg, store, engine, tick, observations=observations)
-                        seen.add(symbol)
+                        if tick.risk_only:
+                            perf['risk_metadata_ticks'] += 1
+                            perf['risk_metadata_errors'] += bool(tick.risk_error)
+                        if not tick.risk_only:
+                            seen.add(symbol)
                         market_health["completed_ticks"] += 1
                         market_health["last_completed_utc"] = time.time()
                         market_health["last_symbol"] = symbol
@@ -377,7 +399,7 @@ def run_loop(
                         if tick.book is not None:
                             perf["processed"] += 1
                             books[symbol] = _execution_depth(tick.book)
-                        else:
+                        elif not tick.risk_only:
                             books.pop(symbol, None)
                             if tick.quote_error:
                                 raise DataUnavailable(tick.quote_error)
