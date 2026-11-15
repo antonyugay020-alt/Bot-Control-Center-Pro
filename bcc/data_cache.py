@@ -296,6 +296,11 @@ class PublicCache:
                 time.sleep(0.05)
 
     @staticmethod
+    def _accepted_payload(host, value):
+        return not (host=='api.bybit.com' and isinstance(value,dict)
+                    and 'retCode' in value and value['retCode']!=0)
+
+    @staticmethod
     def _cached(db, key, host, now):
         # A public response already cached inside its validated TTL does not
         # consume exchange request budget. A remote cooldown must prevent new
@@ -306,7 +311,7 @@ class PublicCache:
         row = db.execute(
             "SELECT value,until FROM cache WHERE k=? AND host=?", (key, host)
         ).fetchone()
-        if row and row[1] > now:
+        if row and row[1] > now and PublicCache._accepted_payload(host,json.loads(row[0])):
             return row[0]
         cooldown = db.execute(
             "SELECT until FROM cooldown WHERE host=?", (host,)
@@ -329,7 +334,8 @@ class PublicCache:
                 "SELECT value FROM cache WHERE k=? AND host=? AND until>?",
                 (key, host, time.time()),
             ).fetchone()
-        return json.loads(row[0]) if row else None
+        value = json.loads(row[0]) if row else None
+        return value if self._accepted_payload(host,value) else None
 
     def read_fresh_many(self, requests, host):
         """One read snapshot for a portfolio; no HTTP, leases or budget debit."""
@@ -360,7 +366,8 @@ class PublicCache:
                     ).fetchall())
             finally:
                 db.rollback()
-        return [json.loads(rows[key]) if key in rows else None for key in keys]
+        values = [json.loads(rows[key]) if key in rows else None for key in keys]
+        return [value if self._accepted_payload(host,value) else None for value in values]
 
     def publish_websocket(self, url, params, host, value, *, ttl, leader_owner, leader_token):
         """Atomic event-driven publication fenced by Hub leader and subscription.
@@ -601,6 +608,21 @@ class PublicCache:
             db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
             db.commit()
 
+    def record_http_cooldown(self, key, owner, host, *, cooldown):
+        """A real rate refusal survives lease expiry without revoking WS data."""
+        if (type(key) is not str or len(key)!=64 or any(c not in '0123456789abcdef' for c in key)
+                or type(owner) is not str or not owner or type(host) is not str or not host
+                or type(cooldown) not in (int,float) or not math.isfinite(cooldown)
+                or not 0<cooldown<=3600):
+            raise ValueError('Invalid observed HTTP cooldown')
+        self._ensure_schema()
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute('INSERT INTO cooldown VALUES(?,?) ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)',
+                       (host,time.time()+cooldown))
+            db.execute('DELETE FROM lease WHERE k=? AND owner=?',(key,owner))
+            db.commit()
+
     def finish(self, key, owner, host, value=None, ttl=0, cooldown=0,
                denial_status=None):
         """Return True only when this lease published its value to shared cache.
@@ -610,6 +632,8 @@ class PublicCache:
         """
         if owner is None:
             return False
+        if not self._accepted_payload(host,value):
+            value = None
         # Serialization may be expensive for a long candle history. It must not
         # run while blocking every other bot's short write transaction.
         encoded = (

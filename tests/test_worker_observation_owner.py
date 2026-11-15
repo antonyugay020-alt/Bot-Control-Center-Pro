@@ -66,6 +66,9 @@ def test_actual_worker_keeps_twenty_sqlite_and_display_marks_fresh_while_all_tra
         history_entered.set();assert release.wait(timeout=7)
         return []
     monkeypatch.setattr(reader,'position_orderbook',quote)
+    # This scenario deliberately has no executable cache recovery; exercise
+    # the bounded transport retry while the independent observer stays live.
+    monkeypatch.setattr(reader,'cached_execution_book',lambda *a:None)
     monkeypatch.setattr(reader,'candles',history)
     monkeypatch.setattr(reader,'refresh_position_risk',lambda symbol:None)
     monkeypatch.setattr(reader,'funding',lambda symbol:[])

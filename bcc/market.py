@@ -393,6 +393,44 @@ class PublicData:
             and bool(params.get('symbol'))
             or '/tickers' in url and params.get('category') == 'linear'))
 
+    def _record_rate_cooldown(self, key, owner, host, delay):
+        with self._lock:
+            self.cooldowns[host] = max(self.cooldowns.get(host,0),time.time()+delay)
+        if self.shared is None:
+            return
+        recorder = getattr(self.shared,'record_http_cooldown',None)
+        if not callable(recorder):
+            self._finish_shared(key,owner,host,cooldown=delay)
+            return
+        deadline = time.monotonic()+2
+        while True:
+            try:
+                recorder(key,owner,host,cooldown=delay)
+                return
+            except CacheBusy as exc:
+                if time.monotonic()>=deadline:
+                    raise DataUnavailable('Не сохранено ограничение частоты '+host) from exc
+                self.stop_event.wait(.05)
+
+    @staticmethod
+    def _rate_delay(response, data=None, default=10):
+        delay = float(default)
+        try:
+            hint = float(response.headers.get('Retry-After',default))
+            if math.isfinite(hint):
+                delay = max(delay,hint)
+        except (ValueError,TypeError):
+            pass
+        if isinstance(data,dict):
+            try:
+                reset = float(response.headers['X-Bapi-Limit-Reset-Timestamp'])/1000
+                server = float(data['time'])/1000
+                if all(math.isfinite(x) and x>0 for x in (reset,server)):
+                    delay = max(delay,reset-server+.25)
+            except (ValueError,TypeError,KeyError,OverflowError):
+                pass
+        return min(3600.,max(float(default),delay))
+
     def _assert_provider_allowed(self, host):
         """One admission contract for direct GET, Hub reads and post-HTTP use."""
         with self._lock:
@@ -824,13 +862,7 @@ class PublicData:
                     )
                 raise SourceAccessDenied(host, response.status_code)
             if response.status_code in (418, 429):
-                try:
-                    delay = max(
-                        90, min(3600, float(response.headers.get("Retry-After", 90)))
-                    )
-                except ValueError:
-                    delay = 90
-                self.cooldowns[host] = now + delay
+                self._record_rate_cooldown(shared_key,owner,host,self._rate_delay(response,default=90))
             response.raise_for_status()
             try:
                 data = response.json()
@@ -846,6 +878,16 @@ class PublicData:
             if self.shared:
                 self._finish_shared(shared_key, owner, host, cooldown=delay)
             raise DataUnavailable(f"{host}: {e}") from e
+        # HTTP 200 does not make a Bybit business refusal valid market data.
+        # Never poison risk/candle caches with an error payload (risk TTL is
+        # four minutes). Rate feedback gates new HTTP fleet-wide, while the
+        # independently admitted WS publications and genuine fresh rows live.
+        if host=='api.bybit.com' and isinstance(data,dict) and 'retCode' in data and data['retCode']!=0:
+            if data['retCode'] in (10006,10018):
+                self._record_rate_cooldown(shared_key,owner,host,self._rate_delay(response,data))
+            elif self.shared:
+                self._finish_shared(shared_key,owner,host)
+            raise DataUnavailable('Bybit: '+str(data.get('retMsg','public request rejected')))
         if self.shared:
             cache_ttl = ttl or (240 if "/risk-limit" in url else (
                 0.35
@@ -1198,6 +1240,45 @@ class PublicData:
         clock.bounds()
         return self._ws_portfolio_observations()
 
+    def cached_execution_book(self, symbol, previous):
+        """Rebase admitted instrument metadata onto genuine current WS depth.
+
+        The owner performs one cache read, never a GET/subscription/wait. Risk
+        metadata and its timestamps are retained; only independently verified
+        executable depth and its original exchange timestamp may change.
+        """
+        if (getattr(self.orderbook, '__func__', None) is not PublicData.orderbook
+                or self.shared is None or os.environ.get('BCC_MARKET_HUB_MODE') != 'client'
+                or os.environ.get('BCC_BYBIT_WS_BOOKS') != '1'
+                or not isinstance(previous, dict) or previous.get('_bcc_bybit_instrument_symbol') != symbol):
+            return None
+        try:
+            clock.bounds()
+            value = self.shared.read_fresh('https://api.bybit.com/v5/market/orderbook',
+                {'category':'linear','symbol':symbol,'limit':50}, 'api.bybit.com')
+        except ProviderDenied as exc:
+            raise SourceAccessDenied(exc.host, exc.http_status) from exc
+        except CacheBusy as exc:
+            raise DataUnavailable('Executable WS cache unavailable: '+str(exc)) from exc
+        if not isinstance(value, dict) or value.get('_bcc_ws_book') is not True or value.get('retCode') != 0:
+            return None
+        try:
+            data = value['result']; stamp = float(data['ts']) / 1000
+            if data.get('s') != symbol or not book_is_fresh(stamp) or stamp < previous['at']:
+                return None
+            bids, asks = ([[float(p),float(q)] for p,q in data[side]] for side in ('b','a'))
+            for levels, descending in ((bids,True),(asks,False)):
+                if not levels or any(not math.isfinite(p) or not math.isfinite(q) or p<=0 or q<=0 for p,q in levels):
+                    return None
+                if any((a[0]<=b[0] if descending else a[0]>=b[0]) for a,b in zip(levels,levels[1:])):
+                    return None
+            executable_quote({'bids':bids,'asks':asks})
+            return dict(previous,bids=bids,asks=asks,at=stamp,response_at=stamp,
+                        engine_at=None,update_id=data.get('u'),sequence=data.get('seq'),
+                        transport={'via':'market_hub_cache','received_pc':time.time()})
+        except (DataUnavailable,ValueError,TypeError,KeyError,IndexError,OverflowError):
+            return None
+
     def _ws_portfolio_observations(self):
         """Nonblocking coherent WS marks/quotes; preserve original receipt ages.
 
@@ -1354,6 +1435,7 @@ class PublicData:
             except DataUnavailable as exc:
                 margin_error = str(exc)
         result = dict(
+            _bcc_bybit_instrument_symbol=symbol,
             margin_required=True,
             margin_data=margin_data,
             margin_marks=(margin_data.pop("account_marks", {}) if margin_data

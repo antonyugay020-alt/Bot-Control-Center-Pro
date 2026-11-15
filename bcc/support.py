@@ -303,8 +303,17 @@ def export_current_report(root, target, *, life=None, allow_empty=False, session
         Path(root).resolve() / "MY_BOTS"
     ):
         raise ValueError("Сохраните ZIP отчёта вне папки MY_BOTS")
+    source_root = Path(__file__).resolve().parents[1]
+    staging_parent = target.parent
+    if staging_parent.is_relative_to(source_root):
+        # Reporting is mutable runtime data, never immutable source. Keep
+        # same-volume atomic replacement without self-invalidating the seal.
+        staging_parent = source_root / 'REPORTS'
+        if staging_parent.is_symlink():
+            raise ValueError('Папка REPORTS не может быть символической ссылкой')
+        staging_parent.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(
-        prefix=".bcc-current-report-", dir=target.parent
+        prefix=".bcc-current-report-", dir=staging_parent
     ) as temp:
         folder = Path(temp) / "current_bots_report"
         report = collect(root, folder / "paper_bots", stop_workers=False, life=life)
@@ -324,7 +333,7 @@ def export_current_report(root, target, *, life=None, allow_empty=False, session
         except OSError as exc:
             identity['fingerprint_error_type'] = type(exc).__name__
         try:
-            identity['source_integrity'] = verify(Path(__file__).resolve().parents[1])
+            identity['source_integrity'] = verify(source_root)
         except (ValueError, OSError) as exc:
             identity['source_integrity'] = {'status': 'FAIL', 'error': str(exc)}
         summary = {

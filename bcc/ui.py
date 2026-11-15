@@ -1345,8 +1345,15 @@ class MainWindow(QMainWindow):
         filename = (
             "BCC_CURRENT_REPORT_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".zip"
         )
+        report_dir = root / 'REPORTS'
+        try:
+            if report_dir.is_symlink():
+                raise OSError('report directory is a symbolic link')
+            report_dir.mkdir(exist_ok=True)
+        except OSError:
+            report_dir = root
         path, _ = QFileDialog.getSaveFileName(
-            self, "Отчёт текущих ботов без остановки", filename, "ZIP (*.zip)"
+            self, "Отчёт текущих ботов без остановки", str(report_dir / filename), "ZIP (*.zip)"
         )
         if not path:
             return

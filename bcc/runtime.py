@@ -280,7 +280,7 @@ def run_loop(
     observations = None
     cohort_error = None
     perf = {"processed": 0, "refreshed": 0, "data_errors": 0, "last_tick_ms": 0.0}
-    perf.update(cohort_commits=0, deferred_refreshes=0, max_tick_ms=0.)
+    perf.update(cohort_commits=0, deferred_refreshes=0, cached_book_refreshes=0, max_tick_ms=0.)
     market_health = {"completed_ticks": 0, "valid_history_ticks": 0,
                      "market_errors": 0, "last_error": "", "last_symbol": "",
                      "last_completed_utc": None, "last_valid_history_utc": None}
@@ -350,6 +350,12 @@ def run_loop(
                         refresh_cohort(force=True)
                         if isinstance(cohort_error, SourceAccessDenied):
                             raise cohort_error
+                        cached_book = getattr(source, 'cached_execution_book', None)
+                        if tick.book is not None and callable(cached_book):
+                            latest = cached_book(symbol, tick.book)
+                            if latest is not None:
+                                tick.book = latest
+                                perf['cached_book_refreshes'] += 1
                         if tick.book is not None and not book_is_fresh(tick.book["at"]):
                             # Reacquire on the bounded transport lane. Never
                             # block the financial owner on HTTP/cache waits.

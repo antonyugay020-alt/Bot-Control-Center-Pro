@@ -71,7 +71,7 @@ def executable_sources(root):
 # library, stylesheet or text policy can otherwise change behavior after QA.
 # Runtime state is separate from immutable source; only explicit QA workspaces
 # and generated evidence are exempt from this inventory.
-RUNTIME_ROOT_DIRS = frozenset({"verification_reports", ".check_venv", "MY_BOTS"})
+RUNTIME_ROOT_DIRS = frozenset({"verification_reports", ".check_venv", "MY_BOTS", "REPORTS"})
 
 # Runtime secrets and account databases are NEVER source assets, even when
 # someone accidentally places them under the checkout. Refuse the package
@@ -123,7 +123,8 @@ def source_inventory(root):
                     + candidate.relative_to(root).as_posix())
             if parent == root and filename == "SHA256_MANIFEST.json":
                 continue  # Manifest is fingerprinted separately (no recursion).
-            if (parent == root and filename.startswith("BCC_VALIDATION_RESULTS_")
+            if (parent == root and filename.startswith(("BCC_VALIDATION_RESULTS_",
+                    "BCC_CURRENT_REPORT_", "BCC_TEST_REPORT_"))
                     and filename.endswith(".zip")):
                 continue  # Generated QA evidence, never distributed as source.
             yield candidate.relative_to(root).as_posix(), candidate
