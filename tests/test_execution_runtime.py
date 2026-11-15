@@ -418,6 +418,8 @@ def test_five_pending_manual_exits_complete_with_813_charts_and_fresh_depth(tmp_
         state["charts"] = {symbol: history for symbol in symbols}
         state["strategy"]["draining"] = True
     quote_threads = []
+    quote_attempts = {}
+    quote_lock = threading.Lock()
 
     class Session:
         def get(self, url, **kwargs):
@@ -442,14 +444,17 @@ def test_five_pending_manual_exits_complete_with_813_charts_and_fresh_depth(tmp_
             return self.get("https://api.bybit.com/v5/market/kline", {"symbol": symbol})
 
         def orderbook(self, symbol):
-            quote_threads.append(threading.current_thread().name)
+            with quote_lock:
+                quote_threads.append(threading.current_thread().name)
+                quote_attempts[symbol] = quote_attempts.get(symbol, 0) + 1
+                first = quote_attempts[symbol] == 1
             snapshot = deepcopy(
                 self.get(
                     "https://api.bybit.com/v5/market/orderbook", {"symbol": symbol}
                 )
             )
-            if threading.current_thread().name != "MainThread":
-                snapshot["at"] -= 5  # Simulate a quote that aged in the decision queue.
+            if first:
+                snapshot["at"] -= 5  # First handoff aged; transport retry recovers.
             return snapshot
 
         def funding(self, symbol):
@@ -475,7 +480,7 @@ def test_five_pending_manual_exits_complete_with_813_charts_and_fresh_depth(tmp_
         exits = [e for e in store.history() if e.get("reason") == "MANUAL_PAPER_CLOSE"]
         assert len(exits) == 5
         assert len(store.history()) == 10
-        assert threading.current_thread().name in quote_threads
+        assert threading.current_thread().name not in quote_threads
         assert any(name.startswith("public-market") for name in quote_threads)
         store.audit()
         if os.environ.get("BCC_TEST_ARTIFACTS"):

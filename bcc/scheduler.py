@@ -2,7 +2,7 @@
 
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .strategy_dispatch import StrategyDispatcher
 from .market import DataUnavailable
@@ -19,6 +19,7 @@ class MarketTick:
     history_error: str = ""
     quote_error: str = ""
     margin_data: dict | None = None
+    refresh_attempted: bool = False
 
 
 class MarketScheduler:
@@ -56,6 +57,21 @@ class MarketScheduler:
         self._history_only = set()
         self._history_results = {}
         self._quote_ready = {}
+        self._retry_ticks = {}
+        self._retry_jobs = {}
+
+    def retry_tick(self, tick):
+        """Retry an aged handoff on its transport pool, never on the owner."""
+        self._retry_ticks[tick.symbol] = tick
+        self._quote_ready.pop(tick.symbol, None)
+
+    def _retry_book(self, symbol, urgent):
+        getter = getattr(self.source, 'position_orderbook', None) if urgent else None
+        getter = getter if callable(getter) else self.source.orderbook
+        try:
+            return getter(symbol), ''
+        except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
+            return None, str(exc)
 
     def _fetch(self, symbol, required, positions, manage=True, urgent=False, mark_only=False, history_only=False):
         history_error = ''
@@ -208,7 +224,30 @@ class MarketScheduler:
             self.pool.collect()
 
         drain()
-        quote_delivered = set()
+        retried = set()
+        for symbol, (job, urgent) in list(self._retry_jobs.items()):
+            if not job.done():
+                continue
+            del self._retry_jobs[symbol]
+            retried.add(symbol)
+            primary_drained.add(symbol)
+            if urgent:
+                self.quote_due[symbol] = time.monotonic() + self.quote_period
+            else:
+                self.due[symbol] = time.monotonic() + self.period
+            original = self._retry_ticks.pop(symbol)
+            try:
+                book, error = job.result()
+                completed.append((symbol, replace(original, book=book,
+                    quote_error=error, refresh_attempted=True), None))
+            except Exception as exc:
+                completed.append((symbol, None, exc))
+        # Finished retry futures share the same bounded dispatchers as their
+        # normal lane. Release their admission before scheduling replacements.
+        self.pool.collect()
+        if self.quote_pool is not None:
+            self.quote_pool.collect()
+        quote_delivered = set(retried)
         def drain_quotes():
             for symbol, job in list(self.quote_jobs.items()):
                 if not job.done():
@@ -241,16 +280,33 @@ class MarketScheduler:
             if self.quote_pool is not None:
                 self.quote_pool.collect()
         drain_quotes()
+        for symbol in sorted(self._retry_ticks, key=lambda s: s not in priority_set):
+            if symbol in self._retry_jobs or symbol in self.jobs or symbol in self.quote_jobs:
+                continue
+            urgent = symbol in priority_set and self._separate_quotes
+            occupied = sum(lane == urgent for _, lane in self._retry_jobs.values())
+            if urgent:
+                if len(self.quote_jobs) + occupied >= self.quote_capacity:
+                    continue
+                if self.quote_pool is None:
+                    self.quote_pool = StrategyDispatcher(workers=self.quote_capacity,
+                        maximum_pending=self.quote_capacity, thread_name_prefix='position-quotes')
+                pool = self.quote_pool
+            else:
+                if len(self.jobs) + occupied >= self.capacity:
+                    continue
+                pool = self.pool
+            self._retry_jobs[symbol] = (pool.submit(symbol, self._retry_book, symbol, urgent), urgent)
         if self._separate_quotes and priority:
             if self.quote_pool is None:
                 self.quote_pool = StrategyDispatcher(workers=self.quote_capacity,
                     maximum_pending=self.quote_capacity, thread_name_prefix='position-quotes')
             for _ in range(len(priority)):
-                if len(self.quote_jobs) >= self.quote_capacity:
+                if len(self.quote_jobs) + sum(lane for _, lane in self._retry_jobs.values()) >= self.quote_capacity:
                     break
                 symbol = priority[self.quote_cursor % len(priority)]
                 self.quote_cursor = (self.quote_cursor + 1) % len(priority)
-                if (symbol in self.quote_jobs or symbol in quote_delivered
+                if (symbol in self.quote_jobs or symbol in quote_delivered or symbol in self._retry_ticks
                         or self.quote_due.get(symbol, 0) > time.monotonic()):
                     continue
                 self.quote_jobs[symbol] = self.quote_pool.submit(symbol, self._quote, symbol)
@@ -271,7 +327,7 @@ class MarketScheduler:
         now = time.monotonic()
 
         def submit(symbol):
-            if (symbol in delivered_this_cycle or symbol in self.jobs
+            if (symbol in delivered_this_cycle or symbol in self.jobs or symbol in self._retry_ticks
                     or (self.period == 0 and symbol in self._zero_period_round)
                     or self.due.get(symbol, 0) > now):
                 return False
@@ -321,7 +377,7 @@ class MarketScheduler:
         active_jobs = sum(s in priority_set for s in self.jobs)
         priority_limit = (max(1, self.capacity-1) if risk_mode else self.priority_limit)
         for _ in range(len(priority)):
-            if len(self.jobs) >= self.capacity or (
+            if len(self.jobs) + sum(not lane for _, lane in self._retry_jobs.values()) >= self.capacity or (
                 scan and active_jobs >= priority_limit
             ):
                 break
@@ -330,12 +386,13 @@ class MarketScheduler:
             active_jobs += int(submit(symbol))
         admitted_scans = 0
         for _ in range(len(scan)):
-            if len(self.jobs) >= self.capacity or (risk_mode and admitted_scans >= 1):
+            if len(self.jobs) + sum(not lane for _, lane in self._retry_jobs.values()) >= self.capacity or (risk_mode and admitted_scans >= 1):
                 break
             symbol = scan[self.cursor % len(scan)]
             self.cursor = (self.cursor + 1) % len(scan)
             admitted_scans += int(submit(symbol))
-        pending_jobs = [*self.jobs.values(), *self.quote_jobs.values()]
+        pending_jobs = [*self.jobs.values(), *self.quote_jobs.values(),
+                        *(job for job, _ in self._retry_jobs.values())]
         if pending_jobs:
             wait(pending_jobs, timeout=timeout, return_when=FIRST_COMPLETED)
         else:
@@ -343,7 +400,8 @@ class MarketScheduler:
         drain()
         drain_quotes()
         self.last_pressure.update(quote_jobs=len(self.quote_jobs), quote_capacity=self.quote_capacity,
-                                  history_jobs=len(self.jobs), history_capacity=self.capacity)
+                                  history_jobs=len(self.jobs), history_capacity=self.capacity,
+                                  deferred_refreshes=len(self._retry_ticks))
         completed.sort(key=lambda row: (row[0] not in priority_set,))
         return completed
 
@@ -353,6 +411,8 @@ class MarketScheduler:
         for job in self.jobs.values():
             job.cancel()
         for job in self.quote_jobs.values():
+            job.cancel()
+        for job, _ in self._retry_jobs.values():
             job.cancel()
         self.pool.close(wait=True)
         if self.quote_pool is not None:

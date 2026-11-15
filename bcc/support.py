@@ -313,6 +313,20 @@ def export_current_report(root, target, *, life=None, allow_empty=False, session
                 "В выбранной папке нет ботов. Для проверочного запуска выберите его папку внутри check_workspaces, содержащую MY_BOTS"
             )
         diagnostics = _collect_app_diagnostics(root, folder / "diagnostics")
+        # Identify the actual immutable application, independently from the
+        # selected runtime folder name. Source mismatches must not prevent
+        # exporting the live financial evidence needed to diagnose them.
+        from tools.verify_package import verify
+        from tools.verify_windows import source_fingerprint
+        identity = {}
+        try:
+            identity['executable_fingerprint'] = source_fingerprint()
+        except OSError as exc:
+            identity['fingerprint_error_type'] = type(exc).__name__
+        try:
+            identity['source_integrity'] = verify(Path(__file__).resolve().parents[1])
+        except (ValueError, OSError) as exc:
+            identity['source_integrity'] = {'status': 'FAIL', 'error': str(exc)}
         summary = {
             "app_version": VERSION,
             "at": datetime.now(timezone.utc).isoformat(),
@@ -325,6 +339,7 @@ def export_current_report(root, target, *, life=None, allow_empty=False, session
             "release_ready": False,
             "diagnostics_included": diagnostics,
             "session_info": session_info,
+            **identity,
         }
         atomic_json(folder / "report_summary.json", summary)
         pending = Path(temp) / "report.zip"

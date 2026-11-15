@@ -23,6 +23,8 @@ def test_manual_current_report_includes_hub_diagnostics_and_keeps_other_roots_ou
     target = tmp_path / 'diagnostic.zip'
     summary = export_current_report(root, target)
     assert summary['bot_count'] == 1
+    assert len(summary['executable_fingerprint']) == 64
+    assert 'source_integrity' in summary
     with zipfile.ZipFile(target) as z:
         assert z.testzip() is None
         names = z.namelist()
@@ -94,3 +96,21 @@ def test_windows_test_launcher_always_creates_report_and_points_to_folder():
     assert script.index('-m tools.export_test_report') < script.index('if not "%BCC_TEST_EXIT%"=="0"')
     assert 'explorer.exe' in script and r'TEST_DATA\REPORTS' in script
     assert (root / 'REPORT_NOW.bat').is_file()
+
+
+def test_current_report_identifies_source_even_when_its_integrity_is_broken(tmp_path,monkeypatch):
+    from bcc.storage import Store
+    root=tmp_path/'data';folder=Repository(root).create({**defaults('VELES'),'name':'Identity evidence'})
+    Store(folder,500)
+    def missing():raise FileNotFoundError('missing source entrypoint')
+    def damaged(*args):raise ValueError('source integrity mismatch')
+    monkeypatch.setattr('tools.verify_windows.source_fingerprint',missing)
+    monkeypatch.setattr('tools.verify_package.verify',damaged)
+    target=tmp_path/'broken_source_report.zip'
+    summary=export_current_report(root,target)
+    assert summary['fingerprint_error_type']=='FileNotFoundError'
+    assert summary['source_integrity']['status']=='FAIL'
+    assert summary['bot_count']==1 and summary['workers_stopped_for_report'] is False
+    with zipfile.ZipFile(target) as archive:
+        assert archive.testzip() is None
+        assert any(name.endswith('state.json') for name in archive.namelist())

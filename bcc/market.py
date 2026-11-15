@@ -1186,6 +1186,18 @@ class PublicData:
                 self._position_symbols = selected
                 self._portfolio_ws_cache = None
 
+    def cached_position_observations(self):
+        """Owner-safe admitted cache read; never initiates/waits for transport."""
+        if (getattr(self.orderbook, '__func__', None) is not PublicData.orderbook
+                or self.shared is None or os.environ.get('BCC_MARKET_HUB_MODE') != 'client'
+                or os.environ.get('BCC_BYBIT_WS_QUOTES') != '1'):
+            return {}, {}
+        # This lane cannot perform a cold synchronous network clock probe.
+        # An invalid reference blocks observations until a transport thread
+        # independently establishes a new quorum.
+        clock.bounds()
+        return self._ws_portfolio_observations()
+
     def _ws_portfolio_observations(self):
         """Nonblocking coherent WS marks/quotes; preserve original receipt ages.
 

@@ -7,7 +7,7 @@ import time
 
 from .control import claim_command, finish_requested, finished
 from .funding import apply_funding
-from .market import DataUnavailable, executable_quote
+from .market import DataUnavailable, SourceAccessDenied, executable_quote
 from .data_cache import CacheBusy
 from .market_clock import book_is_fresh, market_now, observed_quote, quote_is_recent
 from .margin import MODEL, attach_snapshot, margin_status
@@ -36,7 +36,25 @@ def log_events(events):
         )
 
 
-def process_tick(cfg, store, engine, tick):
+def _apply_observations(state, observations):
+    """Apply only independently verified, unexpired observations on the owner."""
+    if observations is None:
+        return
+    marks, quotes = observations
+    for symbol, row in state.get('margin_data', {}).items():
+        incoming, current = marks.get(symbol), row.get('quote')
+        if (quote_is_recent(incoming, maximum=3)
+                and (not quote_is_recent(current, maximum=3) or incoming['at'] >= current['at'])):
+            row['quote'] = dict(incoming)
+    exposed = {p['symbol'] for p in state['positions'].values()}
+    for symbol, incoming in quotes.items():
+        current = state['marks'].get(symbol)
+        if (symbol in exposed and quote_is_recent(incoming, maximum=3)
+                and (not quote_is_recent(current, maximum=3) or incoming['at'] >= current['at'])):
+            state['marks'][symbol] = dict(incoming)
+
+
+def process_tick(cfg, store, engine, tick, *, observations=None):
     now = market_now()
     symbol = tick.symbol
     book = tick.book
@@ -57,6 +75,10 @@ def process_tick(cfg, store, engine, tick):
             risk_row = state.get("margin_data", {}).get(symbol)
             if isinstance(risk_row, dict):
                 risk_row.pop("quote", None)
+            # A missing execution book cannot erase a NEW independently
+            # admitted collateral mark or valuation from the cache lane.
+            # Without that new evidence, the original failure fence remains.
+            _apply_observations(state, observations)
             apply_funding(state, events, symbol, tick.rates, tick.funding_marks, now)
             # Preserve both independent market failures. With no book we
             # cannot trade, but losing the history error makes a multi-bot
@@ -91,6 +113,7 @@ def process_tick(cfg, store, engine, tick):
         book = dict(book, margin_data=tick.margin_data)
     with risk_transaction(store) as (state, events):
         attach_snapshot(state, symbol, book)
+        _apply_observations(state, observations)
         exposed = {p["symbol"] for p in state["positions"].values()}
         for other, quote in book.get("portfolio_quotes", {}).items():
             old = state["marks"].get(other)
@@ -253,7 +276,11 @@ def run_loop(
     next_poly = 0
     errors = {}
     next_perf = 0
+    next_cohort = 0
+    observations = None
+    cohort_error = None
     perf = {"processed": 0, "refreshed": 0, "data_errors": 0, "last_tick_ms": 0.0}
+    perf.update(cohort_commits=0, deferred_refreshes=0, max_tick_ms=0.)
     market_health = {"completed_ticks": 0, "valid_history_ticks": 0,
                      "market_errors": 0, "last_error": "", "last_symbol": "",
                      "last_completed_utc": None, "last_valid_history_utc": None}
@@ -275,6 +302,32 @@ def run_loop(
             atomic_json(folder / "process.json", status)
             next_heartbeat = time.monotonic() + 1
 
+    def refresh_cohort(force=False):
+        nonlocal next_cohort, observations, cohort_error
+        getter = getattr(source, 'cached_position_observations', None)
+        due = time.monotonic() >= next_cohort
+        if not callable(getter) or (not force and not due):
+            return
+        if due:
+            next_cohort = time.monotonic() + .5
+        observations = None
+        cohort_error = None
+        try:
+            observations = getter()
+            market_health.pop('last_cohort_error', None)
+            if due and any(observations):
+                with risk_transaction(store) as (state, _):
+                    _apply_observations(state, observations)
+                    update_equity_metrics(state)
+                perf['cohort_commits'] += 1
+        except (DataUnavailable, ValueError, CacheBusy, sqlite3.OperationalError) as exc:
+            if (isinstance(exc, sqlite3.OperationalError)
+                    and not any(term in str(exc).lower() for term in ('locked', 'busy'))):
+                raise
+            market_health['last_cohort_error'] = str(exc)[:500]
+            cohort_error = exc
+            observations = None
+
     try:
         while not should_stop():
             finish_requested(folder, store, expected_token=status.get("token"))
@@ -284,22 +337,31 @@ def run_loop(
             if scheduler:
                 close_requested_positions(folder, store, books, control_revision=control_revision)
                 completed = scheduler.collect(store.read(include_charts=False))
+                refresh_cohort()
                 for symbol, tick, error in completed:
                     if should_stop():
                         break
-                    seen.add(symbol)
                     tick_start = time.monotonic()
                     try:
                         finish_requested(folder, store, expected_token=status.get("token"))
                         if error:
                             raise error
                         heartbeat()
+                        refresh_cohort(force=True)
+                        if isinstance(cohort_error, SourceAccessDenied):
+                            raise cohort_error
                         if tick.book is not None and not book_is_fresh(tick.book["at"]):
-                            # Refresh a quote that aged in the decision queue.
-                            # The original exchange timestamp is never changed.
-                            perf["refreshed"] += 1
-                            tick.book = source.orderbook(symbol)
-                        process_tick(cfg, store, engine, tick)
+                            # Reacquire on the bounded transport lane. Never
+                            # block the financial owner on HTTP/cache waits.
+                            retry = getattr(scheduler, 'retry_tick', None)
+                            if not tick.refresh_attempted and callable(retry):
+                                retry(tick)
+                                perf['refreshed'] += 1
+                                perf['deferred_refreshes'] += 1
+                                continue
+                            raise DataUnavailable('Стакан устарел после фонового обновления')
+                        process_tick(cfg, store, engine, tick, observations=observations)
+                        seen.add(symbol)
                         market_health["completed_ticks"] += 1
                         market_health["last_completed_utc"] = time.time()
                         market_health["last_symbol"] = symbol
@@ -320,6 +382,7 @@ def run_loop(
                         IndexError,
                         TypeError,
                     ) as exc:
+                        seen.add(symbol)
                         perf["data_errors"] += 1
                         market_health["market_errors"] += 1
                         market_health["last_symbol"] = symbol
@@ -327,11 +390,13 @@ def run_loop(
                         # Do not reuse even a recently accepted book for a
                         # manual close after a failed market refresh.
                         books.pop(symbol, None)
+                        refresh_cohort(force=True)
                         with risk_transaction(store) as (state, events):
                             state["marks"].pop(symbol, None)
                             risk_row = state.get("margin_data", {}).get(symbol)
                             if isinstance(risk_row, dict):
                                 risk_row.pop("quote", None)
+                            _apply_observations(state, observations)
                             state["diagnostics"][symbol] = [
                                 {"section": "Данные", "reason": str(exc)}
                             ]
@@ -342,6 +407,7 @@ def run_loop(
                     perf["last_tick_ms"] = round(
                         (time.monotonic() - tick_start) * 1000, 3
                     )
+                    perf['max_tick_ms'] = max(perf['max_tick_ms'], perf['last_tick_ms'])
                     heartbeat(force=bool(error or (tick is not None and tick.history_error)))
                 close_requested_positions(folder, store, books, control_revision=control_revision)
             elif time.monotonic() >= next_poly:
