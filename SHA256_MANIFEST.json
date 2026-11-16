@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_BYBIT_WAL_READER_OWNER_RECOVERY_20261115_NOT_RELEASE",
+  "checkpoint": "BCC_BYBIT_DETERMINISTIC_NATIVE_QA_20261115_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -277,7 +277,7 @@
     "tests/test_position_journal_recovery.py": "f315e2d2f283dd30816e9d533ac8ae2f51dd7ceaf98ea3ee6938308bced5196c",
     "tests/test_position_report.py": "fda3000d2f1f796238335b555c4b274f15ad409f0306d13290c0415274e55d99",
     "tests/test_priority_control_plane_system.py": "54d39800dfc2df4424bf77553628ed1ca01691d34d8046006e3b2cf3b91481ab",
-    "tests/test_process.py": "8d1e365dd7da79856789a60b3db6178baddcf5f4cd0f7f198da141c487ce6678",
+    "tests/test_process.py": "342edf388ad526ff544b764c3ec04b3e02cc15a985575a14581d682f95b40e86",
     "tests/test_process_os.py": "e0353c6bb045bb66528abeb5bc005aa6fc2e8a75e3adeebae2764ae4d684829d",
     "tests/test_provider_access_boundaries.py": "3800356bf2893b9f32bbe48d2d265434bb40fca80a2c66e508d6ca802eb03585",
     "tests/test_provider_denial_admission.py": "5b29511c3ebc4f7022cd83f93a678c2bc883a86b47a3d74930e054b0c7f7b95f",
@@ -385,7 +385,7 @@
     "tests/test_w2_market_data_architecture.py": "7dad197224da9c01abe34403d77e4542bdba5cab6e137bc62307c6de08579844",
     "tests/test_w3_integrated_recovery.py": "7034e611c662503e6705bde3da9e94d073018ef84c3cf293e7de41322adaecc7",
     "tests/test_w4_priority_market_integrity.py": "298c3c2049a6ccc6d33f2dddfd273a350ab57e4ab2864e8da016c3736a318e28",
-    "tests/test_w5_end_to_end_market_pipeline.py": "9f348d511b218febe8885355f161dab67a4599f645f842d00563f927d6dd8374",
+    "tests/test_w5_end_to_end_market_pipeline.py": "d780e55184debdb161359bf1a3bce5c9cb1afa6207fedfbaddbd687c69aac174",
     "tests/test_w6_position_capacity.py": "628194b9d4ab834dbe0d82b2e8f1c46462df7920a179ab9bc44080965dd754c8",
     "tests/test_windows_package.py": "7a535dd88cb7e0f010488fdcd0a20dac09ade98726a74119279ede292eab5fa2",
     "tests/test_windows_preflight_r67.py": "33cab972868664093266f1e69b232565a5e17ebc17542435a25f90819ac58f82",

@@ -365,8 +365,20 @@ worker.main()
     popen = subprocess.Popen
 
     def replay_start(args, **kwargs):
+        assert args[1:3] == ["-m", "bcc.worker"]
         return popen([args[0], str(runner), *args[3:]], **kwargs)
 
+    hub_requests = []
+
+    def replay_hub(root, *, bybit_ws):
+        # This child replaces PublicData with ReplayPublicData. Starting an
+        # unused live WS Hub here makes an offline stop/launch race depend on
+        # external clock providers. Keep the production capability request
+        # asserted; real Hub/clock/WS acceptance runs in its dedicated stages.
+        assert root == repo.root and bybit_ws is True
+        hub_requests.append(root)
+
+    monkeypatch.setattr("bcc.lifecycle.ensure_hub", replay_hub)
     monkeypatch.setattr("bcc.lifecycle.subprocess.Popen", replay_start)
     life.start(folder)
     child = life.children[str(folder)]
@@ -381,6 +393,23 @@ worker.main()
         assert not Store(folder).read()["positions"]
         assert not Store(folder).history()
         assert life.status(folder) == "Остановлен"
+        Store(folder).audit()
+        # Actually restart through the controller after the startup stop.
+        # The released audit barrier remains open; the new worker must own a
+        # different launch token and reach a real persisted PAPER position.
+        first_token = life.tokens[str(folder)]
+        life.start(folder)
+        child = life.children[str(folder)]
+        wait_for_position_count(folder, child, 1)
+        assert life.tokens[str(folder)] != first_token
+        life.stop(folder)
+        child.wait(timeout=7)
+        assert child.returncode == 0
+        assert life.status(folder) == "Остановлен"
+        assert len(Store(folder).read()["positions"]) == 1
+        assert [row["action"] for row in Store(folder).history()] == ["OPEN"]
+        assert len(hub_requests) == 2
+        assert not (repo.root / "market_hub_process.json").exists()
         Store(folder).audit()
     finally:
         if child.poll() is None:

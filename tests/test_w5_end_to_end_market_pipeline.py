@@ -6,6 +6,8 @@ import threading
 import time
 from collections import Counter
 
+import pytest
+
 from bcc.market_hub import HubRegistry, MarketDataHub
 
 URL = 'https://api.bybit.com/v5/market/orderbook'
@@ -20,7 +22,8 @@ def _pump(hub, until, interval=.015):
     return results
 
 
-def test_slow_regular_request_cannot_hold_urgent_position_mark_batch(tmp_path):
+@pytest.mark.parametrize('poll_delay', [0, .12], ids=['normal', 'slow_owner'])
+def test_slow_regular_request_cannot_hold_urgent_position_mark_batch(tmp_path, poll_delay):
     path = tmp_path / 'cache.sqlite'
     registry = HubRegistry(path)
     for i in range(8):
@@ -28,6 +31,7 @@ def test_slow_regular_request_cannot_hold_urgent_position_mark_batch(tmp_path):
     registry.subscribe(URL, {'symbol': 'SLOW_SCAN'})
     started = threading.Event()
     completed = threading.Event()
+    release = threading.Event()
     calls = []
     class Source:
         shared = object()
@@ -36,7 +40,7 @@ def test_slow_regular_request_cannot_hold_urgent_position_mark_batch(tmp_path):
             calls.append(symbol)
             if symbol == 'SLOW_SCAN':
                 started.set()
-                time.sleep(.9)
+                assert release.wait(10), 'Test did not release its background producer'
                 completed.set()
             else:
                 time.sleep(.02)
@@ -44,16 +48,24 @@ def test_slow_regular_request_cannot_hold_urgent_position_mark_batch(tmp_path):
             pass
     hub = MarketDataHub(path, Source(), max_workers=6)
     try:
-        hub.poll_nonblocking()
-        assert started.wait(.3)
-        observed = _pump(hub, .42)
-        assert not completed.is_set(), 'Slow background source should still be running'
-        # At least six urgent completions (five in first batch, another one
-        # using freed capacity), even while the background job is blocked.
+        observed = hub.poll_nonblocking()
+        assert started.wait(3)
+        # Prove the ordering, independent of Windows disk/scheduler speed:
+        # all eight urgent keys must complete across multiple dispatch waves
+        # BEFORE the background producer is permitted to finish. A timeout
+        # remains a hard failure; no reduced completion count can pass.
         urgent = {registry.identity(URL, {'symbol': f'OPEN{i}'})[0] for i in range(8)}
-        assert len({key for key, ok in observed if key in urgent and ok}) >= 6
+        deadline = time.monotonic() + 5
+        while not urgent.issubset({key for key, ok in observed if ok}):
+            assert time.monotonic() < deadline, 'Urgent batch stalled behind background request'
+            time.sleep(poll_delay)
+            observed.extend(hub.poll_nonblocking())
+            assert len(hub._inflight) <= 6
+            time.sleep(.01)
+        assert not completed.is_set(), 'Background producer completed before urgent batch'
         assert calls.count('SLOW_SCAN') == 1, 'Do not duplicate in-flight request'
     finally:
+        release.set()
         hub.close()
     assert completed.is_set()
 
@@ -140,12 +152,13 @@ def test_actual_hub_client_receives_urgent_snapshot_during_slow_background_get(t
     producer_cache = PublicCache(path)
     slow_started = threading.Event()
     slow_finished = threading.Event()
+    release = threading.Event()
     class Source:
         shared = producer_cache
         def get(self, url, params=None):
             if url == URL_META:
                 slow_started.set()
-                time.sleep(.8)
+                assert release.wait(10), 'Test did not release background metadata'
                 slow_finished.set()
             else:
                 time.sleep(.018)
@@ -172,10 +185,10 @@ def test_actual_hub_client_receives_urgent_snapshot_during_slow_background_get(t
     consumer = threading.Thread(target=consume)
     try:
         hub.poll_nonblocking()
-        assert slow_started.wait(.4)
+        assert slow_started.wait(3)
         consumer.start()
         started = time.monotonic()
-        while consumer.is_alive() and time.monotonic() - started < .65:
+        while consumer.is_alive() and time.monotonic() - started < 5:
             hub.poll_nonblocking()
             time.sleep(.015)
         consumer.join(timeout=.1)
@@ -183,6 +196,8 @@ def test_actual_hub_client_receives_urgent_snapshot_during_slow_background_get(t
         assert values and values[0]['symbol'] == 'OPEN1'
         assert not slow_finished.is_set()
     finally:
-        client.close()
+        release.set()
         hub.close()
         consumer.join(timeout=1)
+        assert not consumer.is_alive()
+        client.close()
