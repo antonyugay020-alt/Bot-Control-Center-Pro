@@ -425,11 +425,15 @@ class PublicCache:
             return max(0.,row[0]-time.time()) if row else None
 
     def publish_websocket(self, url, params, host, value, *, ttl, leader_owner, leader_token):
-        """Atomic event-driven publication fenced by Hub leader and subscription.
+        """Publish one event through the same atomic batch admission boundary."""
+        return self.publish_websockets(
+            [dict(url=url, params=params, host=host, value=value, ttl=ttl)],
+            leader_owner=leader_owner, leader_token=leader_token,
+        )[0]
 
-        This does not create a fake HTTP request, consume its budget, or
-        accept events from a producer that lost its cross-process leader lease.
-        """
+    @staticmethod
+    def _websocket_record(url, params, host, value, *, ttl):
+        """Validate and encode before taking the shared SQLite writer."""
         from .market import PublicData
         PublicData.validated_public_request(url, params)
         binance = (host == "api.binance.com"
@@ -463,9 +467,7 @@ class PublicCache:
         # Other feeds retain their existing maximum residence.
         max_residence = 1.5 if bybit and url.endswith(("/tickers", "/orderbook")) else 1.
         if ((not poly and not bybit and not binance)
-                or type(ttl) not in (float, int) or not 0 < ttl <= max_residence
-                or type(leader_owner) is not str or not leader_owner
-                or type(leader_token) is not str or not leader_token):
+                or type(ttl) not in (float, int) or not 0 < ttl <= max_residence):
             raise ValueError("Invalid WS publisher admission")
         marker = ("_bcc_ws_binance" if binance else
                   "_bcc_ws_polybook" if poly else
@@ -497,6 +499,24 @@ class PublicCache:
             json.dumps([url, params], sort_keys=True).encode()
         ).hexdigest()
         encoded = json.dumps(value, allow_nan=False)
+        return (key, url, json.dumps(params, sort_keys=True, separators=(",", ":")),
+                host, encoded, ttl)
+
+    def publish_websockets(self, records, *, leader_owner, leader_token):
+        """Commit a bounded stream cohort with one WAL durability barrier.
+
+        Every row still needs an active subscription and an allowed provider.
+        All rows share the same verified producer lease and committed snapshot.
+        Original exchange clocks remain in the payload; batching never grants
+        freshness or consumes HTTP request budgets.
+        """
+        if (type(records) not in (list, tuple) or len(records) > 64
+                or type(leader_owner) is not str or not leader_owner
+                or type(leader_token) is not str or not leader_token):
+            raise ValueError("Invalid WS publication batch")
+        encoded = [self._websocket_record(**record) for record in records]
+        if not encoded:
+            return []
         self._ensure_schema()
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -508,22 +528,25 @@ class PublicCache:
                 "AND (boot_epoch=0 OR ?=0 OR abs(boot_epoch-?)<=60)",
                 (leader_owner, leader_token, now, boot, boot),
             ).fetchone()
-            subscribed = db.execute(
-                "SELECT 1 FROM hub_subscriptions WHERE k=? "
-                "AND active_until>? AND url=? AND params=?",
-                (key, now, url, json.dumps(params, sort_keys=True,
-                     separators=(",", ":"))),
-            ).fetchone()
-            if not admitted or not subscribed or self._denied(db, host) is not None:
+            if not admitted:
                 db.rollback()
-                return False
-            db.execute(
-                "INSERT OR REPLACE INTO cache(k,value,until,host) "
-                "VALUES(?,?,?,?)",
-                (key, encoded, now + ttl, host),
-            )
+                return [False] * len(encoded)
+            outcomes = []
+            for key, url, params, host, value, ttl in encoded:
+                subscribed = db.execute(
+                    "SELECT 1 FROM hub_subscriptions WHERE k=? "
+                    "AND active_until>? AND url=? AND params=?",
+                    (key, now, url, params),
+                ).fetchone()
+                allowed = subscribed is not None and self._denied(db, host) is None
+                outcomes.append(allowed)
+                if allowed:
+                    db.execute(
+                        "INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
+                        (key, value, now + ttl, host),
+                    )
             db.commit()
-        return True
+        return outcomes
 
     def begin(self, url, params, host, *, priority=False, websocket=False):
         if type(priority) is not bool or type(websocket) is not bool:

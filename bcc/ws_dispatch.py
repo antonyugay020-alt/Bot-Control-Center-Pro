@@ -179,6 +179,21 @@ class MarketEventQueue:
                 self._max_critical_wait = max(self._max_critical_wait, wait)
             return item
 
+    def take_batch(self, *, limit=64, timeout=.1):
+        """Drain available events fairly without waiting to fill a batch."""
+        if type(limit) is not int or not 1 <= limit <= 64:
+            raise ValueError("invalid market batch limit")
+        first = self.take(timeout=timeout)
+        if first is None:
+            return []
+        result = [first]
+        for _ in range(limit - 1):
+            item = self.take(timeout=0)
+            if item is None:
+                break
+            result.append(item)
+        return result
+
     def stats(self):
         with self._cv:
             fronts = [queue[0] for queue in (self._critical, self._urgent, self._regular) if queue]

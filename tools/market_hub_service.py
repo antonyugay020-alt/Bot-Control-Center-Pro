@@ -65,11 +65,11 @@ def main():
     def publish_events():
         last_warning = 0.0
         while not stop.is_set():
-            item = ws_updates.take(timeout=.1)
-            if item is None:
+            batch = ws_updates.take_batch(timeout=.1)
+            if not batch:
                 continue
             try:
-                hub.publish_ws_event(*item)
+                hub.publish_ws_events(batch)
             except (sqlite3.Error, OSError, ValueError) as exc:
                 print("WebSocket event publication unavailable: " +
                       type(exc).__name__, flush=True)

@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_BYBIT_DETERMINISTIC_NATIVE_QA_20261115_NOT_RELEASE",
+  "checkpoint": "BCC_BYBIT_ATOMIC_WS_PUBLICATION_20261116_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -65,7 +65,7 @@
     "bcc/constructor_transaction.py": "1cfd25a130450f820f5dc623f11568641820f6b84c9eb73c194eb5f4a87ad578",
     "bcc/control.py": "64a9d9fe889ec9e9f989f6793050ffa09f00fcfedaf6346d95ddfcda08ce3092",
     "bcc/coordination.py": "f53ff56ae3ffc5311b515e6c5cca3456d5547a88f7e451acd9a73b1df1f928ef",
-    "bcc/data_cache.py": "16a6dce608ced08d0b1a90d1e267b67423e5a5f4870c07b6a45ca342c58a3b96",
+    "bcc/data_cache.py": "0c1becfe9e1b688faaf06e8bd146c2e85f221ed7e7423e53a49101e9a8d1142a",
     "bcc/execution.py": "7ca97407a77e226f7d9c9ce3274d0074913d35264fbf4a29823acf607a71f50a",
     "bcc/fleet.py": "5c10de977f44f3c0041802b1434f5e7cb51abe0445a731fa1a2b8f0194fe9da4",
     "bcc/flow_layout.py": "1e5d9c4b48fbd8a31046030276a74a2c488a9ee90a3d8e89027b2714cd3b054a",
@@ -82,7 +82,7 @@
     "bcc/market.py": "ca7cf3b4028616a1a939e422f76bc25d72d84450a184d4ad027ddf48d321edfa",
     "bcc/market_clock.py": "5d2d47e0a2617c008feb05052813716b92e66c39c7e918968370e8269354fcac",
     "bcc/market_health.py": "659ccb2d3ce90d4f36cd239db7a17338597147ad75af0f039254e8a708aae772",
-    "bcc/market_hub.py": "9204bcf6b256fb8e876808aed1ee5825004fb447a1c8b4252af0f684db22f984",
+    "bcc/market_hub.py": "b1f1a6aaab22c946daf45b4402cd0db39ca69717fb0bb7892200c814d443630b",
     "bcc/market_selection.py": "92995ed897565f90f5ade52973cdef75375b2adc6b95e7ba98bdca0e34344c91",
     "bcc/monitoring.py": "09cfd12432294500d65fe4ccd955477a2ab19d64f393600aa5c7f8103e42e64b",
     "bcc/poly_indicators.py": "becefd35bde14aa42e000c5293d1a7dd6e2d7f6a71c39dfc7d073fe292d11a2d",
@@ -118,7 +118,7 @@
     "bcc/wizard_stepper.py": "e7efa4d0d8c6ee88abd3bc1fad98abb93dbfb283c11cb6ed95a3d87ef714f4ef",
     "bcc/worker.py": "9eb144841bfcf9ad5bb0517e7bf7452890f57f76077728235525eb9537277119",
     "bcc/ws_binance.py": "0bc9113c6791f8d602feda02968a540a060fa290dfc6ddd92f34f65c1381141b",
-    "bcc/ws_dispatch.py": "8264abedcee32abde1fc776867d464670253e367fe329ca3649b359c4df74d71",
+    "bcc/ws_dispatch.py": "55ebe7ceb11158cbff706c55d9ac87b9cba47f5f06f3690a1c4f4161c1b63f61",
     "bcc/ws_klines.py": "6727e98680f3cb46278c6cf66285b32944271b5c2d8ce8f90d2895352b5b35d0",
     "bcc/ws_orderbooks.py": "340b5bd5765f85f3ba960665b7443d0646770dbef14ee1c2bb71636f3298e90b",
     "bcc/ws_polymarket.py": "02cb7000d4f89c1296e896775e7fcfaf0f06ba6fffd434691ff81075eb55bf19",
@@ -427,7 +427,7 @@
     "tools/bybit_ws_live_acceptance.py": "af8546cc854f8745831a675fb70298f28d7cb21a066d1f000f61684c3de43786",
     "tools/collect_test_inventory.py": "78cd4aede5152e392319616f29eb05ef549949d3ed375d9339d12c0ca99259d4",
     "tools/export_test_report.py": "09f85e9ae97cf7bf0ba689d3a5f3603a6e915a37ae5fb2f78c735503574d9b4b",
-    "tools/market_hub_service.py": "3a50014f4141f59d457de93bdb07fda3bfdb7adeaac178cdef21185a56be768e",
+    "tools/market_hub_service.py": "53312cabe01ac7fa7c705ed24e084ec1c0bc921ae2b0fb27003c107de47810fb",
     "tools/process_guard.py": "ea2d2c5addc3b55508c77ef22330e9fdecfa27485ac1e3a67b7833e818c8a1b4",
     "tools/qa_budgets.py": "366489c1b00637ca45ee1eb20840c9235648488c404c6fe418501e0d2d025694",
     "tools/qa_locale.py": "a46a7105622cb23629465e7051ce0b3492fdc7bc7f67f3ba88cd144e1d79fa9a",
@@ -490,6 +490,7 @@
     "docs/BYBIT_WAL_OWNER_QA_20261115.json": "7ed7eae46817239e87dd8b485cf748f24d0f80ab2823d18ab1842be8a3583bcf",
     "docs/WINDOWS_BYBIT_LONG_ACCEPTANCE_20261115.json": "13b90be082d5fbc4eb885fd6aadce5d02a5f928ab8f2db214e2b2586367c204b",
     "docs/BYBIT_NATIVE_QA_REPLAY_20261116.json": "cd27e95a63576a0e1924d86affcf7fce1357f832db6181b143b2cf357c7028d9",
-    "docs/BYBIT_NATIVE_QA_REPLAY_CHECKPOINT_20261116.md": "cef3abe29d579a4cb87c8ae2eb4fbcd328e42f5e99ab04cfed0a353b88b89c24"
+    "docs/BYBIT_NATIVE_QA_REPLAY_CHECKPOINT_20261116.md": "cef3abe29d579a4cb87c8ae2eb4fbcd328e42f5e99ab04cfed0a353b88b89c24",
+    "tests/test_ws_atomic_publication_batch.py": "f8092a875f761093a6b19316c7b34b1067aab67f341b568796abfe99d7e7d35c"
   }
 }

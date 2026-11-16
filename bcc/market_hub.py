@@ -720,12 +720,8 @@ class MarketDataHub:
             self.registry.prune_expired()
             self._prune_due = now + 30.0
 
-    def publish_ws_event(self, kind, symbol):
-        """Publish one verified stream event without a per-symbol GET poll.
-
-        An independent SQL transaction checks leader, active subscription,
-        provider fence and cache publication as one atomic decision.
-        """
+    def _prepare_ws_event(self, kind, symbol):
+        """Capture independently timed stream evidence without network or SQL."""
         from .ws_quotes import StreamUnavailable
         from .market_clock import market_now
         if not self._leader_held or not self._leader_token:
@@ -855,19 +851,34 @@ class MarketDataHub:
                 ttl = 1.5
         except (StreamUnavailable, ValueError, KeyError, TypeError):
             return False
+        return dict(url=url, params=params,
+                    host=("clob.polymarket.com" if kind == "polybook"
+                          else "api.binance.com" if kind == "binance_trade"
+                          else "api.bybit.com"), value=value, ttl=ttl)
+
+    def publish_ws_event(self, kind, symbol):
+        return self.publish_ws_events([(kind, symbol)])[0]
+
+    def publish_ws_events(self, events):
+        """Read latest stream states, then publish one bounded SQLite cohort."""
+        if type(events) not in (list, tuple) or len(events) > 64:
+            raise ValueError("Invalid WS event batch")
+        # Bind preparation and commit to the same producer incarnation.
+        token = self._leader_token
+        prepared = [self._prepare_ws_event(kind, symbol) for kind, symbol in events]
+        valid = [(index, row) for index, row in enumerate(prepared) if row]
+        result = [False] * len(events)
+        if not valid or not token or token != self._leader_token:
+            return result
         from .data_cache import CacheBusy
         try:
-            return self.source.shared.publish_websocket(
-                url, params,
-                "clob.polymarket.com" if kind == "polybook"
-                else "api.binance.com" if kind == "binance_trade"
-                else "api.bybit.com",
-                value, ttl=ttl,
-                leader_owner=self.owner, leader_token=self._leader_token,
-            )
+            outcomes = self.source.shared.publish_websockets(
+                [row for _, row in valid], leader_owner=self.owner, leader_token=token)
         except CacheBusy:
-            # Queue worker may retry a newer event on the next receipt.
-            return False
+            return result
+        for (index, _), outcome in zip(valid, outcomes):
+            result[index] = outcome
+        return result
 
     def _websocket_queue_exclusions(self):
         routes = []
