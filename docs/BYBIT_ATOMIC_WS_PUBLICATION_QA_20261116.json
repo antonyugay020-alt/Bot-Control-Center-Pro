@@ -1,0 +1,454 @@
+{
+  "schema": 1,
+  "baseline_commit": "049f5953f08a22cfecdf4cc3746c9d197000500f",
+  "implementation_commit": "2ed573e58a83125eed3852eb049dc52f9be22a1b",
+  "source_fingerprint": "459b285517bac6e82ab7ae6e62a7c86d0438f7dbb8ec0fc8988190a013923160",
+  "tested_source_integrity": {
+    "status": "PASS",
+    "verified_files": 491,
+    "checkpoint": "BCC_BYBIT_ATOMIC_WS_PUBLICATION_20261116_NOT_RELEASE",
+    "manifest_sha256": "3f64a97afdaf4cf4312394d7cd2d202dc13a995a833d6bc2589a9c0471d4fa8c"
+  },
+  "native_received": {
+    "schema": 1,
+    "archive": "BCC_CURRENT_REPORT_20261116_154500.zip",
+    "archive_sha256": "d654cf59f9d23e0545986126981227dbe21d5e74468e493a9bbf01aff3425c1a",
+    "source_commit": "049f5953f08a22cfecdf4cc3746c9d197000500f",
+    "source_fingerprint": "38acfe1fe0678485c33fc9c10b7228cd4a8b5df05c2b6f4c7d4bb2cc018cf7e9",
+    "source_integrity": {
+      "status": "PASS",
+      "verified_files": 490,
+      "checkpoint": "BCC_BYBIT_DETERMINISTIC_NATIVE_QA_20261115_NOT_RELEASE",
+      "manifest_sha256": "3081dacd3205355228b2495fe9b4040b096579c290803a7fac537870fd444025"
+    },
+    "at_source_utc": "2026-11-16T10:45:11.027250+00:00",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "worker_status": "RUNNING",
+    "open_positions": 43,
+    "held_symbols": 28,
+    "configured_symbols": 821,
+    "diagnostic_symbols": 246,
+    "fills": {
+      "OPEN": 48,
+      "CLOSE": 5,
+      "DCA": 3
+    },
+    "fill_freshness": {
+      "status": "PASS",
+      "examined_fills": 56,
+      "with_age_evidence": 56,
+      "without_age_evidence": 0,
+      "invalid_event_ids": [],
+      "maximum_age_upper": 1.98952054977417
+    },
+    "ledger_collector": "AUDIT_PASS",
+    "independent_copied_ledger_audit": "PASS",
+    "observation_age_reference": "Latest saved monotonic receipt in this account; not future availability and not ZIP completion time",
+    "saved_observations": [
+      {
+        "symbol": "0GUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.47025537490844727,
+        "mark_age_upper_at_latest_saved_observation": 2.2812275018077344
+      },
+      {
+        "symbol": "1000000MOGUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.1092278431169689,
+        "mark_age_upper_at_latest_saved_observation": 2.1482278015464544
+      },
+      {
+        "symbol": "1000BONKUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.8512281060684472,
+        "mark_age_upper_at_latest_saved_observation": 1.468227701378055
+      },
+      {
+        "symbol": "1000CATUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.8072281866334379,
+        "mark_age_upper_at_latest_saved_observation": 2.6532277645310387
+      },
+      {
+        "symbol": "1000TOSHIUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.6992277797544375,
+        "mark_age_upper_at_latest_saved_observation": 1.6992278503021225
+      },
+      {
+        "symbol": "AAPLUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.7632280661491677,
+        "mark_age_upper_at_latest_saved_observation": 2.6102277687750757
+      },
+      {
+        "symbol": "AAVEUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.6902278334600851,
+        "mark_age_upper_at_latest_saved_observation": 1.4722272099461406
+      },
+      {
+        "symbol": "ABBVUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.3942281126510352,
+        "mark_age_upper_at_latest_saved_observation": 2.9962277981685475
+      },
+      {
+        "symbol": "ACEUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.7052282276563346,
+        "mark_age_upper_at_latest_saved_observation": 1.6932275220751762
+      },
+      {
+        "symbol": "ACUUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.7482279398245737,
+        "mark_age_upper_at_latest_saved_observation": 3.066227764240466
+      },
+      {
+        "symbol": "AEVOUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.0622279989765957,
+        "mark_age_upper_at_latest_saved_observation": 1.2142279633553699
+      },
+      {
+        "symbol": "AGPUUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.897228166460991,
+        "mark_age_upper_at_latest_saved_observation": 3.0472278747474775
+      },
+      {
+        "symbol": "AIXBTUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.9812281297054142,
+        "mark_age_upper_at_latest_saved_observation": 1.7042277599684894
+      },
+      {
+        "symbol": "AKEUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.6932280753972009,
+        "mark_age_upper_at_latest_saved_observation": 0.8072278138715774
+      },
+      {
+        "symbol": "ALICEUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.0622279244707897,
+        "mark_age_upper_at_latest_saved_observation": 2.299227721989155
+      },
+      {
+        "symbol": "AMGNUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.5242280854145065,
+        "mark_age_upper_at_latest_saved_observation": 1.69222779921256
+      },
+      {
+        "symbol": "AMZNUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.2272281835321337,
+        "mark_age_upper_at_latest_saved_observation": 3.0792281730100513
+      },
+      {
+        "symbol": "APEUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.7172281608218327,
+        "mark_age_upper_at_latest_saved_observation": 0.8082278623478487
+      },
+      {
+        "symbol": "APEXUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.2282280235085636,
+        "mark_age_upper_at_latest_saved_observation": 3.0402278958354145
+      },
+      {
+        "symbol": "ARKKUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.3422280885279179,
+        "mark_age_upper_at_latest_saved_observation": 1.9032278249505907
+      },
+      {
+        "symbol": "ARKMUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.7532279081642628,
+        "mark_age_upper_at_latest_saved_observation": 3.078183483099565
+      },
+      {
+        "symbol": "ARMUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.1402278982568532,
+        "mark_age_upper_at_latest_saved_observation": 3.078227711142972
+      },
+      {
+        "symbol": "ASMLUSDT",
+        "book_age_upper_at_latest_saved_observation": 1.3702281236182898,
+        "mark_age_upper_at_latest_saved_observation": 1.8132278576958925
+      },
+      {
+        "symbol": "ASTERUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.7222281894646585,
+        "mark_age_upper_at_latest_saved_observation": 2.080227914848365
+      },
+      {
+        "symbol": "BARDUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.894227865501307,
+        "mark_age_upper_at_latest_saved_observation": 2.2782277510268614
+      },
+      {
+        "symbol": "BERAUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.8142279632156715,
+        "mark_age_upper_at_latest_saved_observation": 2.1542277452535927
+      },
+      {
+        "symbol": "BTCUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.6862280253553763,
+        "mark_age_upper_at_latest_saved_observation": 2.335227744653821
+      },
+      {
+        "symbol": "ETHUSDT",
+        "book_age_upper_at_latest_saved_observation": 0.6852280425373465,
+        "mark_age_upper_at_latest_saved_observation": 1.2732278367038816
+      }
+    ],
+    "last_worker_performance": {
+      "processed": 1483,
+      "refreshed": 5,
+      "data_errors": 6,
+      "last_tick_ms": 301.161,
+      "cohort_commits": 581,
+      "deferred_refreshes": 5,
+      "cached_book_refreshes": 1471,
+      "risk_metadata_ticks": 46,
+      "risk_metadata_errors": 0,
+      "max_tick_ms": 1099.3,
+      "cache": {
+        "connections": 1,
+        "operations": 1,
+        "local_busy": 0,
+        "sqlite_busy": 0,
+        "read_connections": 1,
+        "read_operations": 46749,
+        "read_local_busy": 2
+      }
+    },
+    "hub_queue": {
+      "max_critical_wait_seconds": 0.748,
+      "max_wait_seconds": 1.501,
+      "dropped_notifications": 0
+    },
+    "account_cross_error_counts": {
+      "Устарел mark-price ABBVUSDT": 43
+    },
+    "manual_acceptance": "NOT_CONFIRMED",
+    "full_windows_automated_result": "NOT_INCLUDED_IN_CURRENT_REPORT",
+    "release_ready": false
+  },
+  "platform": "Linux Python 3.12.14 / pytest 9.2.0 / Qt offscreen",
+  "regression": {
+    "tests": 3892,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "inventory_count": 3892,
+    "status": "PASS",
+    "shards": [
+      {
+        "name": "shard_00",
+        "status": "PASS",
+        "seconds": 5.392,
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_01",
+        "status": "PASS",
+        "seconds": 41.04,
+        "totals": {
+          "tests": 648,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_02",
+        "status": "PASS",
+        "seconds": 90.699,
+        "totals": {
+          "tests": 647,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_03",
+        "status": "PASS",
+        "seconds": 33.755,
+        "totals": {
+          "tests": 647,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_04",
+        "status": "PASS",
+        "seconds": 38.248,
+        "totals": {
+          "tests": 647,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_05",
+        "status": "PASS",
+        "seconds": 50.398,
+        "totals": {
+          "tests": 647,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_06",
+        "status": "PASS",
+        "seconds": 20.115,
+        "totals": {
+          "tests": 647,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_07",
+        "status": "PASS",
+        "seconds": 8.775,
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ],
+    "junit_sha256": "8a60b481152b352fa94597ade8f37a9ebabe9e3eb82e358a8872a7f287c1f178",
+    "inventory_sha256": "ee4a87230ec1576bbba321e30ea4178fc13474f6e71457e3d15280f74893d8af"
+  },
+  "new_cases": 7,
+  "targeted": {
+    "passed": 62,
+    "log_sha256": "045ac60527f7c8c6d9947b0f7fc50ca41badc7decfb4560090d590cf98a190ca"
+  },
+  "negative_singleton_publication": {
+    "status": "EXPECTED_FAILURE",
+    "reason": "56 commits violate the one-cohort atomic publication contract",
+    "log_sha256": "075ee0715648180e4713f010113dd118c41b82bf16ab9d66e39f0a54104ac266"
+  },
+  "publication_cost_simulation": [
+    {
+      "mode": "one_event_per_transaction",
+      "injected_writer_delay_seconds": 0,
+      "elapsed_seconds": 0.011402439002267784,
+      "commits": 56,
+      "accepted": 56,
+      "fresh_marks_at_cohort_completion": 28,
+      "expected_marks": 28,
+      "simulation": true
+    },
+    {
+      "mode": "one_event_per_transaction",
+      "injected_writer_delay_seconds": 0.04,
+      "elapsed_seconds": 2.0318313339994347,
+      "commits": 50,
+      "accepted": 50,
+      "fresh_marks_at_cohort_completion": 15,
+      "expected_marks": 28,
+      "simulation": true
+    },
+    {
+      "mode": "bounded_cohort",
+      "injected_writer_delay_seconds": 0,
+      "elapsed_seconds": 0.002747174999967683,
+      "commits": 1,
+      "accepted": 56,
+      "fresh_marks_at_cohort_completion": 28,
+      "expected_marks": 28,
+      "simulation": true
+    },
+    {
+      "mode": "bounded_cohort",
+      "injected_writer_delay_seconds": 0.04,
+      "elapsed_seconds": 0.0424023630002921,
+      "commits": 1,
+      "accepted": 56,
+      "fresh_marks_at_cohort_completion": 28,
+      "expected_marks": 28,
+      "simulation": true
+    }
+  ],
+  "public_ws": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "rounds": 120,
+    "paired_reads": 1200,
+    "steady_state_max_seconds": 1.11,
+    "owned_hub_retired": true,
+    "report_sha256": "a1244bcfed96783abefb324eb92bf9be4d68da7030fe62ceaa01938ecf85e532"
+  },
+  "public_28_symbol_ws": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "rounds": 24,
+    "paired_reads": 672,
+    "steady_state_max_seconds": 0.613,
+    "owned_hub_retired": true,
+    "report_sha256": "0a25809529e7bb9b4e6c2b0ce8840d07b6d139c4239537d7f1949766a9369b46"
+  },
+  "public_retained_portfolio": {
+    "status": "PASS_FOR_MEASURED_WINDOW",
+    "cohorts": 120,
+    "complete": 120,
+    "interval_seconds": 0.25,
+    "held_symbols": 28,
+    "original_freshness_retained": true,
+    "scope": "Read-only client retention matching worker rules, no orders or strategy account, Linux only",
+    "baseline_complete": 117,
+    "baseline_total": 120,
+    "causal_performance_comparison": false,
+    "report_sha256": "5c6686caded38bbb9bf9a2ad1347908933b0453b9526c62311e8bada550945f4",
+    "baseline_report_sha256": "d90c31d8a5bf69340b95034249449ed6ae7b852004e4eea1e8e425d731501ea4",
+    "script_sha256": "8ebce8f4cfe5c86dc2dd7a86e08f00722fc1d3f8de7c7a680e647848feb3266d"
+  },
+  "real_owned_hub_restart": {
+    "status": "PASS",
+    "expired_cache_rejected": true,
+    "original_exchange_timestamps_advance": true,
+    "persistent_reader_reused": true,
+    "owned_cleanup": true,
+    "report_sha256": "79aae99123666a28497ccfafd36ab6986b0809d514117dda573502f52282590a"
+  },
+  "qt": {
+    "status": "PASS",
+    "native_windows": false,
+    "report_sha256": "5827179c1522ddaccbc7e37b4c58c57f7cd003ff5e42ffe0e89d0c2e4b987896"
+  },
+  "rejected_recovery_experiment": {
+    "shipped": false,
+    "source_fingerprint": "75198c1160f25691ff55fff5d4968c1e74174e02900d843980c5f0d241d96f89",
+    "change": "Wait up to 1.5 seconds before repeating a recovery subscription, releasing early on a newer mark",
+    "targeted_passed": 37,
+    "real_retained_cohorts_complete": 25,
+    "total": 120,
+    "reason": "Live portfolio continuity worsened despite passing deterministic tests; entire experiment reverted before commit",
+    "report_sha256": "323d9ff84628512fb7ff504dc51d045f33b3ed845ea42e537265a72624a1e782",
+    "patch_sha256": "3df764eb3d5a8b64f94c97f238548378eff65bc261d8748e841cb9e653e0fcac",
+    "full_regression": {
+      "tests": 3894,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "public_ws_status": "PUBLIC_WS_DELIVERY_INCOMPLETE",
+    "public_ws_passed_reads": 1198
+  },
+  "exploratory_cache_only_measurements": {
+    "baseline_complete": 78,
+    "batch_complete": 71,
+    "total": 120,
+    "interpretation": "Raw cache completeness does not model retained owner evidence; replaced by the retained-portfolio probe. Not a worker continuity PASS."
+  },
+  "discarded_live_trial": {
+    "reason": "Source-seal check rejected a working-tree diagnostic run after a docstring edit; no PASS credited",
+    "log_sha256": "bc470b14e1e49d6790d06c8f002a3cf8515efcdcc70cfa22db508c0c3937bfeb"
+  },
+  "compileall": "PASS",
+  "diff_whitespace": "PASS",
+  "source_manifest": "PASS",
+  "new_windows_acceptance": "UNRUN",
+  "release_ready": false,
+  "repeated_upload_identical": true
+}
