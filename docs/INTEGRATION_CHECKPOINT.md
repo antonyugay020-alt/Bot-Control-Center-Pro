@@ -1,4 +1,4 @@
-> Latest Bybit integration and operator evidence: [BYBIT_WAL_OWNER_CHECKPOINT_20261115.md](BYBIT_WAL_OWNER_CHECKPOINT_20261115.md). Earlier notes below are historical, not current acceptance status.
+> Latest Bybit integration and operator evidence: [BYBIT_NATIVE_QA_REPLAY_CHECKPOINT_20261116.md](BYBIT_NATIVE_QA_REPLAY_CHECKPOINT_20261116.md). Earlier notes below are historical, not current acceptance status.
 
 # Controlled integration checkpoint — 2026-11-12
 

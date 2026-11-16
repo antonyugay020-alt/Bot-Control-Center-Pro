@@ -1,0 +1,279 @@
+{
+  "schema": 1,
+  "baseline_commit": "52c6ac6461757ce38d19021f48130b0f770d6d1f",
+  "implementation_commit": "fb1a0fbd2cedd1722a51dba702938676f852530e",
+  "source_fingerprint": "38acfe1fe0678485c33fc9c10b7228cd4a8b5df05c2b6f4c7d4bb2cc018cf7e9",
+  "production_code_changed": false,
+  "scope": "Offline replay isolation and deterministic concurrency acceptance; production clock and freshness rules unchanged",
+  "native_received": {
+    "schema": 1,
+    "source_commit": "52c6ac6461757ce38d19021f48130b0f770d6d1f",
+    "source_fingerprint": "8efa811b9db4c2d2af6cc800daa90b5134cb504792735e7c40217b157ce6dd18",
+    "archive": "BCC_VALIDATION_RESULTS_20261115_213916_212228.zip",
+    "archive_sha256": "f600420dd1826dfc1782c1e14eef1853c789e391dc30116481963f8287ab5b61",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.14.8 (tags/v3.14.8:8e6e75d, Sep 30 2026, 18:19:33) [MSC v.1944 64 bit (AMD64)]",
+    "started": "2026-11-15T21:39:16.212874+05:00",
+    "finished": "2026-11-15T21:52:49.860531+05:00",
+    "source_integrity": {
+      "status": "PASS",
+      "verified_files": 488,
+      "checkpoint": "BCC_BYBIT_WAL_READER_OWNER_RECOVERY_20261115_NOT_RELEASE",
+      "manifest_sha256": "913d7a3863350387f2d91ac2e40986de2aed207a0995fde124c9ebbccc12d5fa"
+    },
+    "source_integrity_final": {
+      "status": "PASS",
+      "verified_files": 488,
+      "checkpoint": "BCC_BYBIT_WAL_READER_OWNER_RECOVERY_20261115_NOT_RELEASE",
+      "manifest_sha256": "913d7a3863350387f2d91ac2e40986de2aed207a0995fde124c9ebbccc12d5fa"
+    },
+    "status": "AUTOMATED_FAILED",
+    "totals": {
+      "tests": 3884,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 5
+    },
+    "passed": 3877,
+    "exact_inventory": 3884,
+    "inventory_sha256": "06aba71f44fd922de5207d726d399ce5a46ee4bbeeddd4492e45f37d617b1e37",
+    "junit_sha256": "a683db552e1abcea992b570fd2e1d39791013636d067c377d4fd85629340f7f3",
+    "failed_cases": [
+      {
+        "module": "tests.test_process",
+        "name": "test_stop_during_startup_is_not_erased_and_old_request_does_not_block_restart"
+      },
+      {
+        "module": "tests.test_w5_end_to_end_market_pipeline",
+        "name": "test_slow_regular_request_cannot_hold_urgent_position_mark_batch"
+      }
+    ],
+    "new_wal_owner_cases": [
+      {
+        "module": "tests.test_full_state_validation_recovery",
+        "name": "test_nested_mutation_is_revalidated_and_rolled_back_after_full_scan[secret]",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_full_state_validation_recovery",
+        "name": "test_nested_mutation_is_revalidated_and_rolled_back_after_full_scan[nan]",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_full_state_validation_recovery",
+        "name": "test_nested_mutation_is_revalidated_and_rolled_back_after_full_scan[positive_inf]",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_full_state_validation_recovery",
+        "name": "test_nested_mutation_is_revalidated_and_rolled_back_after_full_scan[negative_inf]",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_full_state_validation_recovery",
+        "name": "test_nested_mutation_is_revalidated_and_rolled_back_after_full_scan[depth]",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_full_state_validation_recovery",
+        "name": "test_finite_receipts_cannot_commit_an_overflowed_derived_realized_sum",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_full_state_validation_recovery",
+        "name": "test_current_health_recovers_per_symbol_channel_without_erasing_error_history",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_full_state_validation_recovery",
+        "name": "test_real_worker_publishes_recovery_instead_of_a_sticky_historical_warning",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_wal_reader_isolation",
+        "name": "test_committed_reads_and_policy_checks_bypass_a_blocked_local_writer",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_wal_reader_isolation",
+        "name": "test_read_only_lane_preserves_committed_denial_and_actual_expiry",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_wal_reader_isolation",
+        "name": "test_reader_cannot_write_and_closes_all_native_handles",
+        "status": "PASS"
+      }
+    ],
+    "live_ws": "NOT_RUN: regression failed before this stage",
+    "gui_stage": "NOT_RUN: regression failed before this stage",
+    "public_health": "NOT_RUN: regression failed before this stage",
+    "manual_acceptance": "NOT_CONFIRMED",
+    "release_ready": false
+  },
+  "tested_source_integrity": {
+    "status": "PASS",
+    "verified_files": 488,
+    "checkpoint": "BCC_BYBIT_DETERMINISTIC_NATIVE_QA_20261115_NOT_RELEASE",
+    "manifest_sha256": "c697ff59af106ed63b3ecde67f9c16fa8549bd64cf556712bb85d3036ad6e9c9"
+  },
+  "local_platform": "Linux Python 3.12.14 / pytest 9.2.0 / Qt offscreen",
+  "full_regression": {
+    "tests": 3885,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "status": "PASS",
+    "inventory_count": 3885,
+    "shards": [
+      {
+        "name": "shard_00",
+        "status": "PASS",
+        "seconds": 5.31,
+        "timeout": 360,
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_01",
+        "status": "PASS",
+        "seconds": 21.833,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_02",
+        "status": "PASS",
+        "seconds": 99.65,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_03",
+        "status": "PASS",
+        "seconds": 35.868,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_04",
+        "status": "PASS",
+        "seconds": 44.694,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_05",
+        "status": "PASS",
+        "seconds": 35.667,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_06",
+        "status": "PASS",
+        "seconds": 27.025,
+        "timeout": 360,
+        "totals": {
+          "tests": 646,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_07",
+        "status": "PASS",
+        "seconds": 8.535,
+        "timeout": 600,
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ],
+    "junit_sha256": "012b8c0f997ee7e4a8c076dc531130e1d8fab0cf35aaa6ff0d82ef530e20b523",
+    "inventory_sha256": "502d13e9f135acde44f9777b98d071b3cda206f0d401b70292b0d05e871b135c"
+  },
+  "targeted": {
+    "passed": 29,
+    "log_sha256": "df6727d5650428a4a85cc6f426229379f37061fc26555a5850611b11013bae43"
+  },
+  "network_forbidden_process_regression": {
+    "passed": 6,
+    "log_sha256": "54c8bb9b14c042bd51ca11292df6a8018baba4385cfab67a867cdff21f50e4fc"
+  },
+  "negative_controls": {
+    "baseline_replay": "EXPECTED FAIL: attempts unused live Hub spawn",
+    "baseline_log_sha256": "1c070b3a29b049dbc38ca7a425bd455ed25fbae445a8f9e177e87691aca5ab8e",
+    "serialized_scheduler": "EXPECTED FAIL: both normal and slow owner variants reject urgent batch stalled behind background request",
+    "scheduler_log_sha256": "89b09e8baadf5e6b3aa344010c5fbaeffa5158e065aa9da39a7f49831a0115f5"
+  },
+  "live_ws": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "rounds": 120,
+    "paired_book_and_independent_mark_reads": 1200,
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT",
+      "ADAUSDT",
+      "LINKUSDT",
+      "AVAXUSDT",
+      "AUSDT",
+      "4USDT"
+    ],
+    "steady_state_max_seconds": 0.728,
+    "isolated_hub_retired": true,
+    "report_sha256": "6e0c4737af5b236e71f4e2aa792e79d28e57c2fde10434a002bc34d1488ca458",
+    "clock_quorum": [
+      "Bitget",
+      "OKX"
+    ],
+    "real_orders": false
+  },
+  "qt": {
+    "status": "PASS",
+    "native_windows": false,
+    "report_sha256": "5827179c1522ddaccbc7e37b4c58c57f7cd003ff5e42ffe0e89d0c2e4b987896"
+  },
+  "compileall": "PASS",
+  "manifest": "PASS",
+  "diff_whitespace": "PASS",
+  "new_native_qa": "UNRUN",
+  "manual_windows_acceptance": "NOT_CONFIRMED",
+  "release_ready": false
+}
