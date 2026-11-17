@@ -1,0 +1,253 @@
+{
+  "schema": 1,
+  "baseline_commit": "782a92955b02559d8b986f77e6d4a2e7c2d590d8",
+  "implementation_commit": "90dc70a1180189c456fb338658b707b262739f38",
+  "source_fingerprint": "cc02c5fec8302e2530d749f3ecf53b72464e11f3d5b6de0f2c05e958fa6c8cda",
+  "production_modules_changed": false,
+  "scope": "Shared offline replay boundary and whole-suite prevention of unintended public WS Hub startup",
+  "native_received": {
+    "schema": 1,
+    "source_commit": "782a92955b02559d8b986f77e6d4a2e7c2d590d8",
+    "source_fingerprint": "459b285517bac6e82ab7ae6e62a7c86d0438f7dbb8ec0fc8988190a013923160",
+    "source_integrity": {
+      "status": "PASS",
+      "verified_files": 493,
+      "checkpoint": "BCC_BYBIT_ATOMIC_WS_PUBLICATION_20261116_NOT_RELEASE",
+      "manifest_sha256": "6b7d7018d5260e6c0ff5703f85eca60bf3e5c04e14894dc30ffed48409c4fe0f"
+    },
+    "source_integrity_final": {
+      "status": "PASS",
+      "verified_files": 493,
+      "checkpoint": "BCC_BYBIT_ATOMIC_WS_PUBLICATION_20261116_NOT_RELEASE",
+      "manifest_sha256": "6b7d7018d5260e6c0ff5703f85eca60bf3e5c04e14894dc30ffed48409c4fe0f"
+    },
+    "archive": "BCC_VALIDATION_RESULTS_20261116_203458_548689.zip",
+    "archive_sha256": "6dade923bc2a387511b1a6fa703e512d6642859dd6c38a66c62df13a75f2319a",
+    "repeated_upload_identical": true,
+    "started": "2026-11-16T20:34:58.549362+05:00",
+    "finished": "2026-11-16T20:48:14.123254+05:00",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.14.8 (tags/v3.14.8:8e6e75d, Sep 30 2026, 18:19:33) [MSC v.1944 64 bit (AMD64)]",
+    "status": "AUTOMATED_FAILED",
+    "test_totals": {
+      "tests": 3892,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 5
+    },
+    "passed": 3886,
+    "exact_inventory": 3892,
+    "junit_sha256": "9a2e1ad62a509a8aeecd29d3add1d410df4cac6e7dbcbfc0446e1abc6b8e2930",
+    "inventory_sha256": "8aaaeb0b1fead25468ffb0a76d4d93a394de3cb9794ce2d57d63834d95171928",
+    "failures": [
+      {
+        "module": "tests.test_launch_handshake",
+        "name": "test_worker_constructor_error_is_reported_and_retry_is_safe"
+      }
+    ],
+    "skipped": [
+      {
+        "module": "tests.test_r611_qa_process_integrity",
+        "name": "test_timeout_kills_descendant_process_group",
+        "reason": "POSIX process groups are tested here; Windows taskkill requires native test"
+      },
+      {
+        "module": "tests.test_r611_qa_process_integrity",
+        "name": "test_successful_exit_with_live_child_cannot_pass",
+        "reason": "POSIX process-group orphan check"
+      },
+      {
+        "module": "tests.test_r611_qa_process_integrity",
+        "name": "test_successful_exit_without_children_is_still_allowed",
+        "reason": "POSIX process-group orphan check"
+      },
+      {
+        "module": "tests.test_r611_qa_process_integrity",
+        "name": "test_successful_exit_with_detached_paper_child_cannot_pass",
+        "reason": "POSIX demonstration of detached child"
+      },
+      {
+        "module": "tests.test_r70_source_integrity",
+        "name": "test_linked_directory_inside_package_is_rejected",
+        "reason": "Symlinks not available"
+      }
+    ],
+    "new_atomic_publication_cases": [
+      {
+        "module": "tests.test_ws_atomic_publication_batch",
+        "name": "test_28_held_symbols_publish_atomically_with_one_commit_and_independent_clocks",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_ws_atomic_publication_batch",
+        "name": "test_batch_keeps_durable_admission_fences[leader]",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_ws_atomic_publication_batch",
+        "name": "test_batch_keeps_durable_admission_fences[subscription]",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_ws_atomic_publication_batch",
+        "name": "test_batch_keeps_durable_admission_fences[denial]",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_ws_atomic_publication_batch",
+        "name": "test_one_bad_payload_or_sql_failure_cannot_partially_publish_a_batch",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_ws_atomic_publication_batch",
+        "name": "test_missing_mark_does_not_hide_other_symbols_or_fabricate_collateral",
+        "status": "PASS"
+      },
+      {
+        "module": "tests.test_ws_atomic_publication_batch",
+        "name": "test_queue_batch_preserves_fair_order_coalescing_and_bound",
+        "status": "PASS"
+      }
+    ],
+    "failure_classification": "Offline replay unexpectedly started a real public WS Hub; independent public UTC quorum was unavailable before the intended worker constructor error could be tested.",
+    "public_ws": "NOT_RUN: earlier regression failure",
+    "gui_acceptance_stage": "NOT_RUN: earlier regression failure",
+    "public_health": "NOT_RUN: earlier regression failure",
+    "manual_acceptance": "NOT_CONFIRMED",
+    "release_ready": false
+  },
+  "tested_source_integrity": {
+    "status": "PASS",
+    "verified_files": 494,
+    "checkpoint": "BCC_BYBIT_OFFLINE_LAUNCH_BOUNDARY_20261117_NOT_RELEASE",
+    "manifest_sha256": "594450b82824680d6fd8864a3d36ccfeb9106e8b7b36f4f3f9ebfe22d5d8a22e"
+  },
+  "platform": "Linux Python 3.12.14 / pytest 9.2.0 / Qt offscreen",
+  "regression": {
+    "tests": 3893,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "status": "PASS",
+    "inventory_count": 3893,
+    "shards": [
+      {
+        "name": "shard_00",
+        "status": "PASS",
+        "seconds": 5.748,
+        "totals": {
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_01",
+        "status": "PASS",
+        "seconds": 37.931,
+        "totals": {
+          "tests": 648,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_02",
+        "status": "PASS",
+        "seconds": 77.77,
+        "totals": {
+          "tests": 648,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_03",
+        "status": "PASS",
+        "seconds": 22.902,
+        "totals": {
+          "tests": 647,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_04",
+        "status": "PASS",
+        "seconds": 46.846,
+        "totals": {
+          "tests": 647,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_05",
+        "status": "PASS",
+        "seconds": 48.55,
+        "totals": {
+          "tests": 647,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_06",
+        "status": "PASS",
+        "seconds": 20.14,
+        "totals": {
+          "tests": 647,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "shard_07",
+        "status": "PASS",
+        "seconds": 9.067,
+        "totals": {
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ],
+    "junit_sha256": "6dd2bb51da48a80b752c8d3502d480baf5f2fa0b6af63c0d976fb571d4a2af1e",
+    "inventory_sha256": "96fb70cd57ab26857e40294f4fc272a70b0554610bbdf6e0dc0d19a207e48529"
+  },
+  "targeted": {
+    "passed": 22,
+    "log_sha256": "7a0e0e8f93351e7710cc9522888178a199c9e55a930331f347888c263dd9a7c8"
+  },
+  "negative_controls": {
+    "baseline": "Both previously network-dependent launch-handshake cases fail immediately under the new public Hub guard, before any external process is launched",
+    "expected_failures": 2,
+    "log_sha256": "b202eda19181ac3633f9b13c553ca1c26760e341b6b3b96b78a0184456e36ea5"
+  },
+  "public_ws": {
+    "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+    "rounds": 120,
+    "paired_reads": 1200,
+    "steady_state_max_seconds": 0.909,
+    "owned_hub_retired": true,
+    "report_sha256": "ac2c8edc41e535b5c4ecd1818e675d717b37cc81189aff0645dd9e60e581b9c6"
+  },
+  "qt": {
+    "status": "PASS",
+    "native_windows": false,
+    "report_sha256": "5827179c1522ddaccbc7e37b4c58c57f7cd003ff5e42ffe0e89d0c2e4b987896"
+  },
+  "compileall": "PASS",
+  "source_integrity": "PASS",
+  "diff_whitespace": "PASS",
+  "new_native_acceptance": "UNRUN",
+  "release_ready": false
+}

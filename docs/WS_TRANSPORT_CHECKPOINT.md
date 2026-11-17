@@ -1,4 +1,4 @@
-> Latest Bybit integration and operator evidence: [BYBIT_ATOMIC_WS_PUBLICATION_CHECKPOINT_20261116.md](BYBIT_ATOMIC_WS_PUBLICATION_CHECKPOINT_20261116.md). Earlier notes below are historical, not current acceptance status.
+> Latest Bybit integration and operator evidence: [BYBIT_OFFLINE_BOUNDARY_CHECKPOINT_20261117.md](BYBIT_OFFLINE_BOUNDARY_CHECKPOINT_20261117.md). Earlier notes below are historical, not current acceptance status.
 
 # BCC WebSocket integration — isolated branch checkpoint
 
