@@ -121,3 +121,32 @@ The client suppresses the response body for non-200 HTTP statuses,
 so the screenshot and repository alone cannot distinguish provider
 outage, upstream gateway failure or rejected payload/account.
 A new paid test requires NEW explicit user approval and reconciled billing.
+
+
+## KIE_PROVIDER_LOG_RECONCILIATION — 2026-11-17
+
+User supplied a screenshot of the authenticated Kie.ai Logs page for the
+same attempt, timestamp 2026-11-17 23:37:42 (user's local UTC+5).
+
+Provider-visible evidence:
+- Model: claude-sonnet-5-5.
+- Request status: error.
+- Result type: error, nested error type: api_error.
+- Result message: "Internal error, please try again later".
+- Credits used displayed by Kie.ai Logs: **0**.
+- Windows client received HTTP 502 and did not receive a Claude completion.
+
+Interpretation: The request is recorded on Kie.ai and its own log shows zero
+credits consumed for this row. This supports no charge for that request in the
+log, but is not an independently audited billing statement. The exact internal
+cause of the gateway failure is unknown and cannot be established from
+these two screenshots. The saved key is present locally; success of the API
+credential and the model response is still NOT verified.
+
+The local $0.01 reservation is a HOLD, not a provider debit. Do not
+silently delete, rewrite, or bypass the one-time ledger record. Reconcile it
+only using a reviewed, read-only provider billing statement and an
+explicitly controlled ledger settlement procedure. Do not retry the spent
+authorization or make additional paid calls. The BCC agent stays disabled
+for live Claude calls, and other repositories/trading systems remain
+untouched.
