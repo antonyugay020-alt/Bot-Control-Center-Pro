@@ -20,11 +20,11 @@ if errorlevel 1 goto failed
 %PYTHON% -I "%ROOT%tools\bcc_kie_agent.py" mock
 if errorlevel 1 goto failed
 echo.
-echo OFFLINE CHECKS COMPLETED. No network access or paid calls.
 echo Checking Kie.ai Claude Sonnet 5.5 screenshot protocol (offline only).
 %PYTHON% -I "%ROOT%tools\bcc_kie_protocol.py"
 if errorlevel 1 goto failed
 echo.
+echo OFFLINE CHECKS COMPLETED. No network access or paid calls.
 echo Real Kie.ai server acceptance, streaming, tools and billing remain unverified.
 echo Graphify/Work integration remains disconnected.
 goto finish
