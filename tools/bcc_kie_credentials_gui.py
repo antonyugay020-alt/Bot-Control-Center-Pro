@@ -60,11 +60,21 @@ def main() -> int:
         print(f"Windows credential storage unavailable: {error}", file=sys.stderr)
         return 1
 
-    root = tk.Tk()
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        print("Could not open Tk graphical window on this desktop. No key saved.", file=sys.stderr)
+        return 2
+    print("Opening the BCC Kie.ai key window (Ctrl+V or Paste buttons).", flush=True)
     root.title("BCC — Kie.ai API key")
     root.geometry("515x290")
     root.minsize(480, 275)
     root.resizable(True, False)
+    saved_successfully = False
+    # Raise above PowerShell at startup, then relinquish topmost.
+    root.lift()
+    root.attributes("-topmost", True)
+    root.after(1600, lambda: root.attributes("-topmost", False))
     root.columnconfigure(0, weight=1)
     frame = ttk.Frame(root, padding=18)
     frame.grid(row=0, column=0, sticky="nsew")
@@ -102,6 +112,7 @@ def main() -> int:
               wraplength=465).grid(row=5, column=0, columnspan=2, sticky="w", pady=(2, 14))
 
     def save() -> None:
+        nonlocal saved_successfully
         try:
             # Confirm replacement *before* writing any new secret.
             if store.is_present():
@@ -120,6 +131,7 @@ def main() -> int:
             # Avoid leaving key characters in the UI after a save attempt.
             first.delete(0, "end")
             second.delete(0, "end")
+        saved_successfully = True
         messagebox.showinfo("Saved", "Key stored locally. No API request made.", parent=root)
         root.destroy()
 
@@ -129,6 +141,10 @@ def main() -> int:
     ttk.Button(buttons, text="Save key", command=save).pack(side="right")
     first.focus_set()
     root.mainloop()
+    if not saved_successfully:
+        print("Key entry window closed without saving a key.", flush=True)
+        return 1
+    print("Key-entry GUI confirms save completed (API remains disabled).", flush=True)
     return 0
 
 
