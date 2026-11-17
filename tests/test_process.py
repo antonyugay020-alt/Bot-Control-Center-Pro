@@ -337,7 +337,7 @@ def test_worker_stops_automatically_after_deal_when_configured(tmp_path):
 
 
 def test_stop_during_startup_is_not_erased_and_old_request_does_not_block_restart(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, replay_hub_boundary
 ):
     repo = Repository(tmp_path / "app")
     life = Lifecycle(repo)
@@ -368,17 +368,7 @@ worker.main()
         assert args[1:3] == ["-m", "bcc.worker"]
         return popen([args[0], str(runner), *args[3:]], **kwargs)
 
-    hub_requests = []
-
-    def replay_hub(root, *, bybit_ws):
-        # This child replaces PublicData with ReplayPublicData. Starting an
-        # unused live WS Hub here makes an offline stop/launch race depend on
-        # external clock providers. Keep the production capability request
-        # asserted; real Hub/clock/WS acceptance runs in its dedicated stages.
-        assert root == repo.root and bybit_ws is True
-        hub_requests.append(root)
-
-    monkeypatch.setattr("bcc.lifecycle.ensure_hub", replay_hub)
+    hub_requests = replay_hub_boundary(repo)
     monkeypatch.setattr("bcc.lifecycle.subprocess.Popen", replay_start)
     life.start(folder)
     child = life.children[str(folder)]

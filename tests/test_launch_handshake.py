@@ -113,8 +113,9 @@ def test_corrupted_claim_fails_closed(tmp_path):
             check_launch_lease(folder)
 
 
-def test_real_replay_worker_handshake_then_stop_and_restart(tmp_path, monkeypatch):
+def test_real_replay_worker_handshake_then_stop_and_restart(tmp_path, monkeypatch, replay_hub_boundary):
     repo = Repository(tmp_path / 'app')
+    hub_requests = replay_hub_boundary(repo)
     life = Lifecycle(repo)
     runner = tmp_path / 'replay_worker.py'
     runner.write_text(RUNNER, encoding='utf-8')
@@ -155,13 +156,16 @@ def test_real_replay_worker_handshake_then_stop_and_restart(tmp_path, monkeypatc
                 assert new_mark is None or old_mark is None or new_mark >= old_mark
                 assert new == old
             assert life.status(folder) == 'Остановлен'
+        assert len(hub_requests) == 2
+        assert not (repo.root / 'market_hub_process.json').exists()
     finally:
         if proc is not None and proc.poll() is None:
             proc.kill(); proc.wait(timeout=10)
 
 
-def test_worker_constructor_error_is_reported_and_retry_is_safe(tmp_path, monkeypatch):
+def test_worker_constructor_error_is_reported_and_retry_is_safe(tmp_path, monkeypatch, replay_hub_boundary):
     repo = Repository(tmp_path / 'app')
+    hub_requests = replay_hub_boundary(repo)
     folder, _ = setup_bot(repo, tmp_path / 'ignored.py', 'Startup fail')
     fail_runner = tmp_path / 'fail_worker.py'
     fail_runner.write_text('''
@@ -206,6 +210,8 @@ worker.main()
         again.stop(folder)
         recovered.wait(timeout=15)
         Store(folder).audit()
+        assert len(hub_requests) == 2
+        assert not (repo.root / 'market_hub_process.json').exists()
     finally:
         if recovered.poll() is None:
             recovered.kill()

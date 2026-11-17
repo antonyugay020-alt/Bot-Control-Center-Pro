@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_BYBIT_ATOMIC_WS_PUBLICATION_20261116_NOT_RELEASE",
+  "checkpoint": "BCC_BYBIT_OFFLINE_LAUNCH_BOUNDARY_20261117_NOT_RELEASE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -133,7 +133,7 @@
     "launch.pyw": "0002621795d45083cfe044c38121e44b7b50cffc8c415a73f542b385c18274d0",
     "requirements-dev.txt": "8636f9ab1a075be9f3039e2a6471837259c4f36b625bcaf7a3d9a1edd2419c6d",
     "requirements.txt": "5fab11db87f95a8517b0014b2ce489852b4cfce013ed006f0ec055cd734fc61d",
-    "tests/conftest.py": "fd365a8bc4add9ca329ff34623986490ece052ed3d36514869b040ff5867e5c5",
+    "tests/conftest.py": "cd14206f9dd2ef14f538d55d3468230d863640ead633e756d2c01affff492ce5",
     "tests/test_acceptance_session_system.py": "519b9fe431187d876a7e07c5a80fc215953d589e0bfdef3455ad21cc2f3f1a5a",
     "tests/test_ai_api_private_bootstrap.py": "c96ac3f389e6daa2ae6bcf4eb7263246375d6e0c39304a62be0231f695a7cac6",
     "tests/test_ai_codex_quota_routing.py": "de378b62cf40012f534a325209b9b39b90dd61528742eb414fe1cb04badfbe33",
@@ -242,7 +242,7 @@
     "tests/test_integrated_ledger_authority.py": "0d1783c5012e6bbec8e5785de19e74ad93e7d9a57358b61db3c1d5ce1eb835b3",
     "tests/test_inventory_retirement_isolation.py": "6cf344ed86b241b64ac02aa321320b38bebd6c3b60da839cec5ed1adc2b573ff",
     "tests/test_inventory_streaming_system.py": "d954e1c8c309d7071cda4e0f5ebb16fab0eae1220ae90587867abfc7eca81ffa",
-    "tests/test_launch_handshake.py": "f58c3e694c9fa7249bde75bc53be3986dbfc4c8821c6c7a526b2d22c945d4f99",
+    "tests/test_launch_handshake.py": "a300d67bc7bc50e121930b17d478d6265f010f439e35690f4732e7122ce6ddbb",
     "tests/test_lifecycle_identity.py": "199e066821e4540d5ed9ab036343909c45981300a19f59f9f4ec6af1c3af98c3",
     "tests/test_liquidation_ladder.py": "18bd38fe97c5cc8e588da91222582ac806d303675527b79f0f30aac75240544c",
     "tests/test_liquidation_pending_priority.py": "6011c636edd8ff96f214b9abd0a9bc06e6611652ea6fee9a797a5c75961a4013",
@@ -277,7 +277,7 @@
     "tests/test_position_journal_recovery.py": "f315e2d2f283dd30816e9d533ac8ae2f51dd7ceaf98ea3ee6938308bced5196c",
     "tests/test_position_report.py": "fda3000d2f1f796238335b555c4b274f15ad409f0306d13290c0415274e55d99",
     "tests/test_priority_control_plane_system.py": "54d39800dfc2df4424bf77553628ed1ca01691d34d8046006e3b2cf3b91481ab",
-    "tests/test_process.py": "342edf388ad526ff544b764c3ec04b3e02cc15a985575a14581d682f95b40e86",
+    "tests/test_process.py": "f40751206201530f763c69035144bc52d3fbae8e0a91c062c9b1e81120a6d7cd",
     "tests/test_process_os.py": "e0353c6bb045bb66528abeb5bc005aa6fc2e8a75e3adeebae2764ae4d684829d",
     "tests/test_provider_access_boundaries.py": "3800356bf2893b9f32bbe48d2d265434bb40fca80a2c66e508d6ca802eb03585",
     "tests/test_provider_denial_admission.py": "5b29511c3ebc4f7022cd83f93a678c2bc883a86b47a3d74930e054b0c7f7b95f",
@@ -493,6 +493,7 @@
     "docs/BYBIT_NATIVE_QA_REPLAY_CHECKPOINT_20261116.md": "cef3abe29d579a4cb87c8ae2eb4fbcd328e42f5e99ab04cfed0a353b88b89c24",
     "tests/test_ws_atomic_publication_batch.py": "f8092a875f761093a6b19316c7b34b1067aab67f341b568796abfe99d7e7d35c",
     "docs/BYBIT_ATOMIC_WS_PUBLICATION_CHECKPOINT_20261116.md": "02d21ad291bb30e5f785ad04a4565683a6d5a95f7fb196b8198eb81ca29921d0",
-    "docs/BYBIT_ATOMIC_WS_PUBLICATION_QA_20261116.json": "e98c6b977c9ee2fbded13e3a787c641f38cde8af5e03e638ee8d8eb1daed7a07"
+    "docs/BYBIT_ATOMIC_WS_PUBLICATION_QA_20261116.json": "e98c6b977c9ee2fbded13e3a787c641f38cde8af5e03e638ee8d8eb1daed7a07",
+    "tests/test_offline_hub_boundary.py": "298f45e6d39a5d86db9e7f32efe22fd8bee9fe1088bf1b5b08aa5d150cf67e6c"
   }
 }

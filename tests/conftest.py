@@ -13,6 +13,42 @@ import pytest
 from bcc.hub_supervisor import _matches
 
 
+@pytest.fixture(autouse=True)
+def forbid_uncontrolled_live_hub(monkeypatch):
+    """Offline regression cannot silently become an exchange-connectivity test.
+
+    Actual public WS acceptance runs separately through its source-bound tool.
+    Dedicated subprocess replay tests inject their transport explicitly; real
+    no-stream Hub lifecycle tests still exercise their original OS processes.
+    """
+    from bcc import hub_supervisor
+    spawn = hub_supervisor._spawn_hub
+    def checked_spawn(command, **kwargs):
+        if any(flag in command for flag in (
+            '--bybit-ws-quotes', '--bybit-ws-books', '--bybit-ws-klines',
+            '--poly-ws-books', '--binance-ws-price',
+        )):
+            raise AssertionError(
+                'Offline regression attempted an uncontrolled live WS Hub; '
+                'inject the replay transport or use the separate public WS acceptance tool'
+            )
+        return spawn(command, **kwargs)
+    monkeypatch.setattr(hub_supervisor, '_spawn_hub', checked_spawn)
+
+
+@pytest.fixture
+def replay_hub_boundary(monkeypatch):
+    """Explicit producer boundary for children replacing worker.PublicData."""
+    def bind(repo):
+        calls = []
+        def requested(root, *, bybit_ws):
+            assert root == repo.root and bybit_ws is True
+            calls.append(root)
+        monkeypatch.setattr('bcc.lifecycle.ensure_hub', requested)
+        return calls
+    return bind
+
+
 def cleanup_owned_test_hubs(root):
     """Stop live hubs proven to belong to this pytest temporary directory.
 
