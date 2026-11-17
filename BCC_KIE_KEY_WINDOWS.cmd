@@ -1,18 +1,19 @@
 @echo off
 setlocal
-REM OFFLINE ONLY: this launcher never contacts Kie.ai or starts BCC bots.
+REM OFFLINE ONLY: graphical Ctrl+V key entry for Windows Credential Manager.
+REM No network, no model API call, no bot interaction.
 cd /d "%~dp0"
 where py >nul 2>&1
 if %errorlevel%==0 (
-  py -3 -I "%~dp0tools\bcc_kie_credentials.py" setup
+  py -3 -I "%~dp0tools\bcc_kie_credentials_gui.py"
 ) else (
   where python >nul 2>&1
   if %errorlevel%==0 (
-    python -I "%~dp0tools\bcc_kie_credentials.py" setup
+    python -I "%~dp0tools\bcc_kie_credentials_gui.py"
   ) else (
-    echo Python 3 was not found. No key saved.
+    echo Python 3 not found. No key saved.
   )
 )
 echo.
-echo This does NOT activate Claude or authorize any paid calls.
+echo Claude API remains disabled; no paid calls were made.
 pause
