@@ -71,3 +71,35 @@ Do not send or paste the key into chat, PowerShell, GitHub or logs.
 Never promote this protocol mock to completed integration or release.
 No trading bot processes, databases, monitors, API credentials or
 unrelated project branches are to be modified.
+
+
+## 2026-11-17: guarded transport and approval transaction
+
+In the same isolated BCC development branch, the following components were
+added together as one independent vertical slice:
+
+- tools/bcc_kie_https.py: fixed-host HTTPS request code, one POST, 20s
+  timeout, bounded request/response bytes, strict payload equality, rejects
+  tools and streaming, no redirects or automatic retry, and sanitizes
+  transport errors (no API key in exception text). LIVE_TRANSPORT_ENABLED=False.
+  No public function can turn the transport on.
+- tools/bcc_kie_approval.py: deterministic request fingerprint, deliberately
+  conservative local preview, trusted approval verifier requirement,
+  transactional reserve via tools/bcc_claude_budget.py, receipt validation,
+  retention of unresolved holds on any mismatch, and a mock-only settlement
+  path. LIVE_EXECUTION_ENABLED=False and run_paid_call always rejects.
+- tests/test_bcc_kie_protocol.py, tests/test_bcc_kie_https.py, and
+  tests/test_bcc_kie_approval.py: 32 isolated Python tests, 0 failures
+  executed offline on Linux without a single real provider call. The HTTPS
+  and approval implementation/test files are Git-blob-identical to the
+  locally exercised files. Native Windows execution is not yet confirmed.
+
+Run BCC_KIE_AGENT_CHECK.cmd after safe fast-forward update in the
+separate BCC_AGENT_GATEWAY folder. It runs both key readback/protocol
+checks and the offline Kie unit group. It does NOT run BCC trading bots.
+
+IMPORTANT: mocked acceptance/verifier is NOT user authorization for a real
+call; mocked ledger settlement is NOT proof of actual Kie billing. Production
+activation requires a trusted Windows approval UI, a verified provider
+invoice/spending limit, exact token ceilings and separate explicit consent
+for the particular request. Keep the two live gates OFF until then.
