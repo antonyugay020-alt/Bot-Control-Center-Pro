@@ -3,6 +3,7 @@ setlocal
 REM BCC development agent offline preflight only.
 REM Does NOT call Kie.ai, GPT Work, Graphify, GitHub Actions, or trading bots.
 set "ROOT=%~dp0"
+pushd "%ROOT%" || goto failed
 where py >nul 2>&1
 if not errorlevel 1 goto use_py
 where python >nul 2>&1
@@ -23,6 +24,9 @@ echo.
 echo Checking Kie.ai Claude Sonnet 5.5 screenshot protocol (offline only).
 %PYTHON% -I "%ROOT%tools\bcc_kie_protocol.py"
 if errorlevel 1 goto failed
+echo Running isolated BCC Kie protocol, HTTPS and approval regression tests.
+%PYTHON% -B -m unittest discover -s tests -p "test_bcc_kie_*.py" -q
+if errorlevel 1 goto failed
 echo.
 echo OFFLINE CHECKS COMPLETED. No network access or paid calls.
 echo Real Kie.ai server acceptance, streaming, tools and billing remain unverified.
@@ -37,6 +41,7 @@ goto finish
 echo Python 3 was not found. Nothing was changed.
 
 :finish
+popd >nul 2>&1
 echo.
 pause
 endlocal
