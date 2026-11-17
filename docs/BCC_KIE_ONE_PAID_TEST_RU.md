@@ -83,3 +83,41 @@ Sonnet 5.5 ($0,80/1M input, $4/1M output), с моделью расхода
 Пока пользователь не выполнил этот запуск на Windows, фактический
 ответ Kie.ai и списание не подтверждены. Это не запуск автономного
 Claude-программиста и не полноценная интеграция GPT Work + Graphify.
+
+
+## FIRST_LIVE_ATTEMPT_STATUS — 2026-11-17, ~23:37 local UTC+5
+
+User provided PowerShell screenshot after exercising the one-time authorized
+live test on their Windows PC.
+
+Observed:
+- Offline regression: 74 tests, 2 skipped, zero failed.
+- An earlier invocation was CANCELLED before any provider attempt.
+- A subsequent invocation used the one-time confirmation and produced:
+  result=HTTP_ERROR_NO_RETRY; http_status=502;
+  provider_charge=UNKNOWN; reservation_usd=0.010000;
+  attempts_allowed_remaining=0.
+- No Claude completion, no validated input/output usage, no proven spend.
+- Local ledger holds the USD 0.01 reservation pending provider reconciliation.
+  The hold is not evidence of a $0.01 charge by Kie.ai.
+
+SECURITY STATE:
+- The specific user's single paid-test authorization is CONSUMED.
+- DO NOT rerun BCC_KIE_ONE_TEST_WINDOWS.cmd as a paid attempt, DO NOT
+  erase/replace the SQLite ledger to enable a second try, and DO NOT
+  reuse or repurpose this authorization.
+- No additional paid call is approved. Real Claude programming and
+  GPT Work/Graphify integration are still NOT CONNECTED.
+- Preserve the original ledger at
+  %LOCALAPPDATA%\BCCDevAgent\claude_budget.sqlite3.
+
+Read-only next evidence to request from user: Kie.ai dashboard API Usage /
+Logs around 2026-11-17 18:37 UTC (23:37 UTC+5) for this single
+POST /claude/v1/messages, model claude-sonnet-5-5, including any request ID,
+status, billable tokens and charge. Never request the API key or other
+secrets, and do not expose raw Authorization headers.
+
+The client suppresses the response body for non-200 HTTP statuses,
+so the screenshot and repository alone cannot distinguish provider
+outage, upstream gateway failure or rejected payload/account.
+A new paid test requires NEW explicit user approval and reconciled billing.
