@@ -22,7 +22,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.bcc_claude_budget import BudgetLedger, SpendingDenied, quoted_micro_usd
-from tools.bcc_kie_credentials import WindowsCredentialStore
+from tools.bcc_kie_credentials import CredentialError, WindowsCredentialStore
 from tools.bcc_kie_protocol import (
     API_HOST, API_PATH, MODEL_ID, ProtocolBlocked,
     auth_headers, build_payload, parse_response,
@@ -169,7 +169,7 @@ def main() -> int:
             return 1
         print("Confirmed one Kie.ai Claude response. No further calls authorized.")
         return 0
-    except (OneShotError, ProtocolBlocked, SpendingDenied, OSError, KeyError, ValueError):
+    except (OneShotError, ProtocolBlocked, SpendingDenied, CredentialError, OSError, KeyError, ValueError):
         print("BLOCKED OR UNKNOWN: no automatic retry; verify provider billing.")
         return 1
 
