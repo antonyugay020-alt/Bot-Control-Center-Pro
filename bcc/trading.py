@@ -298,10 +298,16 @@ def enter(
         # Direct callers cannot enter a new coin-capped section without
         # supplying the target derived from the validated configuration.
         try:
-            if allocation_mode(settings) != SECTION_PCT:
+            mode = allocation_mode(settings)
+            if mode != SECTION_PCT:
                 if (type(coin_budget) not in (int, float)
                         or not math.isfinite(coin_budget) or coin_budget <= 0):
                     return False, "Не подтверждена общая квота монеты"
+                if mode == "coin_fixed" and not math.isclose(
+                    coin_budget, settings["allocation_fixed_usdt"],
+                    rel_tol=1e-12, abs_tol=1e-9,
+                ):
+                    return False, "Квота монеты не соответствует настройкам USDT"
                 allowed = available_margin_for_coin(
                     state, symbol, coin_budget, settings
                 )
