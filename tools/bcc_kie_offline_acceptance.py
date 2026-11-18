@@ -86,11 +86,16 @@ def main() -> int:
                                     pattern="test_bcc_kie_*.py",
                                     top_level_dir=str(ROOT / "tests"))
             count = suite.countTestCases()
+            runner = unittest.TextTestRunner(stream=sys.stdout, verbosity=1)
+            # Run even incomplete suites so import errors have actionable
+            # traceback evidence in the single offline QA console archive.
+            # The final acceptance gate below still forbids PASS.
+            result = runner.run(suite)
             if count < MIN_TEST_COUNT:
                 return _emit("BLOCKED_INCOMPLETE_SUITE",
-                             discovered=count, minimum=MIN_TEST_COUNT)
-            runner = unittest.TextTestRunner(stream=sys.stdout, verbosity=1)
-            result = runner.run(suite)
+                             discovered=count, minimum=MIN_TEST_COUNT,
+                             errors=len(result.errors),
+                             failures=len(result.failures))
         except BaseException as e:
             # No exception repr: an imported fixture could contain a secret.
             return _emit("BLOCKED_EXECUTION", exception_type=type(e).__name__)
