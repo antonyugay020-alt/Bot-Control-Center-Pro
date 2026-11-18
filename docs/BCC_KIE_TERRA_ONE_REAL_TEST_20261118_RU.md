@@ -269,3 +269,37 @@ Kimi/Astra и общий платный transport не включены.
 разрешением не может повторить использованный платный запрос.
 Проверки соединения используют исключительно подставные HTTPS-классы.
 Это добавило один тест, поэтому общий комплект теперь **257 тестов**.
+
+
+## Завершённая Windows offline QA — 18.11.2026, SHA f18c3d7
+
+Пользователь прислал полный консольный вывод запуска `BCC_KIE_AGENT_CHECK.cmd`
+после успешного `git pull --ff-only` в отдельном checkout
+`C:\\Users\\anubi\\Desktop\\BCC_AGENT_GATEWAY`:
+
+- `Source SHA: f18c3d7dfc3e87b583b87ec9685c720c7fe4a0f9`;
+- `Ran 257 tests in 1.339s`;
+- `OK (skipped=2)`;
+- `BCC_KIE_OFFLINE_RESULT: result=PASS, errors=0, failures=0,
+  skipped=2, provider_calls=0, github_actions=0`;
+- `network_and_subprocesses=DENIED_IN_TEST_PROCESS`;
+- `BCC KIE QA: OFFLINE_PASS_ONLY`, process exit code **0**.
+
+Единый архив на стороне пользователя:
+`C:\\Users\\anubi\\Desktop\\BCC_AGENT_GATEWAY\\QA\\BCC_KIE_QA_RESULT.zip`.
+Его байты не загружены в этот чат; приведённое свидетельство —
+предоставленный пользователем вывод PowerShell.
+
+**Итог: шлюз прошёл native Windows ОФЛАЙН-приёмку по этому
+конкретному SHA.** Предыдущие слова «Windows не подтверждён»
+для 257-тестового источника следует считать устаревшими.
+Повторные проверки без новых изменений не нужны.
+
+Этот PASS **не** доказывает полного локального E2E получения Terra
+HTTP-response, нормальной работы agent/tool calling, точной
+первопричины исторического `BLOCKED/UNKNOWN`, сверенного USD-счёта
+или Windows Modern Qt E2E торговой программы BCC.
+Один Terra-запрос в Kie.ai уже завершился успешно и показал
+`BCC_TERRA_CONNECTED`, 0,01 кредита; его разрешение остаётся
+**израсходованным**. Реальный HTTP-клиент, автоагент и повторный
+платный запрос не активируются данной документацией.
