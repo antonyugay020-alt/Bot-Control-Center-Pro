@@ -138,6 +138,15 @@ def parse_response(raw: Any, *, model: str, output_cap: int,
         raise ResponsesBlocked("Provider response incomplete")
     if raw.get("object") not in (None, "response"):
         raise ResponsesBlocked("Unexpected response object")
+    # The screenshot's Kimi sample reports moonshotai/kimi-k3 while its
+    # unified request example uses kimi-k3. Do not accept cross-model output.
+    known_reply_models = {
+        "terra": frozenset(("gpt-6-1-terra", "gpt-6.1-terra")),
+        "kimi": frozenset(("kimi-k3", "moonshotai/kimi-k3")),
+    }
+    reply_model = raw.get("model")
+    if reply_model is not None and reply_model not in known_reply_models[model]:
+        raise ResponsesBlocked("Unrecognized provider reply model")
     if raw.get("error") not in (None, {}):
         raise ResponsesBlocked("Provider returned an error")
     if raw.get("incomplete_details") is not None:
