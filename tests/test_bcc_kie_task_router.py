@@ -59,6 +59,16 @@ class RoutingTests(unittest.TestCase):
                 with self.assertRaises(RouteBlocked):
                     task(model=model, stage=stage)
 
+    def test_kimi_is_chat_only_and_not_an_implementation_agent(self):
+        with self.assertRaises(RouteBlocked):
+            task(model="kimi", stage="implementation")
+        review = task(tag="offline_kimi_review", model="kimi",
+                      stage="independent_review", source_sha=CANDIDATE)
+        self.assertTrue(review.chat_only_provider_warning)
+        self.assertFalse(review.agent_execution_allowed)
+        self.assertTrue(review.safe_dict()["chat_only_provider_warning"])
+        self.assertFalse(review.safe_dict()["agent_execution_allowed"])
+
     def test_kimi_review_stays_independent(self):
         implementation = task()
         review = task(tag="review_core", model="kimi",
