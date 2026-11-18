@@ -82,6 +82,18 @@ def test_fixed_cap_does_not_change_when_global_deposit_changes():
     assert "общий предел монеты 45 USDT" in effective_risk_review_text(after)
 
 
+def test_preview_flags_section_larger_than_coin_cap():
+    cfg = sample()
+    cfg["coin_overrides"]["BTCUSDT"] = {
+        "capital_limit": {"mode": "fixed", "value": 20.0},
+    }
+    report = effective_risk_review_text(cfg, sample_limit=20)
+    assert "BTCUSDT" in report
+    assert "общий предел монеты 20 USDT" in report
+    assert report.count("вход заблокирован: одна секция превышает предел монеты") == len(cfg["sections"])
+    assert "общий предел монеты не задан" in report
+
+
 def test_polymarket_review_does_not_inherit_veles_coin_caps():
     before = defaults("POLYMARKET")
     before["name"] = "Polymarket independent review"
