@@ -82,6 +82,17 @@ class TerraOneTimeTests(unittest.TestCase):
         self.assertEqual(self.store.read_count, 0)
         self.assertFalse((self.state / "claude_budget.sqlite3").exists())
 
+    def test_consumed_authorization_blocks_even_low_level_https(self):
+        # A model's prior test approval cannot be re-used by importing the
+        # private HTTPS helper and its internal capability.
+        with self.assertRaises(OneShotBlocked):
+            _send_one_https(
+                "FAKE", request_body(),
+                approval_guard=_TRANSPORT_GRANT,
+                connection_factory=lambda *a, **kw:
+                    self.fail("Socket factory must never be called"),
+            )
+
     def test_direct_actual_sender_cannot_bypass_windows_qa(self):
         with patch("tools.bcc_kie_terra_one_shot.verify_preflight",
                    side_effect=OneShotBlocked("QA_FAIL")) as qa:
@@ -367,6 +378,14 @@ class FakeConn:
 
 class FakeHttpsTransportTests(unittest.TestCase):
     def setUp(self):
+        # Mock-only fault injection: the real production consumed flag stays
+        # TRUE and no actual network class can be used in this test suite.
+        self.mock_retired_flag = patch(
+            "tools.bcc_kie_terra_one_shot.KNOWN_TERRA_AUTHORIZATION_CONSUMED",
+            False,
+        )
+        self.mock_retired_flag.start()
+        self.addCleanup(self.mock_retired_flag.stop)
         FakeConn.instances.clear()
         FakeConn.status = 200
         FakeConn.model = "gpt-6.1-terra"
