@@ -323,6 +323,13 @@ def project_constructor_coin_transaction(config, *, coin_rules):
             raise ValueError(f'Неизвестные настройки монеты: {symbol}')
         if not isinstance(record.get('settings', {}), dict):
             raise ValueError(f'Повреждены настройки монеты: {symbol}')
+        if 'capital_limit' in record:
+            from .coin_budget import validate_capital_limit
+            try:
+                validate_capital_limit(record['capital_limit'])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f'VELES {symbol}: недопустимый предел капитала: {exc}') from exc
         per_section = record.get('sections', {})
         if not isinstance(per_section, dict) or set(per_section) - section_ids:
             raise ValueError(f'Неизвестные секции монеты: {symbol}')
