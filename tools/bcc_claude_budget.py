@@ -82,6 +82,15 @@ class BudgetLedger:
         return conn
 
     @staticmethod
+    def _validate_legacy_records(conn: sqlite3.Connection) -> None:
+        """A partially settled record cannot be silently treated as free."""
+        if conn.execute("""SELECT 1 FROM claude_spending WHERE
+            (status='HELD' AND charged_micro IS NOT NULL)
+            OR (status='SETTLED' AND charged_micro IS NULL)
+            LIMIT 1""").fetchone():
+            raise SpendingDenied("Legacy Claude spending record has invalid settlement state")
+
+    @staticmethod
     def _other_model_occupied(conn: sqlite3.Connection, period: str) -> int:
         """Include new Kie model holds in the original Claude admission gate.
 
@@ -129,6 +138,7 @@ class BudgetLedger:
         with closing(self._connect()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
+                self._validate_legacy_records(conn)
                 # Unresolved holds from ANY month continue to consume the pool.
                 # Settled costs are counted in their own billing month.
                 occupied = conn.execute("""SELECT COALESCE(SUM(
@@ -189,6 +199,7 @@ class BudgetLedger:
     def accounting(self, now: datetime | None = None) -> dict[str, int]:
         period = self._period(now)
         with closing(self._connect()) as conn:
+            self._validate_legacy_records(conn)
             charged = conn.execute("""SELECT COALESCE(SUM(charged_micro),0)
                 FROM claude_spending WHERE period=? AND status='SETTLED'""", (period,)).fetchone()[0]
             held = conn.execute("""SELECT COALESCE(SUM(hold_micro),0)
