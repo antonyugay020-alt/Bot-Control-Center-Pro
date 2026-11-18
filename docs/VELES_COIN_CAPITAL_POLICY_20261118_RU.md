@@ -131,3 +131,57 @@
 Проверенный ранее результат 3 893 тестов и public WS 1 200/1 200
 относится к другому, неизменённому продукту и не доказывает
 корректность этого изменения.
+
+## Единая строгая Windows QA для этой ветки (без текущей торговли)
+
+Добавлен `tools/check_veles_coin_capital_windows.ps1`. Он
+использует существующие проверенные BCC `tools.seal_source`,
+`verify_package` и `tools/start_windows_check.ps1`, вместо
+создания второго тестового механизма или запуска рабочего приложения.
+
+Папка **одна на рабочем столе**, и внутри неё только изолированные
+файлы разработки/QA:
+
+    Desktop/BCC_VELES_COIN_QA/
+      SOURCE/           — отдельный чистый Git checkout только ветки разработки
+      RUN_<SHA8>/       — ровно один прогон на исходный SHA
+        SEALED_SOURCE.zip
+        CLEAN_UNPACK/BCC_VELES_COIN_<SHA8>/ — проверенная свежая распаковка
+        QA_CONSOLE.txt
+        QA_SUMMARY.json
+        AUTOMATED_WINDOWS_RESULTS.zip
+        LATEST_REPORT.zip  — единственный архив для передачи результатов
+
+Скрипт блокируется, если папка не является изолированным checkout,
+обнаружен junction/symlink, локальные изменения, неверная ветка,
+`MY_BOTS` или попытка повторного прогона того же исходного SHA.
+Запечатывает источник с новым SHA256-манифестом, проверяет
+фактический архив после распаковки, а затем запускает полный
+автоматизированный Bybit/PAPER + native Qt/WS путь
+`start_windows_check.ps1 -AutomatedOnly -Venue bybit`.
+Временная Python `.check_venv` создаётся внутри чистой распаковки;
+установка библиотек не затрагивает глобальные Python-пакеты.
+Сетевой доступ может использоваться для установки бесплатных
+Python-библиотек и публичных рыночных данных Bybit; платные API,
+торговые ключи и реальные ордера не используются.
+Нет GitHub Actions, перезагрузки или остановки рабочих ботов.
+
+**Важно:** даже автоматизированный PASS не равен выпуску:
+отдельные ручные Windows Modern Qt E2E и незатронутые venue остаются
+release-gates. Отчёт намеренно содержит `release_approved=false`.
+Сам скрипт и его статическая охрана
+`tests/test_coin_allocation_qa_boundary.py` пока не прошли
+нативный Windows-прогон.
+
+Для запуска из новой изолированной папки после готовности
+комплексного пакета, без переноса файлов живой установки:
+
+    $qa = "$HOME\Desktop\BCC_VELES_COIN_QA"
+    if (Test-Path $qa) { throw "Нельзя перезаписывать существующую QA-папку" }
+    New-Item -ItemType Directory -Path $qa | Out-Null
+    git clone --single-branch --branch codex/veles-coin-capital-policy-20261118 https://github.com/antonyugay020-alt/Bot-Control-Center-Pro.git "$qa\SOURCE"
+    if ($LASTEXITCODE -ne 0) { throw "Ошибка клонирования GitHub" }
+    & "$qa\SOURCE\tools\check_veles_coin_capital_windows.ps1"
+
+**Это описание приёмки, а не требование выполнить её сейчас**.
+До фактического PASS исходники остаются WIP в отдельной ветке.
