@@ -5,6 +5,7 @@ JSON.  The review is passive: it does not normalize/mutate drafts, access a
 repository, start workers, or submit PAPER/real orders.
 """
 from .config import coin_section, effective, resolve_poly_market
+from .coin_budget import limit_amount
 
 # All persisted effective fields belong to an explicit review category. The
 # UI must not show "no entry changes" when a user changes entry mode/window
@@ -79,6 +80,7 @@ def constructor_change_summary(original, draft, *, sample_limit=8):
         "strategy": strategy,
         "general_changed": changed_general,
         "coin_overrides_changed": coins_with_changed_overrides,
+        "coin_budget_changed": 0,
         "combinations_added": 0,
         "combinations_removed": 0,
         "combinations_modified": 0,
@@ -135,6 +137,9 @@ def constructor_change_summary(original, draft, *, sample_limit=8):
         result["combinations_added"] = len(new_symbols) * len(new_ids) - shared
         result["combinations_removed"] = len(old_symbols) * len(old_ids) - shared
         for symbol in sorted(old_symbols & new_symbols):
+            coin_cap_changed = limit_amount(original, symbol) != limit_amount(draft, symbol)
+            if coin_cap_changed:
+                result["coin_budget_changed"] += 1
             for section_id in sorted(old_ids & new_ids):
                 old_section = coin_section(original, symbol, old_sections[section_id])
                 new_section = coin_section(draft, symbol, new_sections[section_id])
@@ -144,7 +149,8 @@ def constructor_change_summary(original, draft, *, sample_limit=8):
                 # override can shadow them. Compare resolved behavior only.
                 old_section.pop("overrides", None)
                 new_section.pop("overrides", None)
-                if old_section == new_section and old_settings == new_settings:
+                if (old_section == new_section and old_settings == new_settings
+                        and not coin_cap_changed):
                     continue
                 result["combinations_modified"] += 1
                 if any(old_section[field] != new_section[field]
@@ -157,6 +163,8 @@ def constructor_change_summary(original, draft, *, sample_limit=8):
                 for category in _changed_categories(
                         old_settings, new_settings, VELES_REVIEW_FIELDS):
                     result[category] += 1
+                if coin_cap_changed:
+                    result["risk_changed"] += 1
                 if len(result["samples"]) < sample_limit:
                     result["samples"].append(f"{symbol}/{section_id}")
     return result
@@ -182,6 +190,7 @@ def constructor_change_review_text(original, draft):
         rows.append(f"Изменены индикаторные фильтры: {info['signals_changed']} рынков.")
     else:
         rows.append(f"Изменены сигналы входа/выхода: {info['signals_changed']} диапазонов.")
+        rows.append(f"Изменены общие лимиты капитала монет: {info['coin_budget_changed']}.")
         rows.append(f"Риск и маржа: {info['risk_changed']}; исполнение: "
                     f"{info['execution_changed']}; DCA/ордера: {info['orders_changed']}; "
                     f"выходы/стопы: {info['exits_changed']}; "
@@ -217,6 +226,9 @@ def effective_risk_review_text(draft, *, sample_limit=8):
             settings = effective(draft, symbol, section)
             margin = draft["capital"] * settings["allocation_pct"] / 100
             notional = margin * settings["leverage"]
+            coin_cap = limit_amount(draft, symbol)
+            cap_label = ("общий предел монеты не задан" if coin_cap is None
+                         else f"общий предел монеты {coin_cap:g} USDT")
             stop = settings["stop"]
             stop_text = (f"{stop['pct']:g}%"
                          if stop["mode"] in ("percent", "both")
@@ -227,6 +239,7 @@ def effective_risk_review_text(draft, *, sample_limit=8):
                 f"{symbol} / {resolved['label']}: {resolved['side']}, "
                 f"{settings['margin_mode']}, плечо {settings['leverage']:g}x; "
                 f"условная маржа {margin:g} USDT; номинал {notional:g} USDT; "
+                f"{cap_label}; "
                 f"SL {stop_text}; {admission}."
             )
             shown += 1
