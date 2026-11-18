@@ -4,7 +4,7 @@ import hashlib
 import json
 from copy import deepcopy
 
-from .config import coin_section, effective, merge
+from .config import coin_section, effective, merge, section_margin_budget
 from .indicators import evaluate
 from .margin import MODEL, entry_reason, pending_reserve
 from .liquidation import is_liquidating, status as liquidation_status
@@ -41,7 +41,7 @@ def capital_margin(cfg, state, settings):
         base = cfg["capital"] + (
             state["strategy"].get("veles_reinvested", 0) if cfg["reinvest"] else 0
         )
-        return base * settings["allocation_pct"] / 100
+        return section_margin_budget(settings, base)
     if cfg["reinvest"]:
         value, unknown = equity(state)
         if unknown:
