@@ -5,6 +5,7 @@ JSON.  The review is passive: it does not normalize/mutate drafts, access a
 repository, start workers, or submit PAPER/real orders.
 """
 from .config import coin_section, effective, resolve_poly_market
+from .coin_allocation import planned_margin, allocation_mode
 
 # All persisted effective fields belong to an explicit review category. The
 # UI must not show "no entry changes" when a user changes entry mode/window
@@ -22,7 +23,8 @@ POLY_REVIEW_FIELDS = {
 }
 VELES_REVIEW_FIELDS = {
     "risk_changed": frozenset((
-        "leverage", "margin_mode", "allocation_pct", "reinvest_pct",
+        "leverage", "margin_mode", "allocation_pct", "allocation_mode",
+        "allocation_fixed_usdt", "reinvest_pct",
         "daily_loss_pct", "disabled", "stop_after_cycle")),
     "execution_changed": frozenset((
         "fee_rate", "slippage_pct", "execution_policy")),
@@ -215,8 +217,13 @@ def effective_risk_review_text(draft, *, sample_limit=8):
                 break
             resolved = coin_section(draft, symbol, section)
             settings = effective(draft, symbol, section)
-            margin = draft["capital"] * settings["allocation_pct"] / 100
+            margin = planned_margin(draft["capital"], settings)
             notional = margin * settings["leverage"]
+            mode_text = {
+                "section_pct": "отдельно для секции",
+                "coin_pct": "общая квота монеты, процент",
+                "coin_fixed": "общая квота монеты, фиксированная сумма",
+            }[allocation_mode(settings)]
             stop = settings["stop"]
             stop_text = (f"{stop['pct']:g}%"
                          if stop["mode"] in ("percent", "both")
@@ -226,7 +233,8 @@ def effective_risk_review_text(draft, *, sample_limit=8):
             lines.append(
                 f"{symbol} / {resolved['label']}: {resolved['side']}, "
                 f"{settings['margin_mode']}, плечо {settings['leverage']:g}x; "
-                f"условная маржа {margin:g} USDT; номинал {notional:g} USDT; "
+                f"плановая маржа {margin:g} USDT ({mode_text}); "
+                f"номинал {notional:g} USDT; "
                 f"SL {stop_text}; {admission}."
             )
             shown += 1
