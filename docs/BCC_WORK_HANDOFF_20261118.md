@@ -80,7 +80,7 @@ This section supersedes the historical Claude-only status below.
 - New offline-only stages separate safe text from token accounting,
   categorize CONNECT/POST/STATUS/READ/JSON errors without secrets, and
   allow replay of a PREVIOUSLY SAVED JSON body via stdin. The expanded
-  acceptance inventory is **18 modules / 256 tests**.
+  acceptance inventory is **18 modules / 257 tests**.
 - The one-time authorization is **CONSUMED**. The old Terra and Claude
   launchers are read-only and all other live Kie calls remain disabled.
   Keep the original SQLite holds/attempt markers. No retry, fallback,
