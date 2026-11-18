@@ -601,6 +601,11 @@ STOP_FIELDS = [
 class SettingsEditor(QTabWidget):
     def __init__(self, data, parent=None, *, strategy="VELES"):
         super().__init__(parent)
+        # Standalone legacy editors (outside BotWizard.normalize_config)
+        # must use the same migration as repository and constructor.
+        data = deepcopy(data)
+        data.setdefault("allocation_mode", "section_pct")
+        data.setdefault("allocation_fixed_usdt", 25.0)
         self.data = deepcopy(data)
         finance = FINANCE
         if strategy != "VELES":
