@@ -22,9 +22,10 @@ from .margin import (
     pending_reserve,
 )
 from .shared_risk import allocation_reason
+from .config import effective
 from .coin_allocation import (
     AllocationUnavailable, SECTION_PCT, allocation_mode,
-    available_margin_for_coin,
+    available_margin_for_coin, configured_target,
 )
 from .liquidation import BLOCKED, is_liquidating
 from .position_journal import cycle_reference, receipt, terms_digest
@@ -268,7 +269,7 @@ def enter(
     reinvest_pct=0.0,
     existing_grid=False,
     entry_limit=None,
-    coin_budget=None,
+    coin_config=None,
 ):
     if state.get("_entry_blocked"):
         return False, state["_entry_blocked"]
@@ -293,23 +294,30 @@ def enter(
     if margin <= 0:
         return False, "Нулевая сумма секции"
     if not existing_grid:
-        # The strategy checks the coin cap before creating the order plan;
-        # the executor checks AGAIN immediately before any PAPER mutation.
-        # Direct callers cannot enter a new coin-capped section without
-        # supplying the target derived from the validated configuration.
+        # Both strategy and executor recalculate the cap from the SAME
+        # persisted source config and current atomic PAPER account state.
+        # A caller-supplied numeric "coin_budget" would be forgeable, so the
+        # executor no longer accepts one. This includes coin_pct and fixed.
         try:
             mode = allocation_mode(settings)
             if mode != SECTION_PCT:
-                if (type(coin_budget) not in (int, float)
-                        or not math.isfinite(coin_budget) or coin_budget <= 0):
-                    return False, "Не подтверждена общая квота монеты"
-                if mode == "coin_fixed" and not math.isclose(
-                    coin_budget, settings["allocation_fixed_usdt"],
-                    rel_tol=1e-12, abs_tol=1e-9,
-                ):
-                    return False, "Квота монеты не соответствует настройкам USDT"
+                if (not isinstance(coin_config, dict)
+                        or symbol not in coin_config["symbols"]):
+                    return False, "Не подтверждена конфигурация квоты монеты"
+                configured_section = next(
+                    (item for item in coin_config["sections"]
+                     if item["id"] == section), None,
+                )
+                if (configured_section is None or
+                        effective(coin_config, symbol, configured_section) != settings):
+                    return False, "Квота не совпадает с настройками секции"
+                target = configured_target(
+                    coin_config, state, settings, equity_reader=equity,
+                )
+                if target <= 0:
+                    return False, "Не удалось определить квоту маржи монеты"
                 allowed = available_margin_for_coin(
-                    state, symbol, coin_budget, settings
+                    state, symbol, target, settings,
                 )
                 if margin > allowed + max(1e-9, allowed * 1e-12):
                     return False, (
