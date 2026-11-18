@@ -38,3 +38,6 @@ pytest-*.xml
 **/.env*
 **/credentials*.json
 **/*secret*.json
+
+# Isolated one-archive Kie offline acceptance artifacts (never commit)
+/QA/
