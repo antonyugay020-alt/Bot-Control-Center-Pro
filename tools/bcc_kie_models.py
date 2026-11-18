@@ -38,6 +38,7 @@ class ModelProfile:
     api_endpoint: str | None = None
     availability_verified: bool = False
     catalog_listed: bool = False
+    price_quote_conflict: bool = False
     advertised_input_floor_usd_per_million: Decimal | None = None
     advertised_output_floor_usd_per_million: Decimal | None = None
 
@@ -46,7 +47,9 @@ PROFILES = {
     "terra": ModelProfile(
         "terra", "GPT-6.1 Terra", Decimal("0.30"),
         Decimal("0.015"), Decimal("1.50"), Decimal("0.375"),
-        catalog_listed=True),
+        catalog_listed=True, price_quote_conflict=True,
+        advertised_input_floor_usd_per_million=Decimal("0.015"),
+        advertised_output_floor_usd_per_million=Decimal("3")),
     "kimi": ModelProfile(
         "kimi", "Kimi K3.1 Pro", Decimal("0.80"),
         Decimal("0.08"), Decimal("4.00"), None,
@@ -108,7 +111,9 @@ class DryRunPlan:
     prompt_bytes: int
     maximum_input_tokens: int
     maximum_output_tokens: int
-    estimated_max_micro_usd: int
+    historical_quote_micro_usd: int
+    quote_is_spend_cap: bool
+    price_quote_conflict: bool
     api_ready: bool
     network_enabled: bool
     paid_execution_enabled: bool
@@ -140,7 +145,10 @@ def plan(task: str, *, model: str,
         model=model, prompt_digest=hashlib.sha256(raw).hexdigest(),
         prompt_bytes=len(raw), maximum_input_tokens=input_cap,
         maximum_output_tokens=max_output_tokens,
-        estimated_max_micro_usd=price, api_ready=bool(
+        historical_quote_micro_usd=price,
+        quote_is_spend_cap=False,
+        price_quote_conflict=target.price_quote_conflict,
+        api_ready=bool(
             target.availability_verified and target.api_model_id and
             target.api_endpoint), network_enabled=False,
         paid_execution_enabled=False,
@@ -231,6 +239,7 @@ def summary() -> dict[str, Any]:
                 "api_endpoint": value.api_endpoint,
                 "availability_verified": value.availability_verified,
                 "catalog_listed": value.catalog_listed,
+                "price_quote_conflict": value.price_quote_conflict,
                 "advertised_input_floor_usd_per_million": str(value.advertised_input_floor_usd_per_million) if value.advertised_input_floor_usd_per_million is not None else None,
                 "advertised_output_floor_usd_per_million": str(value.advertised_output_floor_usd_per_million) if value.advertised_output_floor_usd_per_million is not None else None,
                 "input_per_million": str(value.input_usd_per_million) if value.input_usd_per_million is not None else None,
