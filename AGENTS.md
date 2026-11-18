@@ -26,12 +26,21 @@ and tools/bcc_kie_model_budget.py. They provide only a no-network
 model catalog, source-SHA-bound task handoffs, synthetic response checks
 and a shared admission ledger. No real Kie.ai paid transport is enabled.
 
-- Terra is an economical candidate for implementation; Kimi can act as a
-  different reviewer on a pinned NEW implementation commit. No automatic
-  model choice, no fallback, no provider call and no GitHub write by a model.
+- Terra is the documented coding/implementation candidate. Kimi's
+  2026-11-18 Kie.ai API page warns CHAT ONLY / not adapted for agents:
+  Kimi may be used for non-executing human-reviewed textual critique,
+  never for automated programming, tool calls or GitHub writes. The
+  independent reviewer must see the pinned NEW implementation commit.
+  No automatic fallback, provider calls or GitHub writes by a model.
 - Astra is only a user-selected exceptional architecture candidate, and
   is NOT price-qualified: provider minimum rates starting 'from' are not
   an invoice maximum.
+- Kie.ai Terra and Kimi routes are screenshot-documented, not live
+  verified: api.kie.ai/codex/v1/responses (Terra gpt-6-1-terra) versus
+  api.kie.ai/openai/v1/responses (Kimi kimi-k3). Responses may include
+  harmless reasoning blocks; tool/web-search requests remain disabled.
+  tools/bcc_kie_responses_protocol.py and bcc_kie_responses_https.py
+  never authorize a paid request. Kimi chat-only warning is mandatory.
 - Kie.ai Terra historical email rates conflict with a later Pricing
   screenshot. Every quote is unverified until actual model contract,
   pricing, endpoint, usage receipt and billing are confirmed.
