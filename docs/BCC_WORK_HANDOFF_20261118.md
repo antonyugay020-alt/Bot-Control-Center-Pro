@@ -81,6 +81,13 @@ This section supersedes the historical Claude-only status below.
   categorize CONNECT/POST/STATUS/READ/JSON errors without secrets, and
   allow replay of a PREVIOUSLY SAVED JSON body via stdin. The expanded
   acceptance inventory is **18 modules / 257 tests**.
+- **Current accepted gateway source:** user ran the full native Windows
+  offline suite at immutable SHA `f18c3d7dfc3e87b583b87ec9685c720c7fe4a0f9`:
+  **257 executed, zero failures/errors, two skipped, exit 0**;
+  no provider calls, no GitHub Actions. This supersedes any pending
+  Windows offline acceptance notes for the 257-case gateway. Its code
+  should not be retested without material changes. The test's full
+  local ZIP was not provided, but the console evidence was.
 - The one-time authorization is **CONSUMED**. The old Terra and Claude
   launchers are read-only and all other live Kie calls remain disabled.
   Keep the original SQLite holds/attempt markers. No retry, fallback,
