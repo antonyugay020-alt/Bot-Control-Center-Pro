@@ -113,6 +113,55 @@ def test_collector_reports_broken_ledger_without_packaging_bad_database(tmp_path
     assert not list((tmp_path / "report").rglob("paper.sqlite"))
 
 
+def test_collector_captures_only_verified_worker_health_without_error_secrets(tmp_path):
+    from bcc.storage import atomic_json
+
+    repo = Repository(tmp_path / "check")
+    folder = repo.create(config())
+    Store(folder, 500)
+    health = {"last_completed_utc": 1,
+              "unavailable_symbols": {
+                  "BTCUSDT": {"history": "Market Data Hub: нет свежего снимка (очередь или источник недоступен)"},
+                  "ETHUSDT": {"quote": "api_key=secret"}},
+              "scheduler_pressure": {"history_jobs": 8, "history_capacity": 8,
+                                     "unmarked_priority": 0, "password": "secret"}}
+    atomic_json(folder / "process.json", {"status": "RUNNING", "market_health": health})
+
+    class Life:
+        def __init__(self, active):
+            self.repo = repo
+            self.active = active
+
+        def status(self, folder):
+            return "Работает" if self.active else "Остановлен"
+
+        def active_snapshot(self, folder):
+            return {"market_health": health} if self.active else None
+
+    report = collect(repo.root, tmp_path / "live", life=Life(True))
+    summary = report["bots"][0]["market_health"]
+    assert summary["unavailable_counts"] == {"history": 1, "quote": 1}
+    assert summary["hub_snapshot_timeouts"] == {"history": 1, "quote": 0}
+    assert summary["scheduler_pressure"]["history_jobs"] == 8
+    assert "secret" not in json.dumps(summary)
+    assert not report["errors"]
+    stale = collect(repo.root, tmp_path / "stale", life=Life(False))
+    assert "market_health" not in stale["bots"][0]
+
+
+def test_collector_health_with_invalid_fields_does_not_lose_ledger(tmp_path):
+    from bcc.support import _market_health_summary
+
+    result = _market_health_summary({"market_health": {
+        "last_completed_utc": float("nan"), "unavailable_symbols": None,
+        "scheduler_pressure": {"entry_admission_paused": True, "unmarked_priority": "bad"},
+    }}, "Работает", now=100)
+    assert result["display_status"] == "INVALID_HEALTH"
+    assert result["last_completed_utc"] is None
+    assert result["unavailable_counts"] is None
+    assert "unmarked_priority" not in result["scheduler_pressure"]
+
+
 def test_collector_flags_stopped_worker_error_even_when_ledger_is_valid(tmp_path):
     from bcc.storage import atomic_json
 

@@ -18,6 +18,58 @@ from .lifecycle import Lifecycle
 from .storage import Repository, Store, atomic_json, load_json, paper_account_present
 
 
+def _market_health_summary(snapshot, status, *, now=None):
+    """Bounded, credential-free health evidence from a verified live worker.
+
+    The worker retains failures until a successful observation of the same
+    channel, so this is a snapshot of outstanding observations, not proof
+    that every listed failure occurred at collection time.
+    """
+    from .market_health import display_market_status
+
+    health = snapshot.get("market_health")
+    if not isinstance(health, dict):
+        return None
+    now = time.time() if now is None else now
+    recent = health.get("last_completed_utc")
+    try:
+        display_status = display_market_status(status, snapshot, now)
+    except (TypeError, ValueError, OverflowError):
+        display_status = "INVALID_HEALTH"
+    result = {"captured_utc": now,
+              "display_status": display_status,
+              "last_completed_utc": recent if type(recent) in (int, float)
+              and math.isfinite(recent) else None,
+              "unavailable_counts": {"quote": 0, "history": 0},
+              "hub_snapshot_timeouts": {"quote": 0, "history": 0}}
+    unavailable = health.get("unavailable_symbols")
+    if not isinstance(unavailable, dict):
+        result["unavailable_counts"] = None
+        result["hub_snapshot_timeouts"] = None
+    else:
+        for channels in unavailable.values():
+            if not isinstance(channels, dict):
+                continue
+            for channel in ("quote", "history"):
+                error = channels.get(channel)
+                if isinstance(error, str) and error:
+                    result["unavailable_counts"][channel] += 1
+                    if error == "Market Data Hub: нет свежего снимка (очередь или источник недоступен)":
+                        result["hub_snapshot_timeouts"][channel] += 1
+    pressure = health.get("scheduler_pressure")
+    if isinstance(pressure, dict):
+        keys = ("configured_symbols", "priority_symbols", "unmarked_priority",
+                "quote_jobs", "quote_capacity", "history_jobs", "history_capacity",
+                "deferred_refreshes", "risk_jobs", "scan_paused",
+                "entry_admission_paused", "scan_throttled")
+        result["scheduler_pressure"] = {
+            key: pressure[key] for key in keys
+            if key in pressure and (type(pressure[key]) is bool or
+                                    type(pressure[key]) is int and 0 <= pressure[key] <= 1_000_000)
+        }
+    return result
+
+
 def execution_freshness(events):
     fills = [e for e in events if e["action"] in ("OPEN", "DCA", "CLOSE", "PARTIAL")]
     proven = [
@@ -94,6 +146,10 @@ def collect(root, output, *, stop_workers=False, life=None):
             item["process_status"] = life.status(folder)
             active = life.active_snapshot(folder)
             item["active_process_confirmed"] = active is not None
+            if active:
+                summary = _market_health_summary(active, item["process_status"])
+                if summary is not None:
+                    item["market_health"] = summary
             if active and active.get("active_config"):
                 from .config import validate
 
