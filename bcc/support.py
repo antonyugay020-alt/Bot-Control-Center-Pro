@@ -42,6 +42,17 @@ def _market_health_summary(snapshot, status, *, now=None):
               and math.isfinite(recent) else None,
               "unavailable_counts": {"quote": 0, "history": 0},
               "hub_snapshot_timeouts": {"quote": 0, "history": 0}}
+    # Include bounded observation times, not raw symbols or provider errors.
+    # A future/invalid timestamp cannot masquerade as recent failure evidence.
+    for name in ("last_failed_utc", "last_recovered_utc"):
+        stamps = health.get(name)
+        if isinstance(stamps, dict):
+            result[name] = {
+                channel: value for channel in ("quote", "history")
+                for value in [stamps.get(channel)]
+                if type(value) in (int, float) and math.isfinite(value)
+                and 0 < value <= now + 5
+            }
     unavailable = health.get("unavailable_symbols")
     if not isinstance(unavailable, dict):
         result["unavailable_counts"] = None
