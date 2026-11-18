@@ -26,14 +26,25 @@ def test_current_root_requires_exact_commit_and_dedicated_directory(tmp_path, mo
         runner.validate_root(tmp_path / 'unrelated', SHA)
 
 
-def test_current_root_rejects_linked_runtime_directory(tmp_path, monkeypatch):
+@pytest.mark.parametrize('simulate_unavailable', [False, True])
+def test_current_root_rejects_linked_runtime_directory(tmp_path, monkeypatch, simulate_unavailable):
     root = make_root(tmp_path)
     other = tmp_path / 'other'
     other.mkdir()
+    link = root / 'check_workspaces'
+    if simulate_unavailable:
+        def deny_symlink(*args, **kwargs):
+            raise OSError('simulated Windows symlink privilege unavailable')
+        monkeypatch.setattr(type(link), 'symlink_to', deny_symlink)
     try:
-        (root / 'check_workspaces').symlink_to(other, target_is_directory=True)
+        link.symlink_to(other, target_is_directory=True)
     except OSError:
-        pytest.skip('Directory symlinks unavailable')
+        # Still exercise the production rejection branch where Windows does
+        # not grant symlink creation. This is not an OS-level symlink test.
+        link.mkdir()
+        original = type(link).is_symlink
+        monkeypatch.setattr(type(link), 'is_symlink',
+                            lambda path: path == link or original(path))
     monkeypatch.setattr(runner.subprocess, 'check_output', lambda *a, **k: SHA)
     with pytest.raises(ValueError, match='Unsafe QA workspace'):
         runner.validate_root(root, SHA)

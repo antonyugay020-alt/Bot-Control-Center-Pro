@@ -19,7 +19,8 @@ def test_existing_qa_root_requires_pinned_manifest(tmp_path, monkeypatch):
         runner.validate_root(root)
 
 
-def test_other_installation_or_linked_runtime_folder_is_rejected(tmp_path, monkeypatch):
+@pytest.mark.parametrize('simulate_unavailable', [False, True])
+def test_other_installation_or_linked_runtime_folder_is_rejected(tmp_path, monkeypatch, simulate_unavailable):
     unrelated = tmp_path / 'unrelated'
     unrelated.mkdir()
     with pytest.raises(ValueError, match='BCC_NATIVE_QA_9047b10'):
@@ -29,10 +30,20 @@ def test_other_installation_or_linked_runtime_folder_is_rejected(tmp_path, monke
     data = b'qa-manifest'
     (root / 'SHA256_MANIFEST.json').write_bytes(data)
     monkeypatch.setattr(runner, 'EXPECTED_MANIFEST', hashlib.sha256(data).hexdigest())
+    link = root / 'check_workspaces'
+    if simulate_unavailable:
+        def deny_symlink(*args, **kwargs):
+            raise OSError('simulated Windows symlink privilege unavailable')
+        monkeypatch.setattr(type(link), 'symlink_to', deny_symlink)
     try:
-        (root / 'check_workspaces').symlink_to(unrelated, target_is_directory=True)
+        link.symlink_to(unrelated, target_is_directory=True)
     except OSError:
-        pytest.skip('Directory symlinks unavailable')
+        # The guard remains tested on Windows without symlink privileges;
+        # this fallback does not claim OS-level link coverage.
+        link.mkdir()
+        original = type(link).is_symlink
+        monkeypatch.setattr(type(link), 'is_symlink',
+                            lambda path: path == link or original(path))
     with pytest.raises(ValueError, match='Unsafe QA workspace'):
         runner.validate_root(root)
 
