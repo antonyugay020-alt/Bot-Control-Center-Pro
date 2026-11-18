@@ -1062,6 +1062,16 @@ class BotWizard(QDialog):
                         values["parameters"] = difference_poly_rule(state["base_parameters"], params)
                     else:
                         values["parameters"] = difference(state["base_parameters"], params)
+                # Capital ceiling is a coin-wide rule, not a section setting.
+                # Preserve it across coin edits, bulk Apply and Qt reopen.
+                if self.cfg["strategy"] == "VELES":
+                    mode = budget_mode.currentData()
+                    if mode == "inherit":
+                        values.pop("capital_limit", None)
+                    else:
+                        values["capital_limit"] = {
+                            "mode": mode, "value": budget_value.value()
+                        }
                 draft[state["symbol"]] = values
             else:
                 draft.pop(state["symbol"], None)
@@ -1069,6 +1079,43 @@ class BotWizard(QDialog):
         individual = QCheckBox("Индивидуальные параметры монеты")
         individual.setObjectName("coinIndividual")
         layout.addWidget(individual)
+
+        budget_panel = QWidget(chooser)
+        budget_form = QFormLayout(budget_panel)
+        budget_mode = combo([
+            ("Без отдельного лимита", "inherit"),
+            ("% общего депозита бота", "percent"),
+            ("Фиксированная сумма USDT", "fixed"),
+        ])
+        budget_mode.setObjectName("coinCapitalLimitMode")
+        budget_value = QDoubleSpinBox(chooser)
+        budget_value.setObjectName("coinCapitalLimitValue")
+        budget_value.setDecimals(4)
+        budget_value.setRange(0.001, 1e12)
+        budget_value.setValue(5.0)
+        budget_form.addRow("Общий капитал этой монеты", budget_mode)
+        budget_form.addRow("Предел на все секции", budget_value)
+        budget_panel.setVisible(self.cfg["strategy"] == "VELES")
+        layout.addWidget(budget_panel)
+
+        def sync_capital_mode():
+            mode = budget_mode.currentData()
+            budget_value.setEnabled(mode != "inherit")
+            budget_value.setSuffix(" %" if mode == "percent" else " USDT")
+            budget_value.setMinimum(0.001 if mode == "percent" else 0.01)
+            budget_value.setMaximum(100 if mode == "percent" else 1e12)
+
+        def change_capital_mode(_index):
+            sync_capital_mode()
+            if self.cfg["strategy"] == "VELES":
+                individual.setChecked(True)
+
+        budget_mode.currentIndexChanged.connect(change_capital_mode)
+        budget_value.valueChanged.connect(
+            lambda _value: individual.setChecked(True)
+            if self.cfg["strategy"] == "VELES" else None
+        )
+        sync_capital_mode()
         editor = None
 
         def load():
@@ -1077,6 +1124,19 @@ class BotWizard(QDialog):
             sym = coin.currentData()
             state["symbol"] = sym
             over = draft.get(sym, {})
+            if self.cfg["strategy"] == "VELES":
+                saved_limit = over.get("capital_limit")
+                mode = saved_limit["mode"] if saved_limit is not None else "inherit"
+                value = saved_limit["value"] if saved_limit is not None else 5.0
+                budget_mode.blockSignals(True)
+                budget_value.blockSignals(True)
+                try:
+                    budget_mode.setCurrentIndex(budget_mode.findData(mode))
+                    sync_capital_mode()
+                    budget_value.setValue(value)
+                finally:
+                    budget_mode.blockSignals(False)
+                    budget_value.blockSignals(False)
             while tabs.count():
                 old = tabs.widget(0)
                 tabs.removeTab(0)
