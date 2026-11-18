@@ -770,6 +770,16 @@ def validate(cfg):
     ) - set(symbols):
         raise ValueError("Настройки неизвестной монеты")
     for sym, over in cfg["coin_overrides"].items():
+        if not isinstance(over, dict):
+            raise ValueError("Индивидуальные настройки монеты должны быть словарём")
+        if not isinstance(over.get("settings", {}), dict):
+            raise ValueError("Финансовые настройки монеты должны быть словарём")
+        if not isinstance(over.get("sections", {}), dict):
+            raise ValueError("Диапазоны монеты должны быть словарём")
+        for section_policy in over.get("sections", {}).values():
+            if (not isinstance(section_policy, dict)
+                    or not isinstance(section_policy.get("settings", {}), dict)):
+                raise ValueError("Неверная структура индивидуальной секции монеты")
         if set(over) - {"settings", "sections", "entry", "exit", "parameters"}:
             raise ValueError("Неизвестная настройка монеты")
         if set(over.get("sections", {})) - ids:
