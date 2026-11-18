@@ -23,9 +23,13 @@ class PricedRouterTests(unittest.TestCase):
         self.assertFalse(NETWORK_ENABLED)
         self.assertFalse(PAID_EXECUTION_ENABLED)
         self.assertEqual(set(PROFILES), {"terra", "kimi", "astra"})
+        self.assertEqual(PROFILES["terra"].api_model_id, "gpt-6-1-terra")
+        self.assertEqual(PROFILES["terra"].api_endpoint, "/codex/v1/responses")
+        self.assertEqual(PROFILES["kimi"].api_model_id, "kimi-k3")
+        self.assertEqual(PROFILES["kimi"].api_endpoint, "/openai/v1/responses")
+        self.assertIsNone(PROFILES["astra"].api_model_id)
+        self.assertIsNone(PROFILES["astra"].api_endpoint)
         for candidate in PROFILES.values():
-            self.assertIsNone(candidate.api_model_id)
-            self.assertIsNone(candidate.api_endpoint)
             self.assertFalse(candidate.availability_verified)
 
     def test_terra_example_100k_20k_costs_six_cents(self):
@@ -178,7 +182,7 @@ class PricedRouterTests(unittest.TestCase):
     def test_price_source_and_disabled_network_visible(self):
         status = summary()
         self.assertEqual(status["price_status"], "HISTORICAL_QUOTE")
-        self.assertEqual(status["api_contract"], "UNVERIFIED")
+        self.assertEqual(status["api_contract"], "DOCUMENTED_NOT_LIVE_VERIFIED")
         self.assertEqual(status["paid_calls"], "DISABLED")
         self.assertIsNone(status["models"]["astra"]["input_per_million"])
         self.assertEqual(status["models"]["astra"]["advertised_output_floor_usd_per_million"], "56")
