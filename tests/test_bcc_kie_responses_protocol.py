@@ -7,6 +7,7 @@ import unittest
 from tools.bcc_kie_responses_protocol import (
     API_HOST, ENDPOINTS, NETWORK_ENABLED, PAID_CALLS_ENABLED,
     ResponsesBlocked, build_request, describe, endpoint, parse_response,
+    parse_content_response,
     send_paid_request,
 )
 
@@ -91,6 +92,38 @@ class KieResponsesOfflineTests(unittest.TestCase):
         self.assertTrue(status["endpoints"]["terra"]["tools_documented"])
         self.assertFalse(status["endpoints"]["terra"]["agent_runtime_verified"])
         self.assertFalse(status["endpoints"]["terra"]["live_compatibility_verified"])
+
+    def test_content_valid_without_provider_usage_is_not_a_bill(self):
+        payload = sample_reply()
+        payload.pop("usage")
+        content = parse_content_response(payload, model="terra", output_cap=100)
+        self.assertEqual(content.text, "BCC_OFFLINE_RESPONSE")
+        self.assertFalse(content.provider_charge_verified)
+        self.assertFalse(content.usage_verified)
+        with self.assertRaises(ResponsesBlocked):
+            parse_response(payload, model="terra", output_cap=100)
+
+    def test_unknown_usage_categories_do_not_erase_valid_content(self):
+        payload = sample_reply()
+        payload["usage"]["unexpected_provider_billing"] = {"credits": "1"}
+        content = parse_content_response(payload, model="terra", output_cap=100)
+        self.assertEqual(content.text, "BCC_OFFLINE_RESPONSE")
+        with self.assertRaises(ResponsesBlocked):
+            parse_response(payload, model="terra", output_cap=100)
+
+    def test_content_only_still_denies_tool_calls(self):
+        payload = sample_reply()
+        payload.pop("usage")
+        payload["output"].append({"type": "function_call", "name": "delete_data"})
+        with self.assertRaises(ResponsesBlocked):
+            parse_content_response(payload, model="terra", output_cap=100)
+
+    def test_content_only_does_not_accept_incomplete_provider_text(self):
+        payload = sample_reply()
+        payload["status"] = "incomplete"
+        payload.pop("usage")
+        with self.assertRaises(ResponsesBlocked):
+            parse_content_response(payload, model="terra", output_cap=100)
 
     def test_terra_response_allows_reasoning_without_exposing_it(self):
         r = parse_response(sample_reply(), model="terra",
