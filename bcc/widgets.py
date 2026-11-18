@@ -497,7 +497,16 @@ FINANCE = [
         "choice",
         [("Cross", "CROSS"), ("Isolated", "ISOLATED")],
     ),
-    ("allocation_pct", "Доля депозита на секцию, %", "float", (0.001, 100)),
+    (
+        "allocation_mode", "Как выделять маржу", "choice", [
+            ("Доля депозита на каждую секцию · прежний режим", "section_pct"),
+            ("Доля депозита на монету · общий лимит всех диапазонов", "coin_pct"),
+            ("Фиксированная маржа USDT на монету · общий лимит", "coin_fixed"),
+        ],
+    ),
+    ("allocation_pct", "Доля депозита, %", "float", (0.001, 100)),
+    ("allocation_fixed_usdt", "Фиксированная маржа на монету, USDT",
+     "float", (0.01, 1e9)),
     (
         "reinvest_pct",
         "Реинвест: доля чистой прибыли при включении, %",
@@ -603,8 +612,23 @@ class SettingsEditor(QTabWidget):
                 if f[0] in ("daily_loss_pct", "disabled", "stop_after_cycle")
             ]
         elif strategy in ("GRID", "PUMP_DUMP"):
-            finance = [f for f in finance if f[0] != "allocation_pct"]
+            finance = [f for f in finance if f[0] not in
+                       ("allocation_mode", "allocation_pct", "allocation_fixed_usdt")]
         self.finance = Fields(data, finance)
+        # The inactive numeric control remains persisted for round-trip and
+        # inheritance, but cannot be mistaken for the currently used budget.
+        if "allocation_mode" in self.finance.controls:
+            selector = self.finance.controls["allocation_mode"][1]
+            pct = self.finance.controls["allocation_pct"][1]
+            fixed = self.finance.controls["allocation_fixed_usdt"][1]
+
+            def allocation_visibility():
+                selected = selector.currentData()
+                pct.setEnabled(selected != "coin_fixed")
+                fixed.setEnabled(selected == "coin_fixed")
+
+            selector.currentIndexChanged.connect(allocation_visibility)
+            allocation_visibility()
         self.addTab(scroll(self.finance), "Капитал и риск")
         orders = QWidget()
         layout = QVBoxLayout(orders)
