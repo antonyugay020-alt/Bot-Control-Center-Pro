@@ -46,7 +46,7 @@ def dialog_controls(app):
     return dialog, coin, mode, amount, individual, box
 
 
-def test_veIes_qt_coin_budget_applies_to_two_coins_and_reopens(app):
+def test_veles_qt_coin_budget_applies_to_two_coins_and_reopens(app):
     wizard = new_wizard()
     wizard.show()
     app.processEvents()
