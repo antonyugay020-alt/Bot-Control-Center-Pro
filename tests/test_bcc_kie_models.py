@@ -93,6 +93,17 @@ class PricedRouterTests(unittest.TestCase):
         self.assertFalse(p.paid_execution_enabled)
         self.assertGreater(p.estimated_max_micro_usd, 0)
 
+    def test_no_default_model_or_automatic_paid_fallback(self):
+        with self.assertRaises(TypeError):
+            plan("Explicit model is required")
+        self.assertEqual(summary()["selection_mode"], "EXPLICIT_ONLY")
+
+    def test_incomplete_inner_assistant_message_rejected(self):
+        altered = synthetic_answer(output=[{"type": "message", "role": "assistant",
+            "status": "incomplete", "content": [{"type": "output_text", "text": "fake"}]}])
+        with self.assertRaises(ModelNotReady):
+            validate_mock_responses_reply(altered, model="terra", input_cap=1000, output_cap=100)
+
     def test_kimi_plan_is_possible_without_network(self):
         self.assertEqual(plan("test", model="kimi").model, "kimi")
 
@@ -104,7 +115,7 @@ class PricedRouterTests(unittest.TestCase):
         ]:
             with self.subTest(n=len(task), cap=cap):
                 with self.assertRaises(ModelNotReady):
-                    plan(task, max_output_tokens=cap)
+                    plan(task, model="terra", max_output_tokens=cap)
 
     def test_mock_response_usage_accounting(self):
         r = validate_mock_responses_reply(synthetic_answer(),
