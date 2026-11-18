@@ -58,6 +58,12 @@ def _month(now: datetime | None) -> str:
 
 
 def _sum_occupied(conn: sqlite3.Connection, table: str, month: str) -> int:
+    if conn.execute(
+        f"""SELECT 1 FROM {table} WHERE
+        (status='HELD' AND charged_micro IS NOT NULL)
+        OR (status='SETTLED' AND charged_micro IS NULL) LIMIT 1"""
+    ).fetchone():
+        raise SpendingDenied("Invalid spending ledger settlement state")
     amount = conn.execute(
         f"""SELECT COALESCE(SUM(CASE WHEN status='HELD'
                  THEN hold_micro ELSE charged_micro END),0)
