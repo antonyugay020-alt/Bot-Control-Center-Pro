@@ -284,15 +284,16 @@ def enter(
     if (not math.isfinite(first) or first <= 0
             or not math.isfinite(fee) or fee < 0):
         return False, "Некорректный объём или комиссия входа"
-    if state.get("margin_model") != MODEL and available_margin(state) < margin + fee:
-        return False, "Недостаточно свободного капитала"
-    if margin <= 0:
-        return False, "Нулевая сумма секции"
     if coin_cap is not None:
         from .coin_budget import admission_reason
         coin_reason = admission_reason(state, symbol, margin, coin_cap)
         if coin_reason:
             return False, coin_reason
+    # The coin-wide reservation is checked before free-margin/market-data
+    # calculations, so an overbudget new section gets its exact blocker and
+    # cannot be hidden by a later, unrelated pricing error.
+    if state.get("margin_model") != MODEL and available_margin(state) < margin + fee:
+        return False, "Недостаточно свободного капитала"
     if not existing_grid:
         risk_reason = allocation_reason(state, margin)
         if risk_reason:
