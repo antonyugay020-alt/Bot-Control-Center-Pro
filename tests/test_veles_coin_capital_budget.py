@@ -169,6 +169,44 @@ def test_two_veles_sections_do_not_double_spend_single_coin_budget():
     assert committed(state, "BTCUSDT") <= 25 + 1e-6
 
 
+def test_smaller_coin_cap_reports_exact_blocker_not_silent_zero_position():
+    cfg = setup_config()
+    cfg["coin_overrides"]["BTCUSDT"] = {
+        "capital_limit": {"mode": "fixed", "value": 20.0},
+    }
+    state, events = initial_state(500), []
+    attach(state)
+    Veles().process(
+        cfg, state, events, "BTCUSDT",
+        bars([100, 100]), 99.99, 100.01, 120000,
+    )
+    assert not state["positions"]
+    assert not events
+    assert any(
+        "новая секция 25 USDT" in row.get("reason", "")
+        and "предел 20 USDT" in row.get("reason", "")
+        for row in state["diagnostics"]["BTCUSDT"]
+    )
+
+
+def test_new_cap_only_blocks_future_allocations_not_open_positions():
+    state = initial_state(500)
+    state["positions"] = {
+        "old": {"symbol": "BTCUSDT", "margin": 100, "order_margin": 25},
+    }
+    before = deepcopy(state)
+    assert "Лимит капитала BTCUSDT" in admission_reason(state, "BTCUSDT", 5, 80)
+    assert state == before
+    assert state["positions"]["old"]["margin"] == 100
+
+
+def test_no_hardcoded_19_or_20_global_position_limit():
+    from bcc.shared_risk import DEFAULT_POLICY, validate_policy
+    assert DEFAULT_POLICY["max_positions"] == 0
+    assert validate_policy({"max_positions": 50, "max_committed_usdt": 0})["max_positions"] == 50
+    assert validate_policy({"max_positions": 200, "max_committed_usdt": 0})["max_positions"] == 200
+
+
 def test_coin_budget_edit_is_atomic_and_survives_repository_roundtrip(tmp_path):
     cfg = setup_config()
     updated = project_veles_coin_transaction(cfg, coin_rules={
