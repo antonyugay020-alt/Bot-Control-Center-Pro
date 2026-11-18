@@ -20,6 +20,7 @@ from tools.bcc_kie_terra_one_shot import (
     APPROVAL_ID, CONFIRM_PHRASE, INPUT_CAP, OUTPUT_CAP, PROMPT,
     REQUEST_ID, RESERVE_MICRO_USD, SENTINEL_FILENAME, SOURCE_SHA,
     EXPECTED_TEXT, OneShotBlocked, SafeOutcome, _send_one_https,
+    _TRANSPORT_GRANT,
     perform_one_attempt, request_body, verify_preflight,
 )
 
@@ -286,7 +287,8 @@ class TerraOneTimeTests(unittest.TestCase):
         req = request_body()
         forged = replace(req, path="/openai/v1/responses")
         with self.assertRaises((OneShotBlocked, ResponsesBlocked)):
-            _send_one_https("FAKE", forged, connection_factory=lambda *a, **kw: None)
+            _send_one_https("FAKE", forged, approval_guard=_TRANSPORT_GRANT,
+                            connection_factory=lambda *a, **kw: None)
 
 
 class FakeResp:
@@ -324,9 +326,17 @@ class FakeHttpsTransportTests(unittest.TestCase):
         FakeConn.status = 200
         FakeConn.model = "gpt-6.1-terra"
 
+    def test_direct_terra_paid_transport_without_hold_guard_is_denied(self):
+        with self.assertRaises(OneShotBlocked):
+            _send_one_https("FAKE_ONLY", request_body(),
+                            connection_factory=FakeConn)
+        self.assertEqual(FakeConn.instances, [])
+
     def test_exact_terra_post_one_fake_socket(self):
         status, raw = _send_one_https("FAKE_ONLY", request_body(),
-                                      connection_factory=FakeConn)
+                                      approval_guard=_TRANSPORT_GRANT,
+                                      approval_guard=_TRANSPORT_GRANT,
+                                    connection_factory=FakeConn)
         self.assertEqual(status, 200)
         self.assertEqual(raw["status"], "completed")
         self.assertEqual(len(FakeConn.instances), 1)
@@ -352,6 +362,7 @@ class FakeHttpsTransportTests(unittest.TestCase):
     def test_redirect_302_not_followed(self):
         FakeConn.status = 302
         code, payload = _send_one_https("FAKE_ONLY", request_body(),
+                                         approval_guard=_TRANSPORT_GRANT,
                                          connection_factory=FakeConn)
         self.assertEqual((code, payload), (302, None))
         self.assertEqual(len(FakeConn.instances), 1)
