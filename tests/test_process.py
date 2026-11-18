@@ -306,6 +306,41 @@ def test_independent_process_identity_with_native_procfs(tmp_path):
             proc.wait()
 
 
+def test_real_worker_persists_more_than_nineteen_positions_across_restart(tmp_path):
+    """Synthetic feed, real OS worker, SQLite accounting and controller Stop."""
+    repo = Repository(tmp_path / 'app')
+    runner = tmp_path / 'replay_worker.py'
+    runner.write_text(RUNNER, encoding='utf-8')
+    folder, _ = setup_bot(repo, runner, 'Twenty positions replay')
+    cfg, digest = repo.load(folder)
+    cfg['symbols'] = [f'COIN{i}USDT' for i in range(20)]
+    cfg['settings']['allocation_pct'] = 1
+    repo.save(folder, cfg, digest)
+    life = Lifecycle(repo)
+    child = launch(life, folder, runner)
+    try:
+        wait_for_position_count(folder, child, 20, seconds=60)
+        life.stop(folder)
+        child.wait(timeout=15)
+        assert child.returncode == 0
+        saved = Store(folder)
+        assert len(saved.read()['positions']) == len(saved.history()) == 20
+        saved.audit()
+        life = Lifecycle(repo)
+        child = launch(life, folder, runner)
+        assert len(Store(folder).read()['positions']) == len(Store(folder).history()) == 20
+        life.stop(folder)
+        child.wait(timeout=15)
+        assert child.returncode == 0
+        reopened = Store(folder)
+        assert len(reopened.read()['positions']) == len(reopened.history()) == 20
+        reopened.audit()
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=15)
+
+
 def test_worker_stops_automatically_after_deal_when_configured(tmp_path):
     repo = Repository(tmp_path / "app")
     life = Lifecycle(repo)
