@@ -1,8 +1,9 @@
 """Offline Kie.ai coding-model catalog for the BCC development gateway.
 
 Source: Kie.ai email dated 2026-11-10. Prices are indicative and may change.
-A model's presence here is NOT proof of endpoint availability or entitlement.
-There are deliberately NO actual API model IDs, URLs, credentials or sockets.
+The 2026-11-18 user screenshots now document model labels and routes
+for Terra and Kimi. This is NOT proof of live availability, billing, or
+authorization. This module has no credentials, HTTPS client or sockets.
 """
 from __future__ import annotations
 
