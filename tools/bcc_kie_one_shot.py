@@ -29,6 +29,9 @@ from tools.bcc_kie_protocol import (
 )
 
 REQUEST_ID = "BCC-KIE-SONNET55-CONNECTIVITY-20261117-V1"
+# The only live attempt was spent on 2026-11-17 (HTTP 502, provider log 0 credits).
+# No additional user permission was granted. Retire this paid entrypoint.
+KNOWN_AUTHORIZATION_CONSUMED = True
 APPROVAL_ID = "BCC-KIE-ONE-TEST-USER-AUTHORIZED-20261117"
 APPROVAL_PHRASE = "APPROVE 0.01"
 PROMPT = "Reply with exactly BCC_KIE_CONNECTED and nothing else."
@@ -91,6 +94,8 @@ def run_one_shot(*, approval_text: str, store: Any, ledger_path: Path,
     Returns sanitized data only. Never settles a real charge from model-reported
     usage; the $0.01 hold remains until verified provider billing reconciliation.
     """
+    if KNOWN_AUTHORIZATION_CONSUMED and send is _post_once:
+        raise OneShotError("This one-time authorization was consumed; paid transport retired")
     if approval_text != APPROVAL_PHRASE:
         raise OneShotError("User confirmation missing; request not attempted")
     payload = build_payload(PROMPT, max_tokens=OUTPUT_LIMIT_TOKENS)
@@ -140,6 +145,10 @@ def run_one_shot(*, approval_text: str, store: Any, ledger_path: Path,
 
 
 def main() -> int:
+    if KNOWN_AUTHORIZATION_CONSUMED:
+        print("AUTHORIZATION_CONSUMED: the 2026-11-17 one-time request cannot be repeated.")
+        print("Read-only status: py -3 -I tools\\bcc_kie_ledger_review.py")
+        return 3
     if os.name != "nt":
         print("BLOCKED: real one-shot test runs only on the user's Windows PC.")
         return 2
