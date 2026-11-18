@@ -18,8 +18,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $source '.git'))) {
 # Reject Windows junctions/symlinks to another workspace. A seemingly
 # isolated QA checkout must not be a reparse-point alias to live bots.
 foreach ($p in @($source, $parent, (Join-Path $source '.git'))) {
-    if ((Get-Item -LiteralPath $p -Force).Attributes -band
-            [IO.FileAttributes]::ReparsePoint) {
+    if (((Get-Item -LiteralPath $p -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
         throw 'BLOCKED: source, parent or Git directory is a reparse point'
     }
 }
