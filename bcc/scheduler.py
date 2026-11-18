@@ -70,6 +70,14 @@ class MarketScheduler:
         # blocked behind cold scanner candles. This lane cannot mutate trades.
         self.risk_capacity = max(1, workers // 2)
 
+    @staticmethod
+    def _oldest_tier_first(priority, state):
+        """Put missing/oldest actual exchange tier timestamps first."""
+        def tier_age_key(symbol):
+            at = state.get('margin_data', {}).get(symbol, {}).get('risk_at')
+            return at if type(at) in (int, float) and math.isfinite(at) else -math.inf
+        return sorted(priority, key=tier_age_key)
+
     def _risk(self, symbol):
         try:
             return self.source.refresh_position_risk(symbol), ''
@@ -231,14 +239,9 @@ class MarketScheduler:
                 utc = market_now()
             except ValueError:
                 utc = None
-            # The oldest or missing exchange risk-tier witness goes first.
-            # Configuration/insertion order is not a risk priority: on large
-            # portfolios it repeatedly renews recently opened positions while
-            # older exposure crosses the strict 300s collateral age fence.
-            def tier_age_key(symbol):
-                at = state.get('margin_data', {}).get(symbol, {}).get('risk_at')
-                return at if type(at) in (int, float) and math.isfinite(at) else -math.inf
-            for symbol in sorted(priority, key=tier_age_key):
+            # Configuration/insertion order is not a risk priority. Renew
+            # missing or oldest exchange evidence before recent exposures.
+            for symbol in self._oldest_tier_first(priority, state):
                 if len(self.risk_jobs)>=self.risk_capacity:
                     break
                 at = state.get('margin_data',{}).get(symbol,{}).get('risk_at')
