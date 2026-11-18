@@ -82,6 +82,31 @@ class BudgetLedger:
         return conn
 
     @staticmethod
+    def _other_model_occupied(conn: sqlite3.Connection, period: str) -> int:
+        """Include new Kie model holds in the original Claude admission gate.
+
+        Migration is optional for old installations. Once the table exists,
+        a malformed row must block all spending, not disappear from SUM().
+        """
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='kie_model_spending'"
+        ).fetchone()
+        if exists is None:
+            return 0
+        invalid = conn.execute("""SELECT 1 FROM kie_model_spending
+            WHERE (status='HELD' AND charged_micro IS NOT NULL)
+               OR (status='SETTLED' AND charged_micro IS NULL) LIMIT 1""").fetchone()
+        if invalid:
+            raise SpendingDenied("Model spending ledger has invalid settlement records")
+        amount = conn.execute("""SELECT COALESCE(SUM(
+            CASE WHEN status='HELD' THEN hold_micro ELSE charged_micro END),0)
+            FROM kie_model_spending WHERE status='HELD' OR period=?""",
+            (period,)).fetchone()[0]
+        if type(amount) is not int or amount < 0:
+            raise SpendingDenied("Invalid shared provider spending total")
+        return amount
+
+    @staticmethod
     def _period(now: datetime | None) -> str:
         if now is None:
             now = datetime.now(timezone.utc)
@@ -110,6 +135,7 @@ class BudgetLedger:
                   CASE WHEN status='HELD' THEN hold_micro ELSE charged_micro END
                 ),0) FROM claude_spending
                 WHERE status='HELD' OR period=?""", (period,)).fetchone()[0]
+                occupied += self._other_model_occupied(conn, period)
                 if occupied + cost > ADMISSION_LIMIT_MICRO:
                     raise SpendingDenied("shared monthly admission budget exhausted")
                 if conn.execute("SELECT 1 FROM claude_spending WHERE request_id=?",
@@ -118,6 +144,14 @@ class BudgetLedger:
                 if conn.execute("SELECT 1 FROM claude_spending WHERE approval_id=?",
                                 (approval_id,)).fetchone():
                     raise SpendingDenied("approval already used for another request")
+                if conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='kie_model_spending'"
+                ).fetchone():
+                    if conn.execute(
+                        "SELECT 1 FROM kie_model_spending WHERE request_id=? OR approval_id=?",
+                        (request_id, approval_id)
+                    ).fetchone():
+                        raise SpendingDenied("request or approval already used by another Kie model")
                 conn.execute("""INSERT INTO claude_spending
                   (request_id,period,approval_id,hold_micro,charged_micro,status)
                   VALUES(?,?,?,?,NULL,'HELD')""", (request_id, period, approval_id, cost))
@@ -159,6 +193,18 @@ class BudgetLedger:
                 FROM claude_spending WHERE period=? AND status='SETTLED'""", (period,)).fetchone()[0]
             held = conn.execute("""SELECT COALESCE(SUM(hold_micro),0)
                 FROM claude_spending WHERE status='HELD'""").fetchone()[0]
+            other_exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='kie_model_spending'"
+            ).fetchone()
+            if other_exists:
+                # The historical endpoint now shares the same $18 admission
+                # pool. Never display fictitious available funds.
+                self._other_model_occupied(conn, period)
+                charged += conn.execute("""SELECT COALESCE(SUM(charged_micro),0)
+                    FROM kie_model_spending WHERE period=? AND status='SETTLED'""",
+                    (period,)).fetchone()[0]
+                held += conn.execute("""SELECT COALESCE(SUM(hold_micro),0)
+                    FROM kie_model_spending WHERE status='HELD'""").fetchone()[0]
         return {
             "charged_micro_usd": charged,
             "unresolved_holds_micro_usd": held,
