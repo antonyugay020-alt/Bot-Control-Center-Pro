@@ -609,6 +609,18 @@ class SettingsEditor(QTabWidget):
         elif strategy in ("GRID", "PUMP_DUMP"):
             finance = [f for f in finance if f[0] not in ("allocation_mode", "allocation_pct", "allocation_usdt")]
         self.finance = Fields(data, finance)
+        if strategy == "VELES":
+            # Keep the dormant monetary value for reversibility, but make it
+            # explicit which of the two sizing policies is active.
+            mode_control = self.finance.controls["allocation_mode"][1]
+            percentage_control = self.finance.controls["allocation_pct"][1]
+            fixed_control = self.finance.controls["allocation_usdt"][1]
+            def synchronize_sizing_fields(_index=None):
+                is_fixed = mode_control.currentData() == "fixed_usdt"
+                percentage_control.setEnabled(not is_fixed)
+                fixed_control.setEnabled(is_fixed)
+            mode_control.currentIndexChanged.connect(synchronize_sizing_fields)
+            synchronize_sizing_fields()
         self.addTab(scroll(self.finance), "Капитал и риск")
         orders = QWidget()
         layout = QVBoxLayout(orders)
