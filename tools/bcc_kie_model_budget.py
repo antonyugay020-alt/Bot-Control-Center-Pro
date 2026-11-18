@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
+import re
 from typing import Callable
 
 from tools.bcc_claude_budget import (
@@ -24,6 +25,8 @@ from tools.bcc_kie_models import ModelNotReady, profile
 
 SIMULATION_ONLY = True
 TABLE = "kie_model_spending"
+COMMIT_SHA = re.compile(r"[0-9a-f]{40}\\Z".replace("\\\\", "\\"))
+TASK_DIGEST = re.compile(r"[0-9a-f]{64}\\Z".replace("\\\\", "\\"))
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,8 @@ class ModelReservation:
     model: str
     reserved_micro_usd: int
     month_utc: str
+    source_sha: str
+    prompt_sha256: str
     paid_transport_enabled: bool = False
 
 
@@ -40,6 +45,12 @@ def _ident(value: str, field: str) -> str:
         raise SpendingDenied("Invalid " + field)
     if "\x00" in value or "\r" in value or "\n" in value:
         raise SpendingDenied("Invalid " + field)
+    return value
+
+
+def _digest(value: str, pattern: re.Pattern[str]) -> str:
+    if not isinstance(value, str) or pattern.fullmatch(value) is None:
+        raise SpendingDenied("Invalid pinned task or source digest")
     return value
 
 
@@ -89,7 +100,7 @@ class KieModelBudget:
     """
 
     def __init__(self, db_path: str | Path,
-                 approval_verifier: Callable[[str, str, str, int], bool] | None = None):
+                 approval_verifier: Callable[[str, str, str, int, str, str], bool] | None = None):
         self.db_path = Path(db_path)
         self.approval_verifier = approval_verifier
 
@@ -112,12 +123,17 @@ class KieModelBudget:
                 request_id TEXT PRIMARY KEY,
                 approval_id TEXT NOT NULL UNIQUE,
                 model TEXT NOT NULL,
+                source_sha TEXT NOT NULL,
+                prompt_sha256 TEXT NOT NULL,
                 period TEXT NOT NULL,
                 hold_micro INTEGER NOT NULL CHECK (hold_micro>0),
                 charged_micro INTEGER,
                 status TEXT NOT NULL CHECK (status IN ('HELD','SETTLED')),
                 CHECK(charged_micro IS NULL OR charged_micro>=0)
             )""")
+            columns = {row[1] for row in conn.execute(f"PRAGMA table_info({TABLE})")}
+            if not {"source_sha", "prompt_sha256"}.issubset(columns):
+                raise SpendingDenied("Legacy model table lacks task binding; reviewed migration required")
 
     def snapshot(self, *, now: datetime | None = None) -> dict[str, int | str | bool]:
         month = _month(now)
@@ -147,7 +163,8 @@ class KieModelBudget:
             raise SpendingDenied("Budget database unavailable; no spending allowed") from None
 
     def reserve(self, *, request_id: str, approval_id: str, model: str,
-                max_micro_usd: int, now: datetime | None = None) -> ModelReservation:
+                max_micro_usd: int, source_sha: str, prompt_sha256: str,
+                now: datetime | None = None) -> ModelReservation:
         """One atomic admission; host approval required, no provider call.
 
         The requested maximum is a *locally reserved* amount, not a Kie.ai
@@ -156,13 +173,15 @@ class KieModelBudget:
         request_id = _ident(request_id, "request ID")
         approval_id = _ident(approval_id, "approval ID")
         limit = _micro(max_micro_usd)
+        source_sha = _digest(source_sha, COMMIT_SHA)
+        prompt_sha256 = _digest(prompt_sha256, TASK_DIGEST)
         month = _month(now)
         try:
             profile(model)
         except ModelNotReady:
             raise SpendingDenied("Unknown model profile") from None
         if self.approval_verifier is None or not self.approval_verifier(
-            approval_id, request_id, model, limit
+            approval_id, request_id, model, limit, source_sha, prompt_sha256
         ):
             raise SpendingDenied("No trusted exact user approval")
         if not self.db_path.is_file() or self.db_path.is_symlink():
@@ -184,9 +203,9 @@ class KieModelBudget:
                         raise SpendingDenied("Request or user approval already consumed")
                     conn.execute(
                         f"INSERT INTO {TABLE} "
-                        "(request_id, approval_id, model, period, hold_micro, charged_micro, status) "
-                        "VALUES (?,?,?,?,?,NULL,'HELD')",
-                        (request_id, approval_id, model, month, limit),
+                        "(request_id, approval_id, model, source_sha, prompt_sha256, period, hold_micro, charged_micro, status) "
+                        "VALUES (?,?,?,?,?,?,?,NULL,'HELD')",
+                        (request_id, approval_id, model, source_sha, prompt_sha256, month, limit),
                     )
                     conn.execute("COMMIT")
                 except BaseException:
@@ -194,7 +213,7 @@ class KieModelBudget:
                     raise
         except sqlite3.Error:
             raise SpendingDenied("Atomic budget reservation failed") from None
-        return ModelReservation(request_id, model, limit, month)
+        return ModelReservation(request_id, model, limit, month, source_sha, prompt_sha256)
 
     def settle_from_unverified_usage(self, *_args, **_kwargs) -> None:
         """No self-reported provider tokens can settle a monetary reservation."""
