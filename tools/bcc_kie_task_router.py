@@ -107,7 +107,8 @@ def prepare_handoff(*, task_tag: str, task_text: str, model: str,
         raise RouteBlocked("Task identifier is invalid")
     if not isinstance(source_sha, str) or VALID_SHA.fullmatch(source_sha) is None:
         raise RouteBlocked("Pinned BCC source commit SHA required")
-    if stage not in STAGES or model not in STAGES[stage]:
+    if (not isinstance(stage, str) or stage not in STAGES
+            or not isinstance(model, str) or model not in STAGES[stage]):
         raise RouteBlocked("Model/stage combination is not supported")
     if (not isinstance(task_text, str) or not task_text.strip()
             or len(task_text.encode("utf-8")) > MAX_TASK_BYTES
@@ -149,11 +150,14 @@ def prepare_handoff(*, task_tag: str, task_text: str, model: str,
     )
 
 
-def pair_for_independent_review(implementation: Handoff, review: Handoff) -> dict[str, Any]:
-    """Review must use a different model and the exact same pinned source.
+def pair_for_independent_review(
+        implementation: Handoff, review: Handoff, *,
+        candidate_sha: str) -> dict[str, Any]:
+    """Pin a second-model review to the NEW implementation commit.
 
-    No automated review result is claimed here. Reviewer inputs/changes still
-    require explicit Work approval before being submitted to a provider.
+    An independent reviewer must read the diff base..candidate in GitHub,
+    not reread the pre-implementation SHA. This offline manifest does not
+    prove commit ancestry, test success, independent execution or merge.
     """
     if not isinstance(implementation, Handoff) or not isinstance(review, Handoff):
         raise RouteBlocked("Invalid task handoff")
@@ -161,15 +165,22 @@ def pair_for_independent_review(implementation: Handoff, review: Handoff) -> dic
         raise RouteBlocked("Wrong task stages for an independent review")
     if implementation.model == review.model:
         raise RouteBlocked("Reviewer must be a different model")
-    if implementation.source_sha != review.source_sha or implementation.repo != review.repo:
-        raise RouteBlocked("Review must be bound to the same source snapshot")
+    if not isinstance(candidate_sha, str) or VALID_SHA.fullmatch(candidate_sha) is None:
+        raise RouteBlocked("Review requires a pinned implementation commit")
+    if candidate_sha == implementation.source_sha or review.source_sha != candidate_sha:
+        raise RouteBlocked("Review does not refer to the implementation commit")
+    if implementation.repo != review.repo:
+        raise RouteBlocked("Different GitHub repository")
     if not set(review.context_paths).issubset(set(implementation.context_paths)):
         raise RouteBlocked("Reviewer requests context outside approved implementation scope")
     return {
         "implementation": implementation.task_tag,
         "review": review.task_tag,
-        "snapshot": implementation.source_sha,
+        "base_sha": implementation.source_sha,
+        "candidate_sha": candidate_sha,
         "independent_models": True,
+        "git_ancestry_verified": False,
+        "native_windows_e2e_verified": False,
         "ready_for_external_api": False,
         "no_paid_calls_authorized": True,
     }
