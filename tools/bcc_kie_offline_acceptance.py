@@ -39,7 +39,7 @@ EXPECTED_TEST_FILES = frozenset({
     "test_bcc_kie_terra_readonly_diagnose.py",
     "test_bcc_kie_terra_response_replay.py",
 })
-MIN_TEST_COUNT = 256  # Baseline inventory: 18 modules, 256 test methods.
+MIN_TEST_COUNT = 257  # Baseline inventory: 18 modules, 257 test methods.
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 os.environ["PYTHONNOUSERSITE"] = "1"
 sys.dont_write_bytecode = True
