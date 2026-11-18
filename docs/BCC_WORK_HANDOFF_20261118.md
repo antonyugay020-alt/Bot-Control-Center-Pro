@@ -1,4 +1,4 @@
-# BCC / GPT Work handoff while Kie.ai support investigates HTTP 502
+# BCC / GPT Work handoff — Terra connectivity confirmed, coding agent not yet authorized
 
 **Scope:** Bot Control Center Pro only. **NOT RELEASE / NO LIVE TRADING.**
 **Updated:** 2026-11-18. This document is a Work handoff, not a claim that
@@ -59,6 +59,43 @@ Next real BCC product milestone, as stated by the checkpoint:
   exact one-time attempt. It does not settle/reconcile the provider bill.
 - The historical one-shot launcher is READ-ONLY from this checkpoint,
   and the Python live entrypoint is explicitly retired.
+
+
+## Developer gateway update: Kie.ai Terra, 18 November 2026
+
+This section supersedes the historical Claude-only status below.
+
+- Kie.ai dashboard Logs showed a successful GPT-6.1 Terra request
+  (`gpt-6-1-terra`) at 14:27:03, **0.01 provider credits**, result preview
+  exactly `BCC_TERRA_CONNECTED`. A provider credit is NOT necessarily
+  equivalent to USD 0.01, and a token receipt is not a provider invoice.
+- The local Python one-shot had `BLOCKED/UNKNOWN` exit 1 despite
+  provider success. The complete response envelope was not captured.
+  **The exact local exception is not established**. The Kie preview
+  proves correct provider-generated text, but not clean client parsing.
+- The user-confirmed Windows offline run of the old gateway at source
+  `56d1a87c9171d7e257a9f19881d6a72b8944e9c7` had 218/218 tests,
+  0 failures/errors, 2 skipped. Later gateway changes have not received
+  the same native Windows acceptance.
+- New offline-only stages separate safe text from token accounting,
+  categorize CONNECT/POST/STATUS/READ/JSON errors without secrets, and
+  allow replay of a PREVIOUSLY SAVED JSON body via stdin. The expanded
+  acceptance inventory is **18 modules / 256 tests**.
+- The one-time authorization is **CONSUMED**. The old Terra and Claude
+  launchers are read-only and all other live Kie calls remain disabled.
+  Keep the original SQLite holds/attempt markers. No retry, fallback,
+  billing settlement, API key forwarding or Graphify/model claims.
+- Terra is a candidate to program BCC when a separate, explicit
+  paid request is authorized and the coding workflow is accepted.
+  Kimi remains chat-only on Kie.ai as documented; do not run it as
+  an autonomous tool-using agent. Astra has no confirmed billable cap.
+
+**Work should continue the BCC PRODUCT independently of model-provider
+readiness**, using normal GitHub source inspection and isolated test
+branches. Do not wait for Terra to become an autonomous coding agent.
+The app branch `codex/ws-transport-isolated-20261113` and the native
+Windows Modern Qt E2E requirement remain authoritative. The model gateway
+branch is NOT a product release.
 
 ## Work / Graphify task contract
 
