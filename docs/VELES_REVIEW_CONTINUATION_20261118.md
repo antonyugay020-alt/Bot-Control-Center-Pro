@@ -9,3 +9,7 @@ Complete regression for the final corrected source is running in a sealed indepe
 The reported 19 positions do not establish a hard 19-position limit. The last saved report identified a stale independently timed ALCHUSDT mark which blocked Cross portfolio valuation; other constraints such as configured global risk and actual balances remain applicable. Determine the cause of any later 20th-entry failure from current diagnostics; do not weaken stale-price or risk gates.
 
 Remaining gates: complete actual whole-system regression; investigate all remaining failures and rerun after fixes; verify VELES DCA/ranges/coin-section budgets, GRID, Pump & Dump, Polymarket, risk, transfer, recovery and monitoring; independent review and isolated clean-unpack native Windows Qt E2E. Graphify integration was not available. No final package or release is certified.
+
+Final Linux sealed-copy regression completed PASS: 3,915 passed, zero failures/errors/skips, all eight shards, exact collected and executed identities verified. The sealed source under test matches executable and test bytes at d5d769f; subsequent commits change only evidence and manifest. Native Windows Qt E2E remains NOT RUN.
+
+Graphify discovery: no Graphify Work tool or skill, no graphify command, and Python modules graphify and graphifyy absent from the task venv. No Graphify analysis was executed. An identified trusted Graphify integration or package/source must be provisioned into this environment before use; verify its licensing and offline behavior first.
