@@ -335,8 +335,7 @@ class FakeHttpsTransportTests(unittest.TestCase):
     def test_exact_terra_post_one_fake_socket(self):
         status, raw = _send_one_https("FAKE_ONLY", request_body(),
                                       approval_guard=_TRANSPORT_GRANT,
-                                      approval_guard=_TRANSPORT_GRANT,
-                                    connection_factory=FakeConn)
+                                      connection_factory=FakeConn)
         self.assertEqual(status, 200)
         self.assertEqual(raw["status"], "completed")
         self.assertEqual(len(FakeConn.instances), 1)
@@ -353,6 +352,7 @@ class FakeHttpsTransportTests(unittest.TestCase):
     def test_http_503_does_not_read_error_body_or_retry(self):
         FakeConn.status = 503
         code, raw = _send_one_https("FAKE_ONLY", request_body(),
+                                    approval_guard=_TRANSPORT_GRANT,
                                     connection_factory=FakeConn)
         self.assertEqual((code, raw), (503, None))
         self.assertEqual(len(FakeConn.instances), 1)
