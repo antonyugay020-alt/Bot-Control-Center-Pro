@@ -123,3 +123,36 @@ a new request approved.
 
 Previous instructions above describe the historical test. They must
 NOT be used to authorize or trigger another request as of this incident.
+
+## PROVIDER LOG CONFIRMATION — 2026-11-18 14:27:03 (Kie.ai dashboard)
+
+User provided a screenshot of Kie.ai Logs containing one new row:
+- model label `gpt-6-1-terra`;
+- timestamp `2026-11-18 14:27:03` shown in Kie.ai UI;
+- provider status green `успешно` (success);
+- duration `9` shown in UI (unit not independently audited);
+- credits used `0.01` as shown by Kie.ai (NOT a verified USD amount).
+
+The previous Claude row remains an error with zero credits used.
+Therefore the earlier statement that provider delivery was unproven
+is superseded: **provider-side completion is now supported by the log.**
+However the local Windows one-shot printed `BLOCKED/UNKNOWN` with
+exit 1 and did not produce a JSON SafeOutcome. This is a mismatch
+between provider success and client acceptance/exception handling.
+
+Do NOT assert the parser is conclusively at fault: the screenshot
+does not display the raw provider response envelope, usage object,
+actual terminal exception, or exact SDK error. A successful provider
+log row cannot prove the client received a complete accepted body.
+Possible locations include HTTPS response read/decode and strict
+local Responses shape/usage validation. Need the corresponding result
+JSON (redacted) or Kie.ai dashboard Result view to determine cause.
+
+Provider credits and the local `$0.01` reservation are different
+measurements. The existing SQLite HOLD/marker remain unchanged and
+must not be auto-settled or used as a new authorization. No further
+paid Kie.ai API calls. Use only BCC_KIE_TERRA_STATUS.cmd to inspect
+local attempt state, without touching the legacy Claude record.
+
+Scope: optional developer gateway branch ONLY. Neither Windows
+Modern Qt E2E nor live BCC trading operation was validated.
