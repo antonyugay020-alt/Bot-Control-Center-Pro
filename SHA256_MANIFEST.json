@@ -501,6 +501,9 @@
     "tests/test_veles_capital_per_coin_mode.py": "372668cf685f9ddc5f4a48f0f90378bae5f26235120995effd5fee674d705306",
     "tests/test_veles_fixed_capital_qt.py": "82b76062b9ae0dd525fae1c016eb16fde4bc377dd5692eab0b45ce3a8feae8da",
     "docs/VELES_REVIEW_CONTINUATION_20261118.md": "364a15c20837f0111540102acfbd4f7f1f08f1d90653fdfd7cc5b8799d0da326",
-    "tests/test_twentieth_position_risk_recovery.py": "2b860bc856a427983ebfb6cf12de84fbd4e857b239bfd6ce297aa36a417f0a17"
+    "tests/test_twentieth_position_risk_recovery.py": "2b860bc856a427983ebfb6cf12de84fbd4e857b239bfd6ce297aa36a417f0a17",
+    "tests/test_manual_qa_9047_runner.py": "b40bf9a2db4c7029e00121c2b730400b10484a56c9d589c46773b5a973612328",
+    "tools/manual_qa_9047.py": "7d756590b86b042cfdb2c4603579f4482fd7800df0e5f84315797684172438e4",
+    "docs/WINDOWS_MANUAL_QA_9047_20261118.md": "e6a639ebddc92c386df306b8b4d4b4685cc4645f129b7a96f93f63c38a312f58"
   }
 }
