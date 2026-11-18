@@ -15,7 +15,9 @@ KLINE = "https://api.bybit.com/v5/market/kline"
 def test_two_background_history_lanes_progress_under_continuous_position_marks(tmp_path):
     path = tmp_path / "public-hub.sqlite"
     registry = HubRegistry(path)
-    for i in range(12):
+    # Keep urgent requests continuously due; a small batch drains before the
+    # assertion and lets the old one-background-lane scheduler pass by luck.
+    for i in range(100):
         registry.subscribe(
             BOOK, {"category": "linear", "symbol": f"OPEN{i}USDT", "limit": 50},
             priority=True,
@@ -38,8 +40,9 @@ def test_two_background_history_lanes_progress_under_continuous_position_marks(t
             if url == KLINE:
                 with calls_lock:
                     started_history.add(symbol)
-                assert release.wait(5), "Synthetic background request was not released"
+                assert release.wait(15), "Synthetic background request was not released"
             else:
+                time.sleep(.02)  # The incoming urgent work exceeds four lanes.
                 with calls_lock:
                     urgent_completed.add(symbol)
 
@@ -48,7 +51,7 @@ def test_two_background_history_lanes_progress_under_continuous_position_marks(t
 
     hub = MarketDataHub(path, Source(), max_workers=6)
     try:
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + 8
         while time.monotonic() < deadline:
             hub.poll_nonblocking()
             with calls_lock:
