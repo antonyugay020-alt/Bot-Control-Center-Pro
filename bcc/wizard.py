@@ -1078,7 +1078,9 @@ class BotWizard(QDialog):
 
         individual = QCheckBox("Индивидуальные параметры монеты")
         individual.setObjectName("coinIndividual")
-        layout.addWidget(individual)
+        # The user must see the coin-wide cap BEFORE the detailed tab editor;
+        # hiding it after a tall tab page made this risk setting easy to miss.
+        layout.insertWidget(layout.indexOf(tabs), individual)
 
         budget_panel = QWidget(chooser)
         budget_form = QFormLayout(budget_panel)
@@ -1096,7 +1098,7 @@ class BotWizard(QDialog):
         budget_form.addRow("Общий капитал этой монеты", budget_mode)
         budget_form.addRow("Предел на все секции", budget_value)
         budget_panel.setVisible(self.cfg["strategy"] == "VELES")
-        layout.addWidget(budget_panel)
+        layout.insertWidget(layout.indexOf(tabs), budget_panel)
 
         def sync_capital_mode():
             mode = budget_mode.currentData()
