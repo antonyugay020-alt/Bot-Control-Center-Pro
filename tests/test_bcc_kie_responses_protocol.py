@@ -191,6 +191,33 @@ class KieResponsesOfflineTests(unittest.TestCase):
         with self.assertRaises(ResponsesBlocked):
             parse_response(raw, model="terra", output_cap=100)
 
+    def test_known_provider_response_aliases_and_cross_model_rejection(self):
+        for model, accepted in [
+            ("terra", "gpt-6.1-terra"),
+            ("terra", "gpt-6-1-terra"),
+            ("kimi", "moonshotai/kimi-k3"),
+            ("kimi", "kimi-k3"),
+        ]:
+            with self.subTest(model=model, reply=accepted):
+                reply = sample_reply()
+                reply["model"] = accepted
+                result = parse_response(reply, model=model, output_cap=100)
+                self.assertEqual(result.model, model)
+        reply = sample_reply()
+        reply["model"] = "moonshotai/kimi-k3"
+        with self.assertRaises(ResponsesBlocked):
+            parse_response(reply, model="terra", output_cap=100)
+
+    def test_catalog_paths_match_protocol_adapters_without_real_readiness(self):
+        from tools.bcc_kie_models import PROFILES, plan
+        for name in ("terra", "kimi"):
+            with self.subTest(model=name):
+                self.assertEqual(PROFILES[name].api_model_id, ENDPOINTS[name].request_model)
+                self.assertEqual(PROFILES[name].api_endpoint, ENDPOINTS[name].path)
+                planned = plan("Synthetic only", model=name, max_output_tokens=100)
+                self.assertFalse(planned.api_ready)
+                self.assertFalse(planned.paid_execution_enabled)
+
     def test_network_is_hard_disabled_without_secrets(self):
         self.assertFalse(NETWORK_ENABLED)
         self.assertFalse(PAID_CALLS_ENABLED)
