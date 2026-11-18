@@ -210,3 +210,48 @@ Manager нельзя переносить в GitHub или чат.
    с ручной сверкой биллинга. Никаких автоматических повторов при 502.
 5. Нативная Windows Qt E2E BCC и архитектурные дефекты остаются
    отдельными release-gates; этот модуль сам по себе не завершает BCC.
+
+
+## Единая комплексная офлайн-приёмка на Windows (после изменений 18.11.2026)
+
+Сценарий `BCC_KIE_AGENT_CHECK.cmd` теперь **возвращает реальный код
+завершения**. Устаревший запускатель мог показывать сообщение о
+завершении без корректного ненулевого exit code при сбое.
+
+Только из ранее созданного изолированного checkout
+`%USERPROFILE%\Desktop\BCC_AGENT_GATEWAY` на ветке
+`agent/bcc-work-claude-gateway-20261117`:
+
+    $dir = "$HOME\Desktop\BCC_AGENT_GATEWAY"
+    if (-not (Test-Path "$dir\.git")) { throw "Нужен отдельный checkout BCC_AGENT_GATEWAY" }
+    git -C $dir pull --ff-only
+    if ($LASTEXITCODE -ne 0) { throw "Git update failed" }
+    & "$dir\BCC_KIE_AGENT_CHECK.cmd"
+    Write-Host "Exit code: $LASTEXITCODE"
+
+Команда не устанавливает пакеты, не перезагружает Windows, не
+открывает торговое приложение, не завершает ботов/мониторы,
+не вызывает Kie.ai, OpenAI API или GitHub Actions.
+
+`tools/bcc_kie_offline_windows_qa.ps1` проверяет точное имя
+папки, Git-ветку, отсутствие локальных изменений, исходный SHA.
+`tools/bcc_kie_offline_acceptance.py` запускает **все 14**
+`test_bcc_kie_*.py` модулей (не менее **186 тестовых методов**).
+На время импорта и выполнения запретены socket/connect,
+DNS и создание subprocess. Подставные HTTP-клиенты в тестах
+сети не используют. 2 skip могут быть платформенными, но
+любой failed/error или неполный список тестов блокирует PASS.
+
+**Единый локальный архив** создаётся внутри той же папки:
+
+    %USERPROFILE%\Desktop\BCC_AGENT_GATEWAY\QA\BCC_KIE_QA_RESULT.zip
+
+Архив содержит один полный консольный лог и JSON-результат
+с исходным SHA, числом тестов и кодом завершения. Папка
+`QA/` исключена из Git. Отправлять его нужно только по запросу
+или если тест не прошёл; промежуточных сборок нет.
+
+**Статус пока: NOT RUN ON USER WINDOWS.** Добавление этих файлов
+на GitHub не означает прохождение офлайн-регрессии. Даже
+полный PASS является только проверкой шлюза; отдельная
+полная Windows Modern Qt E2E BCC всё ещё обязательна.
