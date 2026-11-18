@@ -762,8 +762,13 @@ def validate(cfg):
     ) - set(symbols):
         raise ValueError("Настройки неизвестной монеты")
     for sym, over in cfg["coin_overrides"].items():
-        if set(over) - {"settings", "sections", "entry", "exit", "parameters"}:
+        if set(over) - {"settings", "sections", "entry", "exit", "parameters", "capital_limit"}:
             raise ValueError("Неизвестная настройка монеты")
+        if "capital_limit" in over:
+            if cfg["strategy"] != "VELES":
+                raise ValueError("Лимит капитала монеты доступен только для VELES")
+            from .coin_budget import validate_capital_limit
+            validate_capital_limit(over["capital_limit"])
         if set(over.get("sections", {})) - ids:
             raise ValueError("Неизвестная секция монеты")
         for sec in cfg["sections"]:
