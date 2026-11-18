@@ -81,6 +81,9 @@ def normalize_config(cfg):
         cfg.setdefault("stop_after_deals", False)
     if isinstance(cfg, dict) and isinstance(cfg.get("settings"), dict):
         cfg["settings"].setdefault("reinvest_pct", 20.0)
+        # Existing PAPER bots keep their historic per-section percentage.
+        cfg["settings"].setdefault("allocation_mode", "section_pct")
+        cfg["settings"].setdefault("allocation_fixed_usdt", 25.0)
         if isinstance(cfg["settings"].get("stop"), dict):
             cfg["settings"]["stop"].setdefault("stop_after", False)
     if isinstance(cfg, dict) and cfg.get("strategy") == "POLYMARKET":
@@ -150,6 +153,8 @@ def defaults(strategy="VELES"):
             leverage=3.0,
             margin_mode="CROSS",
             allocation_pct=5.0,
+            allocation_mode="section_pct",
+            allocation_fixed_usdt=25.0,
             reinvest_pct=20.0,
             fee_rate=0.0006,
             slippage_pct=0.02,
@@ -522,6 +527,9 @@ def validate_settings(s):
         raise ValueError("Неизвестная настройка: " + ",".join(set(s) - set(base)))
     number(s["leverage"], 1, 100, "Плечо")
     number(s["allocation_pct"], 0.001, 100, "Доля капитала")
+    if s.get("allocation_mode", "section_pct") not in ("section_pct", "coin_pct", "coin_fixed"):
+        raise ValueError("Распределение капитала: выберите процент на секцию/монету или фиксированную сумму")
+    number(s.get("allocation_fixed_usdt", 25.0), 0.01, 1e9, "Фиксированная маржа на монету, USDT")
     number(s.get("reinvest_pct", 20.0), 0, 50, "Реинвестирование прибыли, %")
     number(s["fee_rate"], 0, 0.05, "Комиссия")
     number(s["slippage_pct"], 0, 5, "Проскальзывание")
@@ -814,6 +822,35 @@ def validate(cfg):
             # Polymarket is checked below once for every ACTUAL coin:market.
             # Promoting one coin patch into global settings would incorrectly
             # apply it to other coins and reject otherwise valid configurations.
+    # Per-coin cap must be the SAME across all ranges of a coin. A
+    # section-level override that silently changes the cap would make
+    # availability dependent on the selected section, bypassing the
+    # advertised per-coin limit. Old section_pct bots remain unchanged.
+    if cfg["strategy"] in ("VELES", "EMA", "MACD", "BOLLINGER", "EMA_RSI_VOLUME"):
+        allocation_fields = {"allocation_mode", "allocation_pct", "allocation_fixed_usdt"}
+        has_section_allocation_override = any(
+            bool(allocation_fields & set(sec.get("overrides", {})))
+            for sec in cfg["sections"]
+        ) or any(
+            bool(allocation_fields & set(patch.get("settings", {})))
+            for coin in cfg["coin_overrides"].values()
+            for patch in coin.get("sections", {}).values()
+        )
+        if has_section_allocation_override:
+            from .coin_allocation import allocation_signature
+            for sym in symbols:
+                previous = None
+                for sec in cfg["sections"]:
+                    current = allocation_signature(effective(cfg, sym, sec))
+                    if previous is None:
+                        previous = (current,)
+                    elif current != previous[0] and (
+                        current is not None or previous[0] is not None
+                    ):
+                        raise ValueError(
+                            f"Монета {sym}: общая квота должна совпадать во всех "
+                            "секциях. Измените сумму/процент на уровне монеты."
+                        )
     g = cfg["grid"]
     for k, lo, hi, i in [
         ("levels", 1, 100, True),
