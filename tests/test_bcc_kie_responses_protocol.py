@@ -191,6 +191,15 @@ class KieResponsesOfflineTests(unittest.TestCase):
         with self.assertRaises(ResponsesBlocked):
             parse_response(raw, model="terra", output_cap=100)
 
+    def test_malformed_response_model_type_is_safely_rejected(self):
+        for value in (["gpt-6-1-terra"], {"name": "gpt-6-1-terra"},
+                      12, True):
+            with self.subTest(value=repr(value)):
+                reply = sample_reply()
+                reply["model"] = value
+                with self.assertRaises(ResponsesBlocked):
+                    parse_response(reply, model="terra", output_cap=100)
+
     def test_known_provider_response_aliases_and_cross_model_rejection(self):
         for model, accepted in [
             ("terra", "gpt-6.1-terra"),
