@@ -40,34 +40,47 @@ def signal(state, key, spec, bars, now_ms):
     return result
 
 
+def allocation_target(cfg, state, settings):
+    """The exact configured principal budget before coin reservation.
+
+    Used both by strategy entry calculation and the low-level executor
+    fence. Invalid state/config always denies an allocation.
+    """
+    try:
+        if cfg["strategy"] == "VELES":
+            base = cfg["capital"] + (
+                state["strategy"].get("veles_reinvested", 0) if cfg["reinvest"] else 0
+            )
+        elif cfg["reinvest"]:
+            value, unknown = equity(state)
+            if unknown:
+                return 0.0  # Unpriced open risk cannot increase allocation.
+            base = max(0, value)
+        else:
+            base = cfg["capital"]
+        return planned_margin(base, settings)
+    except (AllocationUnavailable, KeyError, TypeError, ValueError):
+        return 0.0
+
+
 def capital_margin(cfg, state, settings, *, symbol=None):
-    """Resolve effective PAPER margin from one shared allocation policy.
+    """Resolve effective PAPER margin from the shared allocation policy.
 
     Existing section_pct bots retain their original per-section exposure.
     Opt-in coin_pct/coin_fixed budgets are shared across every section and
     pending grid of ONE symbol in the same transactional PAPER account.
-    The upstream margin/tier/equity guards still decide actual admission.
     """
-    if cfg["strategy"] == "VELES":
-        base = cfg["capital"] + (
-            state["strategy"].get("veles_reinvested", 0) if cfg["reinvest"] else 0
-        )
-    elif cfg["reinvest"]:
-        value, unknown = equity(state)
-        if unknown:
-            return 0.0  # Unpriced open risk cannot increase allocation.
-        base = max(0, value)
-    else:
-        base = cfg["capital"]
+    target = allocation_target(cfg, state, settings)
+    if target <= 0:
+        return 0.0
     try:
-        target = planned_margin(base, settings)
         if allocation_mode(settings) == SECTION_PCT:
             return target
         if symbol is None or symbol not in cfg["symbols"]:
-            return 0.0  # Unknown coin cannot receive a new allocation.
+            return 0.0
         return available_margin_for_coin(state, symbol, target, settings)
     except (AllocationUnavailable, KeyError, TypeError):
-        return 0.0  # Damaged coin ledger/config cannot free risk capacity.
+        return 0.0
 
 
 def daily_ok(cfg, state, symbol, settings, now_ms):
@@ -575,6 +588,10 @@ class Veles:
                             settings.get("reinvest_pct", 20)
                             if cfg["strategy"] == "VELES" and cfg["reinvest"]
                             else 0
+                        ),
+                        coin_budget=(
+                            allocation_target(cfg, state, settings)
+                            if allocation_mode(settings) != SECTION_PCT else None
                         ),
                     )
                     if ok:
