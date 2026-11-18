@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 from tools.bcc_claude_budget import BudgetLedger, SpendingDenied
+from tools.bcc_kie_sqlite_lifecycle import managed_connection
 SOURCE_SHA = "7bba4909235cc56e0777075422c705a948eb44c2"
 PROMPT_SHA = "a" * 64
 
@@ -212,7 +213,7 @@ class ModelBudgetTests(unittest.TestCase):
     def test_corrupt_legacy_settlement_blocks_combined_accounting(self):
         self.legacy.reserve("legacy-broken", approval_id="legacy-broken-approval",
                             max_input_tokens=100, max_output_tokens=100, now=self.nov)
-        with sqlite3.connect(self.db) as conn:
+        with managed_connection(sqlite3.connect(self.db)) as conn:
             conn.execute("UPDATE claude_spending SET status='SETTLED', charged_micro=NULL")
         with self.assertRaises(SpendingDenied):
             self.new()
@@ -221,7 +222,7 @@ class ModelBudgetTests(unittest.TestCase):
 
     def test_corrupt_model_settlement_blocks_both_ledger_paths(self):
         self.new()
-        with sqlite3.connect(self.db) as conn:
+        with managed_connection(sqlite3.connect(self.db)) as conn:
             conn.execute("UPDATE kie_model_spending SET status='SETTLED', charged_micro=NULL")
         with self.assertRaises(SpendingDenied):
             self.models.snapshot(now=self.nov)
