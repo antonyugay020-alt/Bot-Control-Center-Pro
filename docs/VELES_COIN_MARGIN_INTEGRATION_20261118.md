@@ -35,6 +35,17 @@ contract, not a GUI-only approximation.
   mode-dependent controls, independent per-coin persistence, and
   legacy percent reopen. Must run on actual Windows Qt.
 
+## PAPER accounting integration
+
+Additional tests exercise an actual synthetic `bcc.trading.enter()` order
+through `capital_margin()`, `plan()`, `reserved()`, fresh synthetic book,
+and `exit_position()`, asserting zero leftover positions/reserved
+margin and conserved cash. A fixed margin exceeding the available PAPER
+capital must fail admission, not create a phantom position. The
+independent native Qt test covers create/edit/persist/reopen via
+`Repository` and verifies mutually active monetary controls.
+These are *authored test scenarios*, not executed PASS claims.
+
 ## Intentionally unchanged
 
 The older observed 19-position cap has not been reproduced from live
