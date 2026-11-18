@@ -1,8 +1,7 @@
-"""Low-level PAPER entry MUST enforce the same coin quota as VELES.
+"""Low-level PAPER executor and strategy share EXACT persisted coin policy.
 
-These tests call the real entry routine but intentionally omit market books,
-so rejected entries cannot create a fill or change a balance. No exchange,
-network, worker or persistent account is involved.
+No market books here, so even a valid entry stops at the separate book gate.
+No exchange or persistent account is touched.
 """
 from copy import deepcopy
 
@@ -20,27 +19,36 @@ def inputs():
         allocation_mode="coin_fixed", allocation_fixed_usdt=25.0,
         leverage=2.0, fee_rate=0.0006,
     )
-    validated = validate(cfg)
+    checked = validate(cfg)
     state = initial_state(500)
     events = []
-    settings = deepcopy(validated["settings"])
+    settings = deepcopy(checked["settings"])
     orders = [{"price": 100.0, "weight": 1.0}]
     return state, events, settings, orders
 
 
+def source_config(settings):
+    cfg = defaults("VELES")
+    cfg["name"] = "source policy"
+    cfg["settings"] = deepcopy(settings)
+    return validate(cfg)
+
+
 def attempt(state, events, settings, orders, **kwargs):
+    source = source_config(settings)
+    section = source["sections"][0]["id"]
     return enter(
-        state, events, "BTCUSDT:section-a", "BTCUSDT", "LONG",
-        settings, 100.0, 20.0, orders, "section-a", **kwargs,
+        state, events, "BTCUSDT:" + section, "BTCUSDT", "LONG",
+        settings, 100.0, 20.0, orders, section, **kwargs,
     )
 
 
-def test_direct_coin_entry_requires_trusted_budget_from_strategy():
+def test_direct_coin_entry_requires_source_policy_config():
     state, events, settings, orders = inputs()
     before = deepcopy(state)
     success, reason = attempt(state, events, settings, orders)
     assert not success
-    assert "Не подтверждена общая квота" in reason
+    assert "Не подтверждена конфигурация квоты" in reason
     assert state == before
     assert events == []
 
@@ -52,7 +60,7 @@ def test_executor_blocks_oversubscribed_coin_before_any_mutation():
     }
     before = deepcopy(state)
     success, reason = attempt(
-        state, events, settings, orders, coin_budget=25.0,
+        state, events, settings, orders, coin_config=source_config(settings),
     )
     assert not success
     assert "Общая квота монеты BTCUSDT" in reason
@@ -61,35 +69,76 @@ def test_executor_blocks_oversubscribed_coin_before_any_mutation():
     assert events == []
 
 
-@pytest.mark.parametrize("budget", [None, -1, 0, True, float("nan"), 25j])
-def test_untrusted_budget_never_enters_position(budget):
+@pytest.mark.parametrize("source", [None, -1, 0, True, [], {}, {"symbols": []}])
+def test_untrusted_config_never_enters_position(source):
     state, events, settings, orders = inputs()
     success, reason = attempt(
-        state, events, settings, orders, coin_budget=budget)
+        state, events, settings, orders, coin_config=source)
     assert not success
     assert "квота" in reason.lower()
     assert not events
     assert not state["positions"]
 
 
-def test_fixed_coin_budget_cannot_be_inflated_by_internal_caller():
+def test_fixed_coin_budget_cannot_be_inflated_by_numeric_argument():
     state, events, settings, orders = inputs()
+    with pytest.raises(TypeError):
+        attempt(state, events, settings, orders, coin_budget=100000.0)
+    assert not state["positions"]
+    assert not events
+
+
+def test_source_config_cannot_supply_different_fixed_margin():
+    state, events, settings, orders = inputs()
+    forged = source_config(settings)
+    forged["settings"]["allocation_fixed_usdt"] = 100000.0
     before = deepcopy(state)
     success, reason = attempt(
-        state, events, settings, orders, coin_budget=100000.0,
+        state, events, settings, orders, coin_config=forged,
     )
     assert not success
-    assert "не соответствует настройкам" in reason
+    assert "не совпадает с настройками секции" in reason
     assert state == before
-    assert events == []
+    assert not events
+
+
+def test_source_config_cannot_supply_another_currency_or_section():
+    state, events, settings, orders = inputs()
+    forged = source_config(settings)
+    forged["symbols"] = ["ETHUSDT"]
+    success, reason = attempt(
+        state, events, settings, orders, coin_config=forged,
+    )
+    assert not success
+    assert "Не подтверждена конфигурация квоты" in reason
+    assert not state["positions"]
+
+
+def test_source_bound_valid_coin_cap_reaches_separate_book_guard():
+    state, events, settings, orders = inputs()
+    success, reason = attempt(
+        state, events, settings, orders, coin_config=source_config(settings),
+    )
+    assert not success
+    assert "стакана" in reason
+    assert "квота" not in reason.lower()
+    assert not events
+
+
+def test_percentage_cap_is_recomputed_from_persisted_capital():
+    state, events, settings, orders = inputs()
+    settings["allocation_mode"] = "coin_pct"
+    settings["allocation_pct"] = 3.0  # 15 USDT on 500
+    success, reason = attempt(
+        state, events, settings, orders, coin_config=source_config(settings),
+    )
+    assert not success
+    assert "доступно 15 USDT вместо 20 USDT" in reason
+    assert not events
 
 
 def test_existing_pending_grid_is_not_charged_for_its_reservation_twice():
     state, events, settings, orders = inputs()
-    # A pending grid was already counted when the reservation was created.
-    # Veles removes it from state.pending for the atomic fill transition.
-    # At that point the low-level executor may proceed to the normal
-    # public-book check even without a fresh coin-budget admission.
     success, reason = attempt(
         state, events, settings, orders, existing_grid=True)
     assert not success
@@ -98,7 +147,7 @@ def test_existing_pending_grid_is_not_charged_for_its_reservation_twice():
     assert not events
 
 
-def test_legacy_mode_keeps_old_entry_path_without_coin_budget():
+def test_legacy_mode_keeps_old_entry_path_without_coin_config():
     state, events, settings, orders = inputs()
     settings["allocation_mode"] = "section_pct"
     success, reason = attempt(state, events, settings, orders)
