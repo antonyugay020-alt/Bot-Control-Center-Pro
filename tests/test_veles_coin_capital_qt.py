@@ -63,8 +63,21 @@ def run_coin_dialog(app, wizard, operation):
             if isinstance(dialog, QDialog):
                 dialog.reject()
 
+    def timeout():
+        failures.append(TimeoutError("Coin budget Qt dialog did not complete"))
+        dialog = app.activeModalWidget()
+        if isinstance(dialog, QDialog):
+            dialog.reject()
+
+    watchdog = QTimer(wizard)
+    watchdog.setSingleShot(True)
+    watchdog.timeout.connect(timeout)
+    watchdog.start(8000)
     QTimer.singleShot(0, invoke)
-    wizard.edit_coin()
+    try:
+        wizard.edit_coin()
+    finally:
+        watchdog.stop()
     if failures:
         raise failures[0]
 
