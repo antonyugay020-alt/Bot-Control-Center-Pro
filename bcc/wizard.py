@@ -1072,7 +1072,13 @@ class BotWizard(QDialog):
                         values["capital_limit"] = {
                             "mode": mode, "value": budget_value.value()
                         }
-                draft[state["symbol"]] = values
+                if (self.cfg["strategy"] == "VELES"
+                        and all(not item for item in values.values())):
+                    # Reverting the last coin-wide override should genuinely
+                    # inherit global policy, not persist an empty coin record.
+                    draft.pop(state["symbol"], None)
+                else:
+                    draft[state["symbol"]] = values
             else:
                 draft.pop(state["symbol"], None)
 
