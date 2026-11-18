@@ -120,7 +120,9 @@ def test_lock_after_http_does_not_crash_or_mask_transport_error(tmp_path, http_e
         if http_error:
             with pytest.raises(DataUnavailable, match="network unavailable"):
                 source.get(URL, {"symbol": "ETHUSDT"})
-            assert source.cooldowns[HOST] > time.time()
+            # A one-request connection error is not an observed 418/429
+            # provider quota; no fleet-wide or in-process host cooldown.
+            assert HOST not in source.cooldowns
         else:
             # A successful HTTP response must not escape a failed SQLite
             # publication. Previously this silently returned uncommitted data.
