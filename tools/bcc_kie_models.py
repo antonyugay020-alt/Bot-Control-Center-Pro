@@ -114,7 +114,7 @@ class DryRunPlan:
     paid_execution_enabled: bool
 
 
-def plan(task: str, *, model: str = "terra",
+def plan(task: str, *, model: str,
          max_output_tokens: int = 4096) -> DryRunPlan:
     """Create a provider-independent plan. Contains NO raw prompt or API key.
 
@@ -166,6 +166,8 @@ def validate_mock_responses_reply(raw: Any, *, model: str,
     for item in outputs:
         if not isinstance(item, dict) or item.get("type") != "message" or item.get("role") != "assistant":
             raise ModelNotReady("Tool call or unexpected output is not allowed")
+        if item.get("status") not in (None, "completed"):
+            raise ModelNotReady("Assistant message incomplete")
         content = item.get("content")
         if not isinstance(content, list) or not 1 <= len(content) <= 16:
             raise ModelNotReady("Invalid message content")
@@ -216,7 +218,10 @@ def send_paid_request(*_args: Any, **_kwargs: Any) -> None:
 
 def summary() -> dict[str, Any]:
     return {
-        "source": "Kie.ai newsletter 2026-11-10", "price_status": "HISTORICAL_QUOTE",
+        "source": "Kie.ai newsletter 2026-11-10 and user-supplied Kie.ai pricing screenshot",
+        "selection_mode": "EXPLICIT_ONLY",
+        "source_price_floor_warning": "Catalog prices beginning with from are not authoritative maximum costs",
+        "price_status": "HISTORICAL_QUOTE",
         "api_contract": "UNVERIFIED", "network_enabled": False,
         "paid_calls": "DISABLED",
         "models": {
