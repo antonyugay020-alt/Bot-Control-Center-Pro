@@ -41,7 +41,7 @@ class ModelReservation:
 
 
 def _ident(value: str, field: str) -> str:
-    if not isinstance(value, str) or not 1 <= len(value) <= 128 or not value.strip():
+    if not isinstance(value, str) or not 1 <= len(value) <= 128 or not value.strip() or value != value.strip():
         raise SpendingDenied("Invalid " + field)
     if "\x00" in value or "\r" in value or "\n" in value:
         raise SpendingDenied("Invalid " + field)
@@ -177,9 +177,13 @@ class KieModelBudget:
         prompt_sha256 = _digest(prompt_sha256, TASK_DIGEST)
         month = _month(now)
         try:
-            profile(model)
+            candidate = profile(model)
         except ModelNotReady:
             raise SpendingDenied("Unknown model profile") from None
+        # Astra has only Kie catalog prices starting "from"; no known
+        # payable tariff. Offline planning is allowed, reservations are not.
+        if candidate.input_usd_per_million is None or candidate.output_usd_per_million is None:
+            raise SpendingDenied("Unpriced model cannot enter the spending ledger")
         if self.approval_verifier is None or not self.approval_verifier(
             approval_id, request_id, model, limit, source_sha, prompt_sha256
         ):
