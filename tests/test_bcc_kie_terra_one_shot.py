@@ -22,6 +22,7 @@ from tools.bcc_kie_terra_one_shot import (
     EXPECTED_TEXT, OneShotBlocked, SafeOutcome, _send_one_https,
     _TRANSPORT_GRANT,
     perform_one_attempt, request_body, verify_preflight,
+    assess_terra_response,
 )
 
 
@@ -227,6 +228,31 @@ class TerraOneTimeTests(unittest.TestCase):
         self.assertNotIn(PROMPT, report)
         self.assertNotIn("FAKE_ONLY_NO_REAL_KEY", report)
         self.assertIn('"result": "CONNECTED"', report)
+
+    def test_saved_terra_reply_exact_text_with_missing_usage_is_preserved(self):
+        raw = answer()
+        raw.pop("usage")
+        result = assess_terra_response(raw)
+        self.assertEqual(result.result, "CONTENT_CONFIRMED_USAGE_UNVERIFIED")
+        self.assertEqual(result.http_status, 200)
+        self.assertIsNone(result.input_tokens)
+        self.assertIsNone(result.output_tokens)
+        self.assertEqual(result.charged_usd, "UNVERIFIED")
+        self.assertEqual(result.attempts_remaining, 0)
+
+    def test_saved_terra_reply_with_unknown_usage_does_not_settle_hold(self):
+        raw = answer()
+        raw["usage"]["provider_extra"] = "UNKNOWN_CREDIT_TYPE"
+        result = assess_terra_response(raw)
+        self.assertEqual(result.result, "CONTENT_CONFIRMED_USAGE_UNVERIFIED")
+        self.assertEqual(result.charged_usd, "UNVERIFIED")
+        self.assertFalse(result.result == "CONNECTED")
+
+    def test_unexpected_content_without_usage_must_not_claim_confirmation(self):
+        raw = answer(text="UNEXPECTED_TEXT")
+        raw.pop("usage")
+        with self.assertRaises(ResponsesBlocked):
+            assess_terra_response(raw)
 
     def test_unattested_terra_model_cannot_claim_connected(self):
         def no_model(secret, request):
