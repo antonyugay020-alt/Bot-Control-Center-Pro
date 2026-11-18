@@ -72,6 +72,18 @@ def test_untrusted_budget_never_enters_position(budget):
     assert not state["positions"]
 
 
+def test_fixed_coin_budget_cannot_be_inflated_by_internal_caller():
+    state, events, settings, orders = inputs()
+    before = deepcopy(state)
+    success, reason = attempt(
+        state, events, settings, orders, coin_budget=100000.0,
+    )
+    assert not success
+    assert "не соответствует настройкам" in reason
+    assert state == before
+    assert events == []
+
+
 def test_existing_pending_grid_is_not_charged_for_its_reservation_twice():
     state, events, settings, orders = inputs()
     # A pending grid was already counted when the reservation was created.
