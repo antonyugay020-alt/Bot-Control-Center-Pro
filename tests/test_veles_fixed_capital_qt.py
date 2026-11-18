@@ -33,6 +33,8 @@ def test_native_qt_fixed_margin_create_edit_and_persist(app, tmp_path):
     try:
         mode = wizard.settings.finance.controls["allocation_mode"][1]
         assert mode.currentData() == "percent"
+        assert wizard.settings.finance.controls["allocation_pct"][1].isEnabled()
+        assert not wizard.settings.finance.controls["allocation_usdt"][1].isEnabled()
         assert effective(wizard.data(), "BTCUSDT")["allocation_usdt"] == 42
         wizard.commit()
         assert created
@@ -44,6 +46,8 @@ def test_native_qt_fixed_margin_create_edit_and_persist(app, tmp_path):
     try:
         chooser = reopen.settings.finance.controls["allocation_mode"][1]
         chooser.setCurrentIndex(chooser.findData("fixed_usdt"))
+        assert reopen.settings.finance.controls["allocation_usdt"][1].isEnabled()
+        assert not reopen.settings.finance.controls["allocation_pct"][1].isEnabled()
         reopen.settings.finance.controls["allocation_usdt"][1].setValue(30)
         reopen.commit()
     finally:
