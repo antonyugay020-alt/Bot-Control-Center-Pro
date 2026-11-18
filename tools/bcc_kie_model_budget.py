@@ -25,8 +25,8 @@ from tools.bcc_kie_models import ModelNotReady, profile
 
 SIMULATION_ONLY = True
 TABLE = "kie_model_spending"
-COMMIT_SHA = re.compile(r"[0-9a-f]{40}\\Z".replace("\\\\", "\\"))
-TASK_DIGEST = re.compile(r"[0-9a-f]{64}\\Z".replace("\\\\", "\\"))
+COMMIT_SHA = re.compile(r"[0-9a-f]{40}\Z")
+TASK_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
 
 @dataclass(frozen=True)
