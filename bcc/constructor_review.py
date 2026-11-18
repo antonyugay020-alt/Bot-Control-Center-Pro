@@ -230,11 +230,18 @@ def effective_risk_review_text(draft, *, sample_limit=8):
                          else stop["mode"])
             admission = ("вход отключён" if not resolved["enabled"] or settings["disabled"]
                          else "вход разрешён")
+            # The old review wording is an observable UI/test contract.
+            # Preserve it verbatim for legacy section_pct bots, while new
+            # shared coin-cap modes explicitly identify the global quota.
+            margin_line = (
+                f"условная маржа {margin:g} USDT"
+                if allocation_mode(settings) == "section_pct"
+                else f"плановая маржа {margin:g} USDT ({mode_text})"
+            )
             lines.append(
                 f"{symbol} / {resolved['label']}: {resolved['side']}, "
                 f"{settings['margin_mode']}, плечо {settings['leverage']:g}x; "
-                f"плановая маржа {margin:g} USDT ({mode_text}); "
-                f"номинал {notional:g} USDT; "
+                f"{margin_line}; номинал {notional:g} USDT; "
                 f"SL {stop_text}; {admission}."
             )
             shown += 1
