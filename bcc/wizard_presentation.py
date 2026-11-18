@@ -46,6 +46,13 @@ def summary_rows(config):
             ("Плечо", f"{s['leverage']:g}×"),
         ])
         if kind == "VELES":
+            # The summary describes the global default; per-coin/per-range
+            # exceptions are shown by the selected grid preview below.
+            active_fixed = s.get("allocation_mode", "percent") == "fixed_usdt"
+            rows.append(("Размер секции", (
+                f"{s['allocation_usdt']:g} USDT фиксированная маржа"
+                if active_fixed else f"{s['allocation_pct']:g}% депозита"
+            )))
             # The tree groups flat execution rows under author-visible parents.
             rows.extend([
                 ("Секции", str(len(grouped_ranges(config["sections"])))),
