@@ -70,3 +70,56 @@ CONNECTED означает только ответ от Terra на один те
 После запроса требуется сверить Kie.ai Logs/Usage и фактическое списание.
 Старый Claude one-shot навсегда закрыт, Kimi/Astra не запускаются.
 Новый source SHA и пакет из 218 тестов ещё должны быть проверены Windows.
+
+## INCIDENT 2026-11-18 — TERRA AUTHORIZATION CONSUMED / OUTCOME UNKNOWN
+
+User provided Windows PowerShell transcript of the ONE authorized test at
+source SHA 56d1a87c9171d7e257a9f19881d6a72b8944e9c7:
+
+- Windows offline: Ran 218 tests in 1.388s, OK (skipped=2), exit 0.
+- User typed APPROVE TERRA 0.01 in local interactive terminal.
+- Python returned BLOCKED/UNKNOWN, no JSON SafeOutcome, launcher exit 1.
+- There is NO evidence in that transcript that Kie.ai received the
+  Terra request or debited any credits.
+- A received non-200 HTTP response in this client would normally produce
+  a sanitized JSON result HTTP_ERROR_NO_RETRY. Because no JSON appeared,
+  an exception occurred before a SafeOutcome was returned; this can
+  happen before HTTPS or during a connection/response exception.
+  Exact stage is unknown until inspecting the local one-shot state.
+
+Critical: The sole Terra approval is CONSUMED. Do not rerun the paid
+script or delete/move/settle the old HOLD or attempt marker to enable
+a retry. No new paid requests have been authorized.
+
+New code on the same isolated branch:
+- tools/bcc_kie_terra_readonly_diagnose.py: SQLite mode=ro query and
+  marker-existence check ONLY, no credentials, no network, no writes.
+- BCC_KIE_TERRA_STATUS.cmd: read-only Windows entrypoint.
+- BCC_KIE_TERRA_ONE_TEST.cmd: RETIRED; now read-only status only.
+- tools/bcc_kie_terra_one_shot.py: known consumed authorization hard
+  block in main and in the production send path.
+
+Stage interpretation:
+- NO_TERRA_HOLD / NO_LEDGER: no local Terra reservation; failure before
+  durable reservation, but provider delivery still needs external logs.
+- HOLD_BEFORE_SENTINEL: reserved amount, marker not written; program
+  did not reach its usual network send branch.
+- ATTEMPT_GATE_REACHED_HTTP_UNKNOWN: hold + marker exist; it reached
+  the pre-network gate, but a provider HTTP transaction is NOT proven.
+- UNKNOWN_* / inconsistent marker/ledger: fail closed and preserve evidence.
+
+Read-only Windows command after updating this same isolated checkout:
+
+    $dir = "$HOME\Desktop\BCC_AGENT_GATEWAY"
+    git -C $dir pull --ff-only
+    if ($LASTEXITCODE -ne 0) { throw "GitHub update failed" }
+    & "$dir\BCC_KIE_TERRA_STATUS.cmd"
+
+Paste only its sanitized JSON status. Do not share API keys, full ledger,
+private trading data, or credentials. Kie.ai Logs/Usage for the
+corresponding timestamp are needed to confirm provider-side receipt
+and actual billing. Even a zero-credit entry does not itself make
+a new request approved.
+
+Previous instructions above describe the historical test. They must
+NOT be used to authorize or trigger another request as of this incident.
