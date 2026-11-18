@@ -3,6 +3,7 @@
 All files are synthetic and kept inside temporary test directories. The
 tests never touch the user's persistent agent ledger or live BCC databases.
 """
+import ast
 from contextlib import closing
 from pathlib import Path
 import sqlite3
@@ -71,6 +72,38 @@ class ManagedSqliteLifecycleTests(unittest.TestCase):
                 conn.execute("SELECT 1")
             self.assertEqual(before, path.read_bytes())
             path.unlink()
+
+    def test_gateway_never_uses_transaction_only_sqlite_context_manager(self):
+        """Architectural regression for the WinError 32 root cause.
+
+        Inspect only this isolated developer gateway source/test code.
+        Never opens a live database, credential, or trading application.
+        """
+        root = Path(__file__).resolve().parent.parent
+        sources = (list((root / "tools").glob("bcc_kie_*.py"))
+                   + [root / "tools" / "bcc_claude_budget.py"]
+                   + list((root / "tests").glob("test_bcc_kie_*.py")))
+        self.assertGreaterEqual(len(sources), 30)
+        for path in sources:
+            with self.subTest(path=path.name):
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                for node in ast.walk(tree):
+                    if not isinstance(node, (ast.With, ast.AsyncWith)):
+                        continue
+                    for item in node.items:
+                        call = item.context_expr
+                        unsafe = (
+                            isinstance(call, ast.Call)
+                            and isinstance(call.func, ast.Attribute)
+                            and call.func.attr == "connect"
+                            and isinstance(call.func.value, ast.Name)
+                            and call.func.value.id == "sqlite3"
+                        )
+                        self.assertFalse(
+                            unsafe,
+                            "SQLite context does not close connection: "
+                            + path.name + ":" + str(node.lineno),
+                        )
 
     def test_many_independent_connections_do_not_accumulate_locks(self):
         with TemporaryDirectory() as temp:
