@@ -34,6 +34,19 @@ def test_legacy_mode_is_selected_on_fresh_wizard(qapp):
     ed.deleteLater()
 
 
+def test_standalone_legacy_settings_editor_still_opens_losslessly(qapp):
+    old = defaults("VELES")["settings"]
+    old.pop("allocation_mode")
+    old.pop("allocation_fixed_usdt")
+    ed = SettingsEditor(old, strategy="VELES")
+    saved = ed.value_data()
+    assert saved["allocation_mode"] == "section_pct"
+    assert saved["allocation_fixed_usdt"] == 25.0
+    assert saved["allocation_pct"] == old["allocation_pct"]
+    assert "allocation_mode" not in old
+    ed.deleteLater()
+
+
 def test_fixed_mode_edit_updates_real_worker_settings_and_disables_percent(qapp):
     ed = SettingsEditor(defaults("VELES")["settings"], strategy="VELES")
     mode = ed.finance.controls["allocation_mode"][1]
