@@ -7,6 +7,7 @@ read from the exact configuration being saved, not a duplicate set of inputs.
 from html import escape
 
 from .config import STRATEGY_NAMES, resolve_poly_market, validate_poly_rule
+from .coin_allocation import planned_margin, allocation_mode
 from .section_hierarchy import grouped_ranges
 
 
@@ -44,6 +45,11 @@ def summary_rows(config):
         rows.extend([
             ("Маржа", "Cross" if s["margin_mode"] == "CROSS" else "Isolated"),
             ("Плечо", f"{s['leverage']:g}×"),
+            ("Распределение", {
+                "section_pct": f"По {s['allocation_pct']:g}% на секцию",
+                "coin_pct": f"Общая квота {s['allocation_pct']:g}% на монету",
+                "coin_fixed": f"Общая квота {s['allocation_fixed_usdt']:g} USDT на монету",
+            }[allocation_mode(s)]),
         ])
         if kind == "VELES":
             # The tree groups flat execution rows under author-visible parents.
@@ -171,7 +177,7 @@ def grid_preview_data(config, symbol, section_id):
     section = coin_section(config, symbol, original)
     settings = effective(config, symbol, original)
     planned = plan(settings["orders"], section["side"], 100)
-    margin = config["capital"] * settings["allocation_pct"] / 100
+    margin = planned_margin(config["capital"], settings)
     budget = margin * settings["leverage"]
     rows = tuple(
         (
@@ -182,10 +188,15 @@ def grid_preview_data(config, symbol, section_id):
         )
         for i, row in enumerate(planned)
     )
+    margin_label = (
+        "Маржа на отдельную секцию"
+        if allocation_mode(settings) == "section_pct"
+        else "Общая маржинальная квота монеты (до учёта открытых диапазонов)"
+    )
     status = (
         f"{symbol} · {section['label']} · {section['side']}\n"
-        f"Маржа из исходного депозита: {margin:g} USDT; "
-        f"номинал сетки с плечом: {budget:g} USDT."
+        f"{margin_label}: {margin:g} USDT; "
+        f"номинал с плечом: {budget:g} USDT."
     )
     if settings["stop"]["mode"] in ("percent", "both"):
         if settings["orders"]["mode"] == "signal":
