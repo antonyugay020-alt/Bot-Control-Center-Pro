@@ -264,6 +264,7 @@ def enter(
     reinvest_pct=0.0,
     existing_grid=False,
     entry_limit=None,
+    coin_cap=None,
 ):
     if state.get("_entry_blocked"):
         return False, state["_entry_blocked"]
@@ -287,6 +288,11 @@ def enter(
         return False, "Недостаточно свободного капитала"
     if margin <= 0:
         return False, "Нулевая сумма секции"
+    if coin_cap is not None:
+        from .coin_budget import admission_reason
+        coin_reason = admission_reason(state, symbol, margin, coin_cap)
+        if coin_reason:
+            return False, coin_reason
     if not existing_grid:
         risk_reason = allocation_reason(state, margin)
         if risk_reason:
