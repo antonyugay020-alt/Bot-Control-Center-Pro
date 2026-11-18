@@ -22,6 +22,10 @@ from .margin import (
     pending_reserve,
 )
 from .shared_risk import allocation_reason
+from .coin_allocation import (
+    AllocationUnavailable, SECTION_PCT, allocation_mode,
+    available_margin_for_coin,
+)
 from .liquidation import BLOCKED, is_liquidating
 from .position_journal import cycle_reference, receipt, terms_digest
 
@@ -264,6 +268,7 @@ def enter(
     reinvest_pct=0.0,
     existing_grid=False,
     entry_limit=None,
+    coin_budget=None,
 ):
     if state.get("_entry_blocked"):
         return False, state["_entry_blocked"]
@@ -288,9 +293,30 @@ def enter(
     if margin <= 0:
         return False, "Нулевая сумма секции"
     if not existing_grid:
+        # The strategy checks the coin cap before creating the order plan;
+        # the executor checks AGAIN immediately before any PAPER mutation.
+        # Direct callers cannot enter a new coin-capped section without
+        # supplying the target derived from the validated configuration.
+        try:
+            if allocation_mode(settings) != SECTION_PCT:
+                if (type(coin_budget) not in (int, float)
+                        or not math.isfinite(coin_budget) or coin_budget <= 0):
+                    return False, "Не подтверждена общая квота монеты"
+                allowed = available_margin_for_coin(
+                    state, symbol, coin_budget, settings
+                )
+                if margin > allowed + max(1e-9, allowed * 1e-12):
+                    return False, (
+                        f"Общая квота монеты {symbol}: доступно "
+                        f"{allowed:g} USDT вместо {margin:g} USDT"
+                    )
+        except (AllocationUnavailable, ValueError, TypeError, KeyError):
+            return False, "Не удалось проверить маржинальную квоту монеты"
         risk_reason = allocation_reason(state, margin)
         if risk_reason:
             return False, risk_reason
+    # Already-reserved pending grids use existing_grid=True; their capital
+    # was counted at reservation, and Stop/Restart must not allocate it again.
     qty = first / price
     if symbol not in state.get("_books", {}):
         return False, "Нет свежего стакана для исполнения"
