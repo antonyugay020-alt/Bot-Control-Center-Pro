@@ -156,7 +156,7 @@ def grid_preview_data(config, symbol, section_id):
     coin/section policy as execution.  None means that the selection is no
     longer present in the current draft (for example after deleting a coin).
     """
-    from .config import coin_section, effective
+    from .config import coin_section, effective, section_margin_budget
     from .trading import percent_stop_price, plan
 
     if symbol not in config["symbols"]:
@@ -171,7 +171,7 @@ def grid_preview_data(config, symbol, section_id):
     section = coin_section(config, symbol, original)
     settings = effective(config, symbol, original)
     planned = plan(settings["orders"], section["side"], 100)
-    margin = config["capital"] * settings["allocation_pct"] / 100
+    margin = section_margin_budget(settings, config["capital"])
     budget = margin * settings["leverage"]
     rows = tuple(
         (
@@ -184,7 +184,7 @@ def grid_preview_data(config, symbol, section_id):
     )
     status = (
         f"{symbol} · {section['label']} · {section['side']}\n"
-        f"Маржа из исходного депозита: {margin:g} USDT; "
+        f"Маржа ({'фиксированные USDT' if settings.get('allocation_mode') == 'fixed_usdt' else 'процент депозита'}): {margin:g} USDT; "
         f"номинал сетки с плечом: {budget:g} USDT."
     )
     if settings["stop"]["mode"] in ("percent", "both"):
