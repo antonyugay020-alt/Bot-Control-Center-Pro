@@ -10,7 +10,7 @@ from bcc.config import (
     defaults, validate, normalize_config, effective, section_margin_budget,
 )
 from bcc.strategies import capital_margin
-from bcc.wizard_presentation import grid_preview_data
+from bcc.wizard_presentation import grid_preview_data, summary_rows
 from bcc.storage import initial_state
 
 
@@ -125,3 +125,13 @@ def test_percent_preview_legacy_math_remains_consistent():
     assert "25 USDT" in view["status"]
     assert "процент депозита" in view["status"]
     assert cfg == original
+
+
+def test_wizard_summary_shows_active_global_margin_mode():
+    cfg = bot()
+    rows = dict(summary_rows(cfg))
+    assert rows["Размер секции"] == "5% депозита"
+    cfg["settings"]["allocation_mode"] = "fixed_usdt"
+    cfg["settings"]["allocation_usdt"] = 33
+    rows = dict(summary_rows(cfg))
+    assert rows["Размер секции"] == "33 USDT фиксированная маржа"
