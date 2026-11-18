@@ -45,6 +45,8 @@ INPUT_CAP = 4096
 RESERVE_MICRO_USD = 10_000
 SENTINEL_FILENAME = "terra_one_shot_20261118_v1.attempted"
 PROVIDER_BILLING_VERIFIED = False
+# Internal non-serializable capability: direct transport calls fail closed.
+_TRANSPORT_GRANT = object()
 
 
 class OneShotBlocked(RuntimeError):
@@ -61,7 +63,8 @@ def request_body() -> Request:
 
 def _send_one_https(
     secret: str, request: Request,
-    *, connection_factory: Callable[..., Any] = http.client.HTTPSConnection
+    *, approval_guard: object = None,
+    connection_factory: Callable[..., Any] = http.client.HTTPSConnection
 ) -> tuple[int, dict[str, Any] | None]:
     """Only one HTTPS POST to the fixed documented Kie Terra endpoint.
 
@@ -69,6 +72,8 @@ def _send_one_https(
     proxy fallback, retries or raw error bodies. Kept separate from the
     permanently disabled generic paid transport.
     """
+    if approval_guard is not _TRANSPORT_GRANT:
+        raise OneShotBlocked("Terra HTTPS requires a locally reserved attempt")
     _validate_request(request)
     if request != request_body():
         raise OneShotBlocked("Unexpected request: blocked")
@@ -192,7 +197,12 @@ def perform_one_attempt(
     # IMPORTANT: the reservation is committed before the marker and network.
     # If the process dies here, its unresolved HOLD blocks a retry.
     _write_attempt_sentinel(marker)
-    http_status, raw = sender(secret, req)
+    # Only the exact production sender receives an internal capability,
+    # AFTER the committed HOLD and durable one-shot marker exist.
+    if sender is _send_one_https:
+        http_status, raw = sender(secret, req, approval_guard=_TRANSPORT_GRANT)
+    else:
+        http_status, raw = sender(secret, req)
     if http_status != 200 or raw is None:
         return SafeOutcome(
             result="HTTP_ERROR_NO_RETRY", http_status=http_status,
