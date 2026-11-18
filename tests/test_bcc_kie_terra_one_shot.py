@@ -9,6 +9,8 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from tools.bcc_claude_budget import SpendingDenied
 from tools.bcc_kie_model_budget import KieModelBudget
@@ -18,7 +20,7 @@ from tools.bcc_kie_terra_one_shot import (
     APPROVAL_ID, CONFIRM_PHRASE, INPUT_CAP, OUTPUT_CAP, PROMPT,
     REQUEST_ID, RESERVE_MICRO_USD, SENTINEL_FILENAME, SOURCE_SHA,
     EXPECTED_TEXT, OneShotBlocked, SafeOutcome, _send_one_https,
-    perform_one_attempt, request_body,
+    perform_one_attempt, request_body, verify_preflight,
 )
 
 
@@ -206,6 +208,66 @@ class TerraOneTimeTests(unittest.TestCase):
         self.assertNotIn(PROMPT, report)
         self.assertNotIn("FAKE_ONLY_NO_REAL_KEY", report)
         self.assertIn('"result": "CONNECTED"', report)
+
+    def test_unattested_terra_model_cannot_claim_connected(self):
+        def no_model(secret, request):
+            raw = answer()
+            raw.pop("model")
+            return 200, raw
+        result = self.run_test(sender=no_model)
+        self.assertEqual(result.result, "MODEL_NOT_ATTESTED")
+        self.assertNotEqual(result.result, "CONNECTED")
+
+    def _preflight_fixture(self):
+        root = Path(self.temp.name) / "BCC_AGENT_GATEWAY"
+        (root / ".git").mkdir(parents=True)
+        qa = root / "QA"
+        qa.mkdir()
+        sha = "e" * 40
+        report = {
+            "check": "BCC_KIE_OFFLINE_QA",
+            "result": "OFFLINE_PASS_ONLY",
+            "exit_code": 0,
+            "source_branch": "agent/bcc-work-claude-gateway-20261117",
+            "source_sha": sha,
+            "paid_provider_calls": 0,
+            "github_actions_requested": 0,
+        }
+        (qa / "BCC_KIE_QA_SUMMARY.json").write_text(json.dumps(report), encoding="utf-8")
+        return root, sha
+
+    def test_preflight_blocks_missing_windows_qa(self):
+        root = Path(self.temp.name) / "BCC_AGENT_GATEWAY"
+        (root / ".git").mkdir(parents=True)
+        with self.assertRaises(OneShotBlocked):
+            verify_preflight(root)
+
+    def test_preflight_requires_same_source_sha(self):
+        root, sha = self._preflight_fixture()
+        with patch("tools.bcc_kie_terra_one_shot.subprocess.run", side_effect=[
+            SimpleNamespace(returncode=0, stdout="a" * 40 + "\n"),
+            SimpleNamespace(returncode=0, stdout=""),
+        ]):
+            with self.assertRaises(OneShotBlocked):
+                verify_preflight(root)
+
+    def test_preflight_blocks_dirty_checkout(self):
+        root, sha = self._preflight_fixture()
+        with patch("tools.bcc_kie_terra_one_shot.subprocess.run", side_effect=[
+            SimpleNamespace(returncode=0, stdout=sha + "\n"),
+            SimpleNamespace(returncode=0, stdout=" M tools/unsafe.py\n"),
+        ]):
+            with self.assertRaises(OneShotBlocked):
+                verify_preflight(root)
+
+    def test_preflight_accepts_only_mocked_clean_matching_sha(self):
+        root, sha = self._preflight_fixture()
+        with patch("tools.bcc_kie_terra_one_shot.subprocess.run", side_effect=[
+            SimpleNamespace(returncode=0, stdout=sha + "\n"),
+            SimpleNamespace(returncode=0, stdout=""),
+        ]) as fake:
+            verify_preflight(root)
+        self.assertEqual(fake.call_count, 2)
 
     def test_old_claude_reservations_are_counted_and_preserved(self):
         from tools.bcc_claude_budget import BudgetLedger
