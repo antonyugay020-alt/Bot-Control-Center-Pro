@@ -7,7 +7,7 @@ from copy import deepcopy
 from .config import coin_section, effective, merge
 from .coin_allocation import (
     AllocationUnavailable, SECTION_PCT, allocation_mode,
-    available_margin_for_coin, planned_margin,
+    available_margin_for_coin, configured_target,
 )
 from .indicators import evaluate
 from .margin import MODEL, entry_reason, pending_reserve
@@ -41,24 +41,9 @@ def signal(state, key, spec, bars, now_ms):
 
 
 def allocation_target(cfg, state, settings):
-    """The exact configured principal budget before coin reservation.
-
-    Used both by strategy entry calculation and the low-level executor
-    fence. Invalid state/config always denies an allocation.
-    """
+    """Resolved target from the same pure engine used by low-level entry."""
     try:
-        if cfg["strategy"] == "VELES":
-            base = cfg["capital"] + (
-                state["strategy"].get("veles_reinvested", 0) if cfg["reinvest"] else 0
-            )
-        elif cfg["reinvest"]:
-            value, unknown = equity(state)
-            if unknown:
-                return 0.0  # Unpriced open risk cannot increase allocation.
-            base = max(0, value)
-        else:
-            base = cfg["capital"]
-        return planned_margin(base, settings)
+        return configured_target(cfg, state, settings, equity_reader=equity)
     except (AllocationUnavailable, KeyError, TypeError, ValueError):
         return 0.0
 
@@ -589,9 +574,8 @@ class Veles:
                             if cfg["strategy"] == "VELES" and cfg["reinvest"]
                             else 0
                         ),
-                        coin_budget=(
-                            allocation_target(cfg, state, settings)
-                            if allocation_mode(settings) != SECTION_PCT else None
+                        coin_config=(
+                            cfg if allocation_mode(settings) != SECTION_PCT else None
                         ),
                     )
                     if ok:
