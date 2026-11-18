@@ -92,7 +92,7 @@ and a shared admission ledger. No real Kie.ai paid transport is enabled.
   The retired Terra one-shot transport now categorizes CONNECT/POST/STATUS/
   READ/JSON/ENVELOPE for future distinct authorizations, but does not
   retroactively classify the previous request. Never reset its spent flag.
-  Offline acceptance inventory now requires 18 modules and 256 tests;
+  Offline acceptance inventory now requires 18 modules and 257 tests;
   the new code has NOT yet passed native Windows regression.
 - Run BCC_KIE_AGENT_CHECK.cmd from an isolated Windows agent checkout
   for offline regression. Do not claim a Windows PASS until actual output
