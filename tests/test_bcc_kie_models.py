@@ -58,7 +58,7 @@ class PricedRouterTests(unittest.TestCase):
     def test_astra_not_fabricated(self):
         self.assertIsNone(profile("astra").api_model_id)
         self.assertTrue(profile("astra").catalog_listed)
-        self.assertEqual(profile("astra").advertised_input_floor_usd_per_million, 0.28)
+        self.assertEqual(str(profile("astra").advertised_input_floor_usd_per_million), "0.28")
         self.assertEqual(profile("astra").advertised_output_floor_usd_per_million, 56)
         with self.assertRaises(ModelNotReady):
             plan("Analyze dependency boundaries", model="astra")
