@@ -11,6 +11,9 @@ import tempfile
 import unittest
 
 from tools.bcc_claude_budget import BudgetLedger, SpendingDenied
+SOURCE_SHA = "7bba4909235cc56e0777075422c705a948eb44c2"
+PROMPT_SHA = "a" * 64
+
 from tools.bcc_kie_model_budget import (
     KieModelBudget, SIMULATION_ONLY, send_paid_request,
 )
@@ -38,6 +41,7 @@ class ModelBudgetTests(unittest.TestCase):
             model="terra", limit=10_000, now=None):
         return self.models.reserve(request_id=request, approval_id=approval,
                                    model=model, max_micro_usd=limit,
+                                   source_sha=SOURCE_SHA, prompt_sha256=PROMPT_SHA,
                                    now=now or self.nov)
 
     def test_no_real_transport_or_approval_in_module(self):
@@ -47,7 +51,8 @@ class ModelBudgetTests(unittest.TestCase):
         unapproved = KieModelBudget(self.db)
         with self.assertRaises(SpendingDenied):
             unapproved.reserve(request_id="never", approval_id="never",
-                               model="terra", max_micro_usd=1000, now=self.nov)
+                               model="terra", max_micro_usd=1000,
+                               source_sha=SOURCE_SHA, prompt_sha256=PROMPT_SHA, now=self.nov)
 
     def test_new_reservation_is_hold_not_invoice(self):
         result = self.new()
@@ -150,12 +155,44 @@ class ModelBudgetTests(unittest.TestCase):
 
     def test_model_approval_cannot_be_used_without_matching_model(self):
         strictly_kimi = KieModelBudget(self.db,
-             approval_verifier=lambda approval, request, model, ceiling:
-                model == "kimi" and ceiling == 1000)
+             approval_verifier=lambda approval, request, model, ceiling, source, prompt:
+                model == "kimi" and ceiling == 1000 and source == SOURCE_SHA
+                and prompt == PROMPT_SHA)
         with self.assertRaises(SpendingDenied):
             strictly_kimi.reserve(request_id="misrouted", approval_id="specific",
-                                  model="terra", max_micro_usd=1000, now=self.nov)
+                                  model="terra", max_micro_usd=1000,
+                                  source_sha=SOURCE_SHA, prompt_sha256=PROMPT_SHA,
+                                  now=self.nov)
         self.assertEqual(self.models.snapshot(now=self.nov)["model_occupied_micro_usd"], 0)
+
+    def test_task_or_source_digest_cannot_be_replaced_by_approval(self):
+        only_original = KieModelBudget(self.db,
+            approval_verifier=lambda approval, request, model, ceiling, source, prompt:
+                source == SOURCE_SHA and prompt == PROMPT_SHA)
+        for altered in (
+            {"source_sha": "b" * 40, "prompt_sha256": PROMPT_SHA},
+            {"source_sha": SOURCE_SHA, "prompt_sha256": "c" * 64},
+        ):
+            with self.subTest(altered=altered):
+                with self.assertRaises(SpendingDenied):
+                    only_original.reserve(
+                        request_id="changed-task", approval_id="changed-approval",
+                        model="terra", max_micro_usd=1000, now=self.nov, **altered)
+        self.assertEqual(self.models.snapshot(now=self.nov)["model_occupied_micro_usd"], 0)
+
+    def test_invalid_source_or_prompt_digest_denied(self):
+        for source, prompt in (
+            ("not-a-commit", PROMPT_SHA),
+            (SOURCE_SHA, "not-a-digest"),
+            ("A" * 40, PROMPT_SHA),
+            (SOURCE_SHA, "B" * 64),
+        ):
+            with self.subTest(source=source[:12], prompt=prompt[:12]):
+                with self.assertRaises(SpendingDenied):
+                    self.models.reserve(
+                        request_id="bad-digest", approval_id="bad-digest-approval",
+                        model="terra", max_micro_usd=1000,
+                        source_sha=source, prompt_sha256=prompt, now=self.nov)
 
     def test_corrupt_legacy_settlement_blocks_combined_accounting(self):
         self.legacy.reserve("legacy-broken", approval_id="legacy-broken-approval",
