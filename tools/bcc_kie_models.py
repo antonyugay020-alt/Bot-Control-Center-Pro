@@ -37,18 +37,29 @@ class ModelProfile:
     api_model_id: str | None = None
     api_endpoint: str | None = None
     availability_verified: bool = False
+    catalog_listed: bool = False
+    advertised_input_floor_usd_per_million: Decimal | None = None
+    advertised_output_floor_usd_per_million: Decimal | None = None
 
 
 PROFILES = {
     "terra": ModelProfile(
         "terra", "GPT-6.1 Terra", Decimal("0.30"),
-        Decimal("0.015"), Decimal("1.50"), Decimal("0.375")),
+        Decimal("0.015"), Decimal("1.50"), Decimal("0.375"),
+        catalog_listed=True),
     "kimi": ModelProfile(
         "kimi", "Kimi K3.1 Pro", Decimal("0.80"),
-        Decimal("0.08"), Decimal("4.00"), None),
-    # Astra Pro in ChatGPT is not evidence of an equivalent Kie.ai API model.
-    "astra": ModelProfile("astra", "Astra Pro (unverified on Kie.ai)",
-                          None, None, None, None),
+        Decimal("0.08"), Decimal("4.00"), None,
+        catalog_listed=True),
+    # Historical Kie.ai pricing screenshot shows "gpt-6-astra". The
+    # listed minimum rates are NOT a verified per-request invoice tariff.
+    # Presence in a catalog does not establish Astra Pro equivalence,
+    # provider endpoint, account entitlement or model availability.
+    "astra": ModelProfile("astra", "GPT-6 Astra (Kie.ai catalog)",
+                          None, None, None, None,
+                          catalog_listed=True,
+                          advertised_input_floor_usd_per_million=Decimal("0.28"),
+                          advertised_output_floor_usd_per_million=Decimal("56")),
 }
 
 
@@ -173,12 +184,22 @@ def validate_mock_responses_reply(raw: Any, *, model: str,
         raise ModelNotReady("Usage missing")
     incoming = _tokens(usage.get("input_tokens"), "input", input_cap)
     outgoing = _tokens(usage.get("output_tokens"), "output", output_cap)
-    details = usage.get("input_tokens_details") or {}
-    if not isinstance(details, dict):
-        raise ModelNotReady("Invalid usage details")
+    details = usage.get("input_tokens_details", {})
+    if not isinstance(details, dict) or set(details) - {"cached_tokens"}:
+        raise ModelNotReady("Unrecognized usage detail may affect billing")
+    if set(usage) - {"input_tokens", "output_tokens", "input_tokens_details",
+                      "output_tokens_details", "total_tokens"}:
+        raise ModelNotReady("Unrecognized usage category may affect billing")
     cached = _tokens(details.get("cached_tokens", 0), "cache read", input_cap)
     if cached > incoming:
         raise ModelNotReady("Cached input exceeds input")
+    if "total_tokens" in usage and _tokens(usage["total_tokens"], "total", 200_000_000) != incoming + outgoing:
+        raise ModelNotReady("Inconsistent total token count")
+    reasoning = usage.get("output_tokens_details", {})
+    if not isinstance(reasoning, dict) or set(reasoning) - {"reasoning_tokens"}:
+        raise ModelNotReady("Unrecognized output billing details")
+    if "reasoning_tokens" in reasoning and _tokens(reasoning["reasoning_tokens"], "reasoning", output_cap) > outgoing:
+        raise ModelNotReady("Reasoning token count exceeds output")
     cost = estimate_micro_usd(
         model, input_tokens=incoming, output_tokens=outgoing,
         cached_input_tokens=cached)
@@ -204,6 +225,9 @@ def summary() -> dict[str, Any]:
                 "api_model_id": value.api_model_id,
                 "api_endpoint": value.api_endpoint,
                 "availability_verified": value.availability_verified,
+                "catalog_listed": value.catalog_listed,
+                "advertised_input_floor_usd_per_million": str(value.advertised_input_floor_usd_per_million) if value.advertised_input_floor_usd_per_million is not None else None,
+                "advertised_output_floor_usd_per_million": str(value.advertised_output_floor_usd_per_million) if value.advertised_output_floor_usd_per_million is not None else None,
                 "input_per_million": str(value.input_usd_per_million) if value.input_usd_per_million is not None else None,
                 "cached_input_per_million": str(value.cached_input_usd_per_million) if value.cached_input_usd_per_million is not None else None,
                 "output_per_million": str(value.output_usd_per_million) if value.output_usd_per_million is not None else None,
