@@ -75,6 +75,16 @@ class Reply:
     paid_calls_enabled: bool = False
 
 
+@dataclass(frozen=True)
+class ContentReply:
+    """Valid text content; no token usage/billing certification."""
+    model: str
+    text: str = field(repr=False)
+    text_sha256: str
+    provider_charge_verified: bool = False
+    usage_verified: bool = False
+
+
 def endpoint(model: str) -> Endpoint:
     if type(model) is not str or model not in ENDPOINTS:
         raise ResponsesBlocked("Model has no documented Responses endpoint")
@@ -121,19 +131,17 @@ def _count(x: Any, field: str, max_count: int) -> int:
     return x
 
 
-def parse_response(raw: Any, *, model: str, output_cap: int,
-                   input_cap: int = 100_000) -> Reply:
-    """Check a nonstreaming, plain-text Responses-shaped reply.
+def parse_content_response(raw: Any, *, model: str,
+                           output_cap: int) -> ContentReply:
+    """Validate completed provider TEXT independently of provider token usage.
 
-    Reasoning items, shown on both provider docs, are allowed but NOT
-    returned/logged. Function calls and unknown side effects are rejected.
-    Usage estimates are not actual provider invoices or model authorization.
+    The content may be valid even when Kie.ai usage is absent or uses
+    undocumented billing categories. This is NOT permission to settle a hold,
+    declare a free request, run a tool or send another request.
     """
     endpoint(model)
     if type(output_cap) is not int or not 1 <= output_cap <= MAX_OUTPUT_TOKENS:
         raise ResponsesBlocked("Invalid output cap")
-    if type(input_cap) is not int or not 1 <= input_cap <= 100_000:
-        raise ResponsesBlocked("Invalid input cap")
     if type(raw) is not dict or raw.get("status") != "completed":
         raise ResponsesBlocked("Provider response incomplete")
     if raw.get("object") not in (None, "response"):
@@ -193,6 +201,24 @@ def parse_response(raw: Any, *, model: str, output_cap: int,
     text = "".join(texts)
     if messages != 1 or not text or len(text.encode("utf-8")) > MAX_RESPONSE_UTF8:
         raise ResponsesBlocked("No bounded assistant text")
+    return ContentReply(
+        model=model,
+        text=text,
+        text_sha256=sha256(text.encode("utf-8")).hexdigest(),
+    )
+
+
+def parse_response(raw: Any, *, model: str, output_cap: int,
+                   input_cap: int = 100_000) -> Reply:
+    """Strict text + accounting receipt validation, never invoice evidence.
+
+    Call parse_content_response separately when provider usage is unsupported
+    and present a distinct CONTENT_VERIFIED_USAGE_UNKNOWN state; never
+    silently declare full success or settle the monetary HOLD.
+    """
+    content = parse_content_response(raw, model=model, output_cap=output_cap)
+    if type(input_cap) is not int or not 1 <= input_cap <= 100_000:
+        raise ResponsesBlocked("Invalid input cap")
     usage = raw.get("usage")
     if type(usage) is not dict:
         raise ResponsesBlocked("Missing usage evidence")
@@ -213,8 +239,8 @@ def parse_response(raw: Any, *, model: str, output_cap: int,
         if _count(usage["total_tokens"], "total", input_cap + output_cap) != incoming + outgoing:
             raise ResponsesBlocked("Inconsistent total tokens")
     return Reply(
-        model=model, text=text,
-        text_sha256=sha256(text.encode("utf-8")).hexdigest(),
+        model=model, text=content.text,
+        text_sha256=content.text_sha256,
         input_tokens=incoming, output_tokens=outgoing,
         cached_input_tokens=cached,
     )
