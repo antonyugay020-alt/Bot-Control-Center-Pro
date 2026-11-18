@@ -11,6 +11,8 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
+from tools.bcc_kie_sqlite_lifecycle import managed_connection
+
 REQUEST_ID = "BCC-KIE-SONNET55-CONNECTIVITY-20261117-V1"
 APPROVAL_ID = "BCC-KIE-ONE-TEST-USER-AUTHORIZED-20261117"
 
@@ -22,7 +24,7 @@ def review(db_path: Path) -> dict[str, Any]:
                 "paid_calls_authorized": False}
     try:
         uri = db_path.resolve().as_uri() + "?mode=ro"
-        with sqlite3.connect(uri, uri=True, timeout=3) as conn:
+        with managed_connection(sqlite3.connect(uri, uri=True, timeout=3)) as conn:
             conn.execute("PRAGMA query_only=ON")
             rows = conn.execute(
                 "SELECT status, hold_micro, charged_micro, period "
