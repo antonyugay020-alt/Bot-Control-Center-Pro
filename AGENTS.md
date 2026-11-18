@@ -20,7 +20,7 @@ The software's hard safety boundaries are not configurable by AI. Maintain indep
 Complete the Modern Qt Windows application with fully integrated common Market Data Hub/worker lifecycle, VELES multi-coin RSI bands, composable entry and exit, GRID, Pump & Dump, Polymarket PAPER, per-bot accounting and cross-bot risk, MY_BOTS inventory, trading history, exports/imports and recovery. Scale by actual machine resources rather than a fixed numeric bot ceiling.
 Start with current consolidated draft PR #11 and its checkpoint; stabilize architectural boundaries and verify actual integration and clean-unpack Windows Qt E2E. Prioritize workflows creating/editing/starting/stopping bots, market data, trades, persistence, restart, and global monitoring. Randomized nonduplicative regression tasks and systemic defects collection. No release until mandatory end-to-end acceptance; no real trading unless separately authorized.
 
-## Optional Kie.ai model gateway — disabled pending verified API contract
+## Optional Kie.ai model gateway — one paid Terra attempt consumed; automated agent disabled
 This branch includes tools/bcc_kie_models.py, tools/bcc_kie_task_router.py,
 and tools/bcc_kie_model_budget.py. They provide only a no-network
 model catalog, source-SHA-bound task handoffs, synthetic response checks
@@ -56,13 +56,15 @@ and a shared admission ledger. No real Kie.ai paid transport is enabled.
   All model reservations share the existing Claude spending database.
 - No GitHub Actions spending, no unattended model requests, no live bot
   changes, no stop/reboot and no intermediate releases.
-  Only the separate BCC_KIE_TERRA_ONE_TEST.cmd may offer ONE locally
-  confirmed text-only Terra connection after comprehensive Windows offline
-  PASS. It demands an explicit typed APPROVE TERRA 0.01, reserves $0.01
-  in the shared Kie ledger and writes a persistent consumed-attempt marker
-  before HTTPS. Local hold is NOT a Kie-enforced hard billing ceiling.
+  The only Terra one-shot was approved and attempted on Windows 2026-11-18.
+  The Kie.ai Logs screenshot shows GPT-6.1 Terra SUCCESS at 14:27:03,
+  duration 9 and 0.01 credits used, whereas the BCC local client returned
+  BLOCKED/UNKNOWN. This proves provider-side success, NOT successful local
+  response parsing or agent/tooling readiness. The one-shot authorization
+  is CONSUMED; BCC_KIE_TERRA_ONE_TEST.cmd is retired and read-only.
+  Do not rerun, reset reservations/markers or assume the credits amount is
+  a verified USD bill. Preserve ledger and use read-only diagnostics.
   Model agent/tool calling and all other paid routes remain disabled.
-  Do not retry the one-shot after errors, and do not clear its ledger/marker.
 - The Windows 2026-11-18 QA at 3c8aa241 ran 186 cases and had 10
   WinError 32 fixture cleanup errors (2 skips). Cause: plain
   'with sqlite3.connect(...)' commits but does not close SQLite handles.
@@ -70,8 +72,10 @@ and a shared admission ledger. No real Kie.ai paid transport is enabled.
   managed_connection() or contextlib.closing; never add transaction-only
   SQLite context managers. Regression gate includes an AST safety test.
   That source SHA passed 192/192 Windows offline tests (2 skips).
-  A new separate Terra one-shot changes the gate to 16 modules / 218
-  tests; this newer code needs its own Windows PASS before any HTTP POST.
+  The Terra one-shot source SHA 56d1a87c passed 218/218 Windows offline
+  tests (2 skips), but the subsequent local client outcome was UNKNOWN.
+  Since then read-only incident tools were added; no new Windows PASS or
+  full Modern Qt E2E is claimed for that updated source.
 - Run BCC_KIE_AGENT_CHECK.cmd from an isolated Windows agent checkout
   for offline regression. Do not claim a Windows PASS until actual output
   from the revised SHA proves it. No Windows Qt E2E acceptance is implied.
