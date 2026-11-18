@@ -61,6 +61,40 @@ def planned_margin(base_capital, settings):
     return target
 
 
+def configured_target(cfg, state, settings, *, equity_reader=None):
+    """One source of truth for the allocation target at strategy and executor.
+
+    VELES uses its original deposit plus an explicitly reinvested share of
+    closed deals. Other section engines retain their current-price equity
+    rule when reinvest is enabled. Fixed margin does not grow with profit.
+    The function is pure except for the explicitly supplied equity reader
+    (a pure calculation over this same PAPER state).
+    """
+    if not isinstance(cfg, dict) or not isinstance(state, dict):
+        raise AllocationUnavailable("Недоступна конфигурация или PAPER-счёт")
+    try:
+        capital = _finite(cfg["capital"], "депозит", positive=True)
+        if cfg["strategy"] == "VELES":
+            extra = (
+                _finite(state["strategy"].get("veles_reinvested", 0),
+                        "реинвестированная прибыль")
+                if cfg["reinvest"] else 0.0
+            )
+            base = capital + extra
+        elif cfg["reinvest"]:
+            if equity_reader is None:
+                raise AllocationUnavailable("Оценка капитала недоступна")
+            base, unknown = equity_reader(state)
+            if unknown:
+                return 0.0
+            base = max(0.0, _finite(base, "оцениваемый капитал"))
+        else:
+            base = capital
+        return planned_margin(base, settings)
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise AllocationUnavailable("Не удалось определить капитал бота") from exc
+
+
 def allocation_signature(settings):
     """Active coin budget identity; dormant fields do not cause conflicts."""
     mode = allocation_mode(settings)
