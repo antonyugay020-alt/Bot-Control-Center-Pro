@@ -5,6 +5,7 @@ import json
 from copy import deepcopy
 
 from .config import coin_section, effective, merge
+from .coin_budget import limit_amount, admission_reason
 from .indicators import evaluate
 from .margin import MODEL, entry_reason, pending_reserve
 from .liquidation import is_liquidating, status as liquidation_status
@@ -214,6 +215,7 @@ def startup_rsi_rejection(cfg, state, symbol, section, bars, now_ms, selected):
 class Veles:
     def process(self, cfg, state, events, symbol, bars, bid, ask, now_ms):
         over = cfg["coin_overrides"].get(symbol, {})
+        coin_cap = limit_amount(cfg, symbol)
         diagnostics = []
         handoff_targets = set()
         startup_target = startup_rsi_range(cfg, state, symbol, bars, now_ms)
@@ -402,6 +404,7 @@ class Veles:
                         section["id"],
                         reinvest_pct=pending.get("reinvest_pct", 0),
                         existing_grid=True,
+                        coin_cap=coin_cap,
                     )
                     if ok:
                         state["positions"][key]["exit_signal"] = pending["exit_signal"]
@@ -481,6 +484,10 @@ class Veles:
                 continue
             if (result.matched or handoff or bootstrap) and daily_ok(cfg, state, symbol, settings, now_ms):
                 margin = capital_margin(cfg, state, settings)
+                capital_reason = admission_reason(state, symbol, margin, coin_cap)
+                if capital_reason:
+                    diagnostics.append({"section": section["label"], "reason": capital_reason})
+                    continue
                 anchor = ask if section["side"] == "LONG" else bid
                 order_plan = plan(settings["orders"], section["side"], anchor)
                 margin_reason = entry_reason(
@@ -547,6 +554,7 @@ class Veles:
                             if cfg["strategy"] == "VELES" and cfg["reinvest"]
                             else 0
                         ),
+                        coin_cap=coin_cap,
                     )
                     if ok:
                         state["positions"][key]["exit_signal"] = exit_signal
