@@ -9,7 +9,7 @@ It does not claim a successful real provider response.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 import json
 from typing import Any
@@ -56,7 +56,7 @@ class Request:
     model: str
     host: str
     path: str
-    body: bytes
+    body: bytes = field(repr=False)
     input_sha256: str
     agent_execution_enabled: bool = False
     network_enabled: bool = False
@@ -66,7 +66,7 @@ class Request:
 @dataclass(frozen=True)
 class Reply:
     model: str
-    text: str
+    text: str = field(repr=False)
     text_sha256: str
     input_tokens: int
     output_tokens: int
