@@ -497,7 +497,11 @@ FINANCE = [
         "choice",
         [("Cross", "CROSS"), ("Isolated", "ISOLATED")],
     ),
+    ("allocation_mode", "Размер секции VELES", "choice", [
+        ("Процент депозита", "percent"), ("Фиксированная маржа USDT", "fixed_usdt"),
+    ]),
     ("allocation_pct", "Доля депозита на секцию, %", "float", (0.001, 100)),
+    ("allocation_usdt", "Фиксированная маржа на секцию, USDT", "float", (0.01, 1000000000)),
     (
         "reinvest_pct",
         "Реинвест: доля чистой прибыли при включении, %",
@@ -603,7 +607,7 @@ class SettingsEditor(QTabWidget):
                 if f[0] in ("daily_loss_pct", "disabled", "stop_after_cycle")
             ]
         elif strategy in ("GRID", "PUMP_DUMP"):
-            finance = [f for f in finance if f[0] != "allocation_pct"]
+            finance = [f for f in finance if f[0] not in ("allocation_mode", "allocation_pct", "allocation_usdt")]
         self.finance = Fields(data, finance)
         self.addTab(scroll(self.finance), "Капитал и риск")
         orders = QWidget()
