@@ -1,55 +1,22 @@
 @echo off
 setlocal
-REM BCC development agent offline preflight only.
-REM Does NOT call Kie.ai, GPT Work, Graphify, GitHub Actions, or trading bots.
+REM Complete BCC Kie.ai offline regression; NO paid API calls, no live bots.
+REM Only the separate BCC_AGENT_GATEWAY checkout is permitted by PS1.
 set "ROOT=%~dp0"
-pushd "%ROOT%" || goto failed
-where py >nul 2>&1
-if not errorlevel 1 goto use_py
-where python >nul 2>&1
-if errorlevel 1 goto missing
-set "PYTHON=python"
-goto run
-
-:use_py
-set "PYTHON=py -3"
-
-:run
-echo ===== BCC KIE DEVELOPMENT GATEWAY: OFFLINE CHECK =====
-%PYTHON% -I "%ROOT%tools\bcc_kie_agent.py" doctor
-if errorlevel 1 goto failed
-%PYTHON% -I "%ROOT%tools\bcc_kie_agent.py" mock
-if errorlevel 1 goto failed
-echo.
-echo Checking Kie.ai Claude Sonnet 5.5 screenshot protocol (offline only).
-%PYTHON% -I "%ROOT%tools\bcc_kie_protocol.py"
-if errorlevel 1 goto failed
-echo Checking Terra, Kimi, Astra model catalog and blocked transport (offline).
-%PYTHON% -I "%ROOT%tools\bcc_kie_models.py"
-if errorlevel 1 goto failed
-echo Checking screenshot-grounded Terra/Kimi Responses routes, tooling flags and blocked network.
-%PYTHON% -I "%ROOT%tools\bcc_kie_responses_protocol.py"
-if errorlevel 1 goto failed
-echo Running isolated BCC Kie protocol, shared-budget, routing and approval regression tests.
-%PYTHON% -B -m unittest discover -s tests -p "test_bcc_kie_*.py" -q
-if errorlevel 1 goto failed
-echo.
-echo OFFLINE CHECKS COMPLETED. No network access or paid calls.
-echo Terra/Kimi API routes documented; LIVE compatibility, actual prices and billing remain unverified.
-echo Kimi is CHAT-ONLY per Kie.ai; no agent execution.
-echo Legacy Claude one-shot authorization remains CONSUMED, not reusable.
-echo Graphify/Work integration remains disconnected.
-goto finish
-
-:failed
-echo OFFLINE CHECK BLOCKED. No paid calls attempted.
-goto finish
-
-:missing
-echo Python 3 was not found. Nothing was changed.
-
+where powershell.exe >nul 2>&1
+if errorlevel 1 (
+  echo BLOCKED: Windows PowerShell is missing. No tests run.
+  set "RESULT=2"
+  goto finish
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\bcc_kie_offline_windows_qa.ps1"
+set "RESULT=%ERRORLEVEL%"
+if not "%RESULT%"=="0" (
+  echo BCC KIE OFFLINE QA: BLOCKED OR FAILED - DO NOT ASSUME PASS.
+) else (
+  echo BCC KIE OFFLINE QA: PASS. No provider calls, not Windows Qt E2E.
+)
 :finish
-popd >nul 2>&1
 echo.
 pause
-endlocal
+endlocal & exit /b %RESULT%
