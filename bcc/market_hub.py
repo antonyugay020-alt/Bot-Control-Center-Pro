@@ -1246,8 +1246,15 @@ class MarketDataHub:
         # Fetch beyond the free count so a busy regular lane does not hide
         # urgent rows. But never reserve more than one background lane while
         # there is active priority work.
+        # Keep actual HTTP execution capacity for BOTH exposed-position
+        # protection and historical candle discovery. With six workers a
+        # permanently busy urgent queue previously confined 824-symbol
+        # history warmup to ONE background lane. The two-lane minimum is
+        # conditional on at least three workers; never exhaust every slot
+        # with regular HTTP when a new position mark can arrive.
+        regular_reserve = min(2, max(1, self.max_workers // 3))
         available = self.registry.due(
-            limit=self.max_workers, reserve_regular=1,
+            limit=self.max_workers, reserve_regular=regular_reserve,
             exclude=tuple(self._inflight), include_priority=True,
             include_generation=True,
             skip_ws_routes=self._websocket_queue_exclusions(),
@@ -1259,14 +1266,16 @@ class MarketDataHub:
         for key, url, params, is_urgent, generation in available:
             if free <= 0:
                 break
-            if (is_urgent and regular_available and regular_inflight == 0
-                    and urgent_inflight >= self.max_workers - 1):
+            if (is_urgent and regular_available
+                    and regular_inflight < regular_reserve
+                    and urgent_inflight >= self.max_workers - regular_reserve):
                 continue
-            if not is_urgent and regular_inflight > 0 and urgent_available:
+            if (not is_urgent and regular_inflight >= regular_reserve
+                    and urgent_available):
                 continue
-            # Keep one actual executor slot idle for a position that becomes
-            # urgent *after* slow scanner HTTP calls are already in flight.
-            # Merely reserving an urgent SQL queue slot is insufficient.
+            # Even with no urgent work right now, reserve one physical slot
+            # for the NEXT position mark. A SQL reservation alone cannot
+            # pre-empt an already executing 8-second public HTTP request.
             if not is_urgent and regular_inflight >= self.max_workers - 1:
                 continue
             def fetch(request_url=url, request_params=params, urgent=is_urgent):
