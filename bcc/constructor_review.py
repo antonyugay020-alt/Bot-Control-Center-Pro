@@ -234,7 +234,9 @@ def effective_risk_review_text(draft, *, sample_limit=8):
                          if stop["mode"] in ("percent", "both")
                          else stop["mode"])
             admission = ("вход отключён" if not resolved["enabled"] or settings["disabled"]
-                         else "вход разрешён")
+                         else ("вход заблокирован: одна секция превышает предел монеты"
+                               if coin_cap is not None and margin > coin_cap + 1e-8
+                               else "вход разрешён при наличии свободного бюджета"))
             lines.append(
                 f"{symbol} / {resolved['label']}: {resolved['side']}, "
                 f"{settings['margin_mode']}, плечо {settings['leverage']:g}x; "
