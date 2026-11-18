@@ -15,6 +15,14 @@ if ((Split-Path $source -Leaf) -ne 'SOURCE' -or
 if (-not (Test-Path -LiteralPath (Join-Path $source '.git'))) {
     throw 'BLOCKED: not a Git checkout'
 }
+# Reject Windows junctions/symlinks to another workspace. A seemingly
+# isolated QA checkout must not be a reparse-point alias to live bots.
+foreach ($p in @($source, $parent, (Join-Path $source '.git'))) {
+    if ((Get-Item -LiteralPath $p -Force).Attributes -band
+            [IO.FileAttributes]::ReparsePoint) {
+        throw 'BLOCKED: source, parent or Git directory is a reparse point'
+    }
+}
 $branchName = ((& git -C $source branch --show-current) -join '').Trim()
 $branchOK = ($LASTEXITCODE -eq 0)
 $sha = ((& git -C $source rev-parse HEAD) -join '').Trim()
