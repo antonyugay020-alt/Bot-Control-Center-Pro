@@ -822,6 +822,29 @@ def validate(cfg):
             # Polymarket is checked below once for every ACTUAL coin:market.
             # Promoting one coin patch into global settings would incorrectly
             # apply it to other coins and reject otherwise valid configurations.
+    # GRID and Pump & Dump have separate absolute-order sizing, while
+    # Polymarket uses ASK/stake percentages. None uses the VELES
+    # margin-budget admission path; reject a hidden JSON-only coin cap.
+    if cfg["strategy"] in ("GRID", "PUMP_DUMP", "POLYMARKET"):
+        allocation_values = [cfg["settings"].get("allocation_mode", "section_pct")]
+        allocation_values.extend(
+            over.get("settings", {}).get("allocation_mode", "section_pct")
+            for over in cfg["coin_overrides"].values()
+        )
+        allocation_values.extend(
+            patch.get("settings", {}).get("allocation_mode", "section_pct")
+            for over in cfg["coin_overrides"].values()
+            for patch in over.get("sections", {}).values()
+        )
+        allocation_values.extend(
+            sec.get("overrides", {}).get("allocation_mode", "section_pct")
+            for sec in cfg["sections"]
+        )
+        if any(mode != "section_pct" for mode in allocation_values):
+            raise ValueError(
+                "Квота маржи на монету доступна для секционных стратегий, "
+                "но не для GRID, PUMP&DUMP и Polymarket"
+            )
     # Per-coin cap must be the SAME across all ranges of a coin. A
     # section-level override that silently changes the cap would make
     # availability dependent on the selected section, bypassing the
