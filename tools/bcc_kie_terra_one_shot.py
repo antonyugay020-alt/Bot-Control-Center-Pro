@@ -157,6 +157,9 @@ def perform_one_attempt(
     The implementation is mockable for fully offline tests. The production
     sender exists only in the interactive Windows main() below.
     """
+    if sender is _send_one_https:
+        # Defense in depth: direct Python calls cannot bypass full QA.
+        verify_preflight(ROOT)
     if approval_text != CONFIRM_PHRASE:
         raise OneShotBlocked("Explicit Terra confirmation was not given")
     if not isinstance(state_directory, Path):
