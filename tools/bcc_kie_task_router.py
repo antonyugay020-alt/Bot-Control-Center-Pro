@@ -22,7 +22,7 @@ REPO = "antonyugay020-alt/Bot-Control-Center-Pro"
 VALID_SHA = re.compile(r"[0-9a-f]{40}\Z")
 TASK_TAG = re.compile(r"[a-z][a-z0-9_-]{2,63}\Z")
 STAGES = {
-    "implementation": frozenset(("terra", "kimi")),
+    "implementation": frozenset(("terra",)),
     "independent_review": frozenset(("terra", "kimi")),
     "architecture": frozenset(("terra", "kimi", "astra")),
 }
@@ -60,6 +60,8 @@ class Handoff:
     authorization: str = "NONE"
     paid_calls: str = "DISABLED"
     work_graphify_connected: bool = False
+    agent_execution_allowed: bool = False
+    chat_only_provider_warning: bool = False
 
     def safe_dict(self) -> dict[str, Any]:
         """Never include the raw prompt, credentials, file bytes or content."""
@@ -77,6 +79,8 @@ class Handoff:
             "provider_contract_verified": False,
             "authorization": self.authorization, "paid_calls": self.paid_calls,
             "work_graphify_connected": False,
+            "agent_execution_allowed": False,
+            "chat_only_provider_warning": self.chat_only_provider_warning,
         }
 
 
@@ -147,6 +151,8 @@ def prepare_handoff(*, task_tag: str, task_text: str, model: str,
         historical_price_micro_usd=historical_cost,
         quote_conflict=target.price_quote_conflict,
         provider_contract_verified=False,
+        agent_execution_allowed=False,
+        chat_only_provider_warning=(model == "kimi"),
     )
 
 
