@@ -5,6 +5,10 @@ import json
 from copy import deepcopy
 
 from .config import coin_section, effective, merge
+from .coin_allocation import (
+    AllocationUnavailable, SECTION_PCT, allocation_mode,
+    available_margin_for_coin, planned_margin,
+)
 from .indicators import evaluate
 from .margin import MODEL, entry_reason, pending_reserve
 from .liquidation import is_liquidating, status as liquidation_status
@@ -36,20 +40,34 @@ def signal(state, key, spec, bars, now_ms):
     return result
 
 
-def capital_margin(cfg, state, settings):
+def capital_margin(cfg, state, settings, *, symbol=None):
+    """Resolve effective PAPER margin from one shared allocation policy.
+
+    Existing section_pct bots retain their original per-section exposure.
+    Opt-in coin_pct/coin_fixed budgets are shared across every section and
+    pending grid of ONE symbol in the same transactional PAPER account.
+    The upstream margin/tier/equity guards still decide actual admission.
+    """
     if cfg["strategy"] == "VELES":
         base = cfg["capital"] + (
             state["strategy"].get("veles_reinvested", 0) if cfg["reinvest"] else 0
         )
-        return base * settings["allocation_pct"] / 100
-    if cfg["reinvest"]:
+    elif cfg["reinvest"]:
         value, unknown = equity(state)
         if unknown:
             return 0.0  # Unpriced open risk cannot increase allocation.
         base = max(0, value)
     else:
         base = cfg["capital"]
-    return base * settings["allocation_pct"] / 100
+    try:
+        target = planned_margin(base, settings)
+        if allocation_mode(settings) == SECTION_PCT:
+            return target
+        if symbol is None or symbol not in cfg["symbols"]:
+            return 0.0  # Unknown coin cannot receive a new allocation.
+        return available_margin_for_coin(state, symbol, target, settings)
+    except (AllocationUnavailable, KeyError, TypeError):
+        return 0.0  # Damaged coin ledger/config cannot free risk capacity.
 
 
 def daily_ok(cfg, state, symbol, settings, now_ms):
@@ -480,7 +498,18 @@ class Veles:
                 )
                 continue
             if (result.matched or handoff or bootstrap) and daily_ok(cfg, state, symbol, settings, now_ms):
-                margin = capital_margin(cfg, state, settings)
+                margin = capital_margin(cfg, state, settings, symbol=symbol)
+                if margin <= 0:
+                    diagnostics.append({
+                        "section": section["label"],
+                        "reason": (
+                            "Квота монеты исчерпана или недоступна: учитываются "
+                            "открытые диапазоны и ожидающие сетки"
+                            if settings.get("allocation_mode") in ("coin_pct", "coin_fixed")
+                            else "Размер входа недоступен; проверьте капитал и оценки риска"
+                        ),
+                    })
+                    continue
                 anchor = ask if section["side"] == "LONG" else bid
                 order_plan = plan(settings["orders"], section["side"], anchor)
                 margin_reason = entry_reason(
