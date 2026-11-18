@@ -45,6 +45,10 @@ INPUT_CAP = 4096
 RESERVE_MICRO_USD = 10_000
 SENTINEL_FILENAME = "terra_one_shot_20261118_v1.attempted"
 PROVIDER_BILLING_VERIFIED = False
+# The user attempted the sole authorized Terra call on 2026-11-18.
+# Result is UNKNOWN. The prior authorization is consumed regardless of
+# whether the HTTPS request reached Kie.ai; no second charged attempt.
+KNOWN_TERRA_AUTHORIZATION_CONSUMED = True
 # Internal non-serializable capability: direct transport calls fail closed.
 _TRANSPORT_GRANT = object()
 
@@ -160,6 +164,8 @@ def perform_one_attempt(
     if sender is _send_one_https:
         # Defense in depth: direct Python calls cannot bypass full QA.
         verify_preflight(ROOT)
+        if KNOWN_TERRA_AUTHORIZATION_CONSUMED:
+            raise OneShotBlocked("Terra one-time authorization already consumed")
     if approval_text != CONFIRM_PHRASE:
         raise OneShotBlocked("Explicit Terra confirmation was not given")
     if not isinstance(state_directory, Path):
@@ -268,6 +274,10 @@ def verify_preflight(root: Path) -> None:
 
 
 def main() -> int:
+    if KNOWN_TERRA_AUTHORIZATION_CONSUMED:
+        print("TERRA_ATTEMPT_LOCKED: prior authorization consumed/unknown.")
+        print("Run the read-only Terra diagnostic; do not repeat the paid test.")
+        return 3
     if os.name != "nt" or ROOT.name != "BCC_AGENT_GATEWAY":
         print("BLOCKED: separate BCC_AGENT_GATEWAY Windows checkout required.")
         return 2
