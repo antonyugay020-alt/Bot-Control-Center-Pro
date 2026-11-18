@@ -118,6 +118,8 @@ REQUIRED_NATIVE_QT_MODULES = frozenset({
 REQUIRED_NATIVE_QT_CASES = frozenset({
     ("test_native_dashboard_workflow_qt", "test_dashboard_buttons_drive_real_paper_worker_monitor_and_restart"),
     ("test_native_dashboard_workflow_qt", "test_separate_qt_windows_reopen_running_account_inside_owned_acceptance_session"),
+    ("test_veles_coin_capital_qt", "test_veles_qt_coin_budget_applies_to_two_coins_and_reopens"),
+    ("test_veles_coin_capital_qt", "test_qt_reset_to_inherited_cap_keeps_other_coin_unchanged"),
 })
 # The native operator route ends with an open PAPER position.  A passing GUI
 # button test does not prove closed-trade accounting or persisted recovery.
@@ -149,6 +151,8 @@ REQUIRED_INTEGRATION_CASES = frozenset(
         'test_control_and_ledger_fences_leave_no_handles_for_windows_teardown')]
     + [('test_hub_resource_service_boundary',
         f'test_service_accepts_resource_budget_and_releases_its_lease[{workers}]') for workers in (13, 29)]
+    + [('test_veles_coin_capital_budget',
+        'test_two_veles_sections_do_not_double_spend_single_coin_budget')]
 )
 
 ALLOWED_WINDOWS_SKIPS = frozenset({
