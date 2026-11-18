@@ -53,7 +53,9 @@ class KieResponsesOfflineTests(unittest.TestCase):
         p = build_request("Review a synthetic patch", model="kimi")
         self.assertEqual(p.path, "/openai/v1/responses")
         self.assertEqual(json.loads(p.body)["model"], "kimi-k3")
-        self.assertFalse(endpoint("kimi").agent_supported_by_page)
+        self.assertTrue(endpoint("kimi").chat_only_warning)
+        self.assertTrue(endpoint("kimi").tools_documented)
+        self.assertFalse(endpoint("kimi").agent_runtime_verified)
         self.assertFalse(p.agent_execution_enabled)
 
     def test_astra_and_unknown_model_blocked(self):
@@ -85,8 +87,9 @@ class KieResponsesOfflineTests(unittest.TestCase):
         self.assertEqual(status["status"], "DOCUMENTED_OFFLINE_NOT_LIVE_VERIFIED")
         self.assertFalse(status["transport_enabled"])
         self.assertFalse(status["paid_calls"])
-        self.assertFalse(status["endpoints"]["kimi"]["agent_supported_by_page"])
-        self.assertTrue(status["endpoints"]["terra"]["agent_supported_by_page"])
+        self.assertTrue(status["endpoints"]["kimi"]["chat_only_warning"])
+        self.assertTrue(status["endpoints"]["terra"]["tools_documented"])
+        self.assertFalse(status["endpoints"]["terra"]["agent_runtime_verified"])
         self.assertFalse(status["endpoints"]["terra"]["live_compatibility_verified"])
 
     def test_terra_response_allows_reasoning_without_exposing_it(self):
