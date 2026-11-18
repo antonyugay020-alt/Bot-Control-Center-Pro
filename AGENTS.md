@@ -82,6 +82,18 @@ and a shared admission ledger. No real Kie.ai paid transport is enabled.
   tests (2 skips), but the subsequent local client outcome was UNKNOWN.
   Since then read-only incident tools were added; no new Windows PASS or
   full Modern Qt E2E is claimed for that updated source.
+- Provider Kie.ai later showed the exact requested Terra result text
+  BCC_TERRA_CONNECTED. The historical local BLOCKED/UNKNOWN root cause
+  remains unproven without the full response envelope. Do not invent it.
+  Use bcc_kie_terra_response_replay.py only on an ALREADY-SAVED response
+  from stdin; it cannot read credentials, invoice, ledger, bots or network.
+  Validate text independently of optional usage; never confuse a provider
+  response with a verified paid invoice. No unexpected tools/model aliases.
+  The retired Terra one-shot transport now categorizes CONNECT/POST/STATUS/
+  READ/JSON/ENVELOPE for future distinct authorizations, but does not
+  retroactively classify the previous request. Never reset its spent flag.
+  Offline acceptance inventory now requires 18 modules and 256 tests;
+  the new code has NOT yet passed native Windows regression.
 - Run BCC_KIE_AGENT_CHECK.cmd from an isolated Windows agent checkout
   for offline regression. Do not claim a Windows PASS until actual output
   from the revised SHA proves it. No Windows Qt E2E acceptance is implied.
