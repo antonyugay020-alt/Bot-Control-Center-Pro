@@ -59,9 +59,15 @@ and a shared admission ledger. No real Kie.ai paid transport is enabled.
   The only Terra one-shot was approved and attempted on Windows 2026-11-18.
   The Kie.ai Logs screenshot shows GPT-6.1 Terra SUCCESS at 14:27:03,
   duration 9 and 0.01 credits used, whereas the BCC local client returned
-  BLOCKED/UNKNOWN. This proves provider-side success, NOT successful local
-  response parsing or agent/tooling readiness. The one-shot authorization
-  is CONSUMED; BCC_KIE_TERRA_ONE_TEST.cmd is retired and read-only.
+  BLOCKED/UNKNOWN. A later Kie.ai result preview confirms exact model
+  output BCC_TERRA_CONNECTED. This proves provider-generated correct text,
+  NOT successful local response parsing or autonomous agent readiness.
+  Treat the precise BLOCKED/UNKNOWN source as unproven until full sanitized
+  response JSON or stage evidence is available. Keep text validation and
+  provider token/billing validation independent; an unknown usage schema
+  must not erase correct text, settle a hold, or grant an extra request.
+  The one-shot authorization is CONSUMED; BCC_KIE_TERRA_ONE_TEST.cmd
+  is retired and read-only.
   Do not rerun, reset reservations/markers or assume the credits amount is
   a verified USD bill. Preserve ledger and use read-only diagnostics.
   Model agent/tool calling and all other paid routes remain disabled.
