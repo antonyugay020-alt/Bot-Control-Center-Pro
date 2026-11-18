@@ -679,9 +679,31 @@ class PublicData:
                 raise DataUnavailable("Market Data Hub requires BCC_PUBLIC_CACHE")
             from .market_hub import HubRegistry
             subscription_key = HubRegistry.identity(url, params)[0]
-            # Only executable books fetched for EXISTING positions get urgent
-            # queue priority. Scanner books/candles cannot claim priority.
+            # Existing exposure keeps an independent long-lived urgent
+            # subscription. Scanner-only WS demand is brief: a one-off scan
+            # must not retain a quote/book ticker stream for a full minute.
+            # On large portfolios those idle subscriptions generated a
+            # continuous resubscription storm and crowded real position marks.
             urgent = self._position_critical_request(url, params)
+            transient_ws = (not urgent and type(params) is dict and (
+                (url == "https://api.bybit.com/v5/market/tickers"
+                 and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"
+                 and set(params) == {"category", "symbol"}
+                 and params.get("category") == "linear")
+                or (url == "https://api.bybit.com/v5/market/orderbook"
+                    and os.environ.get("BCC_BYBIT_WS_BOOKS") == "1"
+                    and set(params) == {"category", "symbol", "limit"}
+                    and params.get("category") == "linear"
+                    and params.get("limit") == 50)
+                or (url == "https://api.bybit.com/v5/market/kline"
+                    and os.environ.get("BCC_BYBIT_WS_KLINES") == "1"
+                    and set(params) == {"category", "symbol", "interval", "limit"}
+                    and params.get("category") == "linear"
+                    and params.get("interval") == "1"
+                    and params.get("limit") == 10)
+            ))
+            lifetime = 12 if transient_ws else 60
+            renewal = 4 if transient_ws else 20
             with self._lock:
                 if self._hub_registry is None:
                     self._hub_registry = HubRegistry(self.shared.path)
@@ -689,10 +711,12 @@ class PublicData:
                 if (now_mono >= self._hub_renew_at.get(subscription_key, 0)
                     or (urgent and now_mono >= self._hub_priority_until.get(subscription_key, 0))):
                     try:
-                        self._hub_registry.subscribe(url, params, lifetime=60, priority=urgent)
+                        self._hub_registry.subscribe(
+                            url, params, lifetime=lifetime, priority=urgent
+                        )
                     except (OSError, CacheBusy) as exc:
                         raise DataUnavailable("Market Data Hub subscription unavailable: " + str(exc)) from exc
-                    self._hub_renew_at[subscription_key] = now_mono + 20
+                    self._hub_renew_at[subscription_key] = now_mono + renewal
                     if urgent:
                         # Renew before the short-lived urgent lease expires.
                         self._hub_priority_until[subscription_key] = now_mono + 5
