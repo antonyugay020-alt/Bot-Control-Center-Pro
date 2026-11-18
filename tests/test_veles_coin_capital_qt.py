@@ -46,6 +46,29 @@ def dialog_controls(app):
     return dialog, coin, mode, amount, individual, box
 
 
+def run_coin_dialog(app, wizard, operation):
+    """Never hang a native Windows Qt modal if an assertion fails in QTimer.
+
+    PySide signal callbacks do not propagate their exceptions through
+    QDialog.exec(). Capture, close ONLY the test dialog, then re-raise.
+    """
+    failures = []
+
+    def invoke():
+        dialog = app.activeModalWidget()
+        try:
+            operation()
+        except BaseException as exc:
+            failures.append(exc)
+            if isinstance(dialog, QDialog):
+                dialog.reject()
+
+    QTimer.singleShot(0, invoke)
+    wizard.edit_coin()
+    if failures:
+        raise failures[0]
+
+
 def test_veles_qt_coin_budget_applies_to_two_coins_and_reopens(app):
     wizard = new_wizard()
     wizard.show()
@@ -70,8 +93,7 @@ def test_veles_qt_coin_budget_applies_to_two_coins_and_reopens(app):
         box.button(QDialogButtonBox.StandardButton.Save).click()
         assert dialog.result() == QDialog.DialogCode.Accepted
 
-    QTimer.singleShot(0, modify)
-    wizard.edit_coin()
+    run_coin_dialog(app, wizard, modify)
     config = validate(wizard.data())
     assert config["coin_overrides"]["BTCUSDT"]["capital_limit"] == {
         "mode": "percent", "value": 7.5}
@@ -95,8 +117,7 @@ def test_veles_qt_coin_budget_applies_to_two_coins_and_reopens(app):
         assert amount.value() == 37.25
         box.button(QDialogButtonBox.StandardButton.Cancel).click()
 
-    QTimer.singleShot(0, inspect)
-    reopened.edit_coin()
+    run_coin_dialog(app, reopened, inspect)
     reopened.close()
     wizard.close()
 
@@ -120,8 +141,7 @@ def test_qt_reset_to_inherited_cap_keeps_other_coin_unchanged(app):
         assert not amount.isEnabled()
         box.button(QDialogButtonBox.StandardButton.Save).click()
 
-    QTimer.singleShot(0, reset)
-    wizard.edit_coin()
+    run_coin_dialog(app, wizard, reset)
     result = validate(wizard.data())
     assert "capital_limit" not in result["coin_overrides"].get("BTCUSDT", {})
     assert result["coin_overrides"]["ETHUSDT"]["capital_limit"] == {
@@ -143,8 +163,7 @@ def test_qt_percent_mode_clamps_fixed_usdt_before_save(app):
         assert amount.value() == 100
         box.button(QDialogButtonBox.StandardButton.Save).click()
 
-    QTimer.singleShot(0, edit)
-    wizard.edit_coin()
+    run_coin_dialog(app, wizard, edit)
     saved = validate(wizard.data())
     assert saved["coin_overrides"]["BTCUSDT"]["capital_limit"] == {
         "mode": "percent", "value": 100.0}
