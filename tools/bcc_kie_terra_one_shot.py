@@ -11,11 +11,11 @@ are sent. NEVER retry a failed/unknown provider response automatically.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 import http.client
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 from typing import Any, Callable
 
@@ -200,13 +200,58 @@ def perform_one_attempt(
         )
     reply = parse_response(raw, model="terra", output_cap=OUTPUT_CAP,
                            input_cap=INPUT_CAP)
+    attested_model = raw.get("model") in ("gpt-6-1-terra", "gpt-6.1-terra")
+    result = ("CONNECTED" if reply.text.strip() == EXPECTED_TEXT and attested_model
+              else "MODEL_NOT_ATTESTED" if not attested_model
+              else "VALID_RESPONSE_UNEXPECTED_TEXT")
     return SafeOutcome(
-        result=("CONNECTED" if reply.text.strip() == EXPECTED_TEXT
-                else "VALID_RESPONSE_UNEXPECTED_TEXT"),
+        result=result,
         http_status=200, input_tokens=reply.input_tokens,
         output_tokens=reply.output_tokens,
         response_sha256=reply.text_sha256,
     )
+
+
+def verify_preflight(root: Path) -> None:
+    """Require a current clean SHA-matching full offline Windows PASS.
+
+    Prevent directly invoking the paid Python entrypoint without first
+    completing the guarded 211-case offline test. A user-provided report
+    is not trusted unless its SHA equals this exact checkout HEAD.
+    """
+    if root.name != "BCC_AGENT_GATEWAY" or not (root / ".git").exists():
+        raise OneShotBlocked("Isolated BCC agent checkout required")
+    report = root / "QA" / "BCC_KIE_QA_SUMMARY.json"
+    if not report.is_file() or report.stat().st_size > 16_384:
+        raise OneShotBlocked("Full offline Windows QA proof is missing")
+    try:
+        result = json.loads(report.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, ValueError):
+        raise OneShotBlocked("Cannot validate offline QA evidence") from None
+    if not isinstance(result, dict) or any((
+        result.get("check") != "BCC_KIE_OFFLINE_QA",
+        result.get("result") != "OFFLINE_PASS_ONLY",
+        result.get("exit_code") != 0,
+        result.get("source_branch") != "agent/bcc-work-claude-gateway-20261117",
+        result.get("paid_provider_calls") != 0,
+        result.get("github_actions_requested") != 0,
+    )):
+        raise OneShotBlocked("Offline QA was not a clean PASS")
+    try:
+        head = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        clean = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=normal"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise OneShotBlocked("Cannot verify pinned Git checkout") from None
+    if (head.returncode != 0 or clean.returncode != 0
+            or clean.stdout.strip() or len(head.stdout.strip()) != 40
+            or result.get("source_sha") != head.stdout.strip()):
+        raise OneShotBlocked("Offline QA does not match clean Git HEAD")
 
 
 def main() -> int:
@@ -215,6 +260,11 @@ def main() -> int:
         return 2
     if not sys.stdin.isatty():
         print("BLOCKED: an interactive Windows terminal is required.")
+        return 2
+    try:
+        verify_preflight(ROOT)
+    except OneShotBlocked:
+        print("BLOCKED: full matching offline Windows QA required before paid test.")
         return 2
     state_root = os.environ.get("LOCALAPPDATA")
     if not state_root:
