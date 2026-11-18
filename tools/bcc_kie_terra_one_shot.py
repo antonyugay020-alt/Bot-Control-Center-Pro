@@ -28,7 +28,7 @@ from tools.bcc_kie_credentials import CredentialError, WindowsCredentialStore
 from tools.bcc_kie_model_budget import KieModelBudget
 from tools.bcc_kie_responses_protocol import (
     ResponsesBlocked, API_HOST, MAX_RESPONSE_UTF8,
-    Request, build_request, parse_response, endpoint,
+    Request, build_request, parse_response, parse_content_response, endpoint,
 )
 from tools.bcc_kie_responses_https import _headers, _validate_request
 
@@ -152,6 +152,38 @@ class SafeOutcome:
         return json.dumps(self.__dict__, ensure_ascii=False, sort_keys=True)
 
 
+def assess_terra_response(raw: dict[str, Any]) -> SafeOutcome:
+    """Pure, offline-testable assessment of one provider response body.
+
+    Do not conflate confirmed text with trustworthy token accounting.
+    Provider credits, USD invoice and an existing local HOLD are independent.
+    """
+    content = parse_content_response(raw, model="terra", output_cap=OUTPUT_CAP)
+    attested_model = raw.get("model") in ("gpt-6-1-terra", "gpt-6.1-terra")
+    try:
+        reply = parse_response(
+            raw, model="terra", output_cap=OUTPUT_CAP, input_cap=INPUT_CAP,
+        )
+    except ResponsesBlocked:
+        # Content may still be genuine: preserve that evidence, but never
+        # silently label the whole operation CONNECTED or settle the HOLD.
+        if attested_model and content.text.strip() == EXPECTED_TEXT:
+            return SafeOutcome(
+                result="CONTENT_CONFIRMED_USAGE_UNVERIFIED",
+                http_status=200, input_tokens=None, output_tokens=None,
+                response_sha256=content.text_sha256,
+            )
+        raise
+    result = ("CONNECTED" if content.text.strip() == EXPECTED_TEXT and attested_model
+              else "MODEL_NOT_ATTESTED" if not attested_model
+              else "VALID_RESPONSE_UNEXPECTED_TEXT")
+    return SafeOutcome(
+        result=result, http_status=200,
+        input_tokens=reply.input_tokens, output_tokens=reply.output_tokens,
+        response_sha256=reply.text_sha256,
+    )
+
+
 def perform_one_attempt(
     *, approval_text: str, store: Any, state_directory: Path,
     sender: Callable[[str, Request], tuple[int, dict[str, Any] | None]],
@@ -217,18 +249,8 @@ def perform_one_attempt(
             result="HTTP_ERROR_NO_RETRY", http_status=http_status,
             input_tokens=None, output_tokens=None, response_sha256=None,
         )
-    reply = parse_response(raw, model="terra", output_cap=OUTPUT_CAP,
-                           input_cap=INPUT_CAP)
-    attested_model = raw.get("model") in ("gpt-6-1-terra", "gpt-6.1-terra")
-    result = ("CONNECTED" if reply.text.strip() == EXPECTED_TEXT and attested_model
-              else "MODEL_NOT_ATTESTED" if not attested_model
-              else "VALID_RESPONSE_UNEXPECTED_TEXT")
-    return SafeOutcome(
-        result=result,
-        http_status=200, input_tokens=reply.input_tokens,
-        output_tokens=reply.output_tokens,
-        response_sha256=reply.text_sha256,
-    )
+    return assess_terra_response(raw)
+
 
 
 def verify_preflight(root: Path) -> None:
