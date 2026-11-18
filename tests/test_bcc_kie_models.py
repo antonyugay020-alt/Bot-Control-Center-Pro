@@ -57,6 +57,9 @@ class PricedRouterTests(unittest.TestCase):
 
     def test_astra_not_fabricated(self):
         self.assertIsNone(profile("astra").api_model_id)
+        self.assertTrue(profile("astra").catalog_listed)
+        self.assertEqual(profile("astra").advertised_input_floor_usd_per_million, 0.28)
+        self.assertEqual(profile("astra").advertised_output_floor_usd_per_million, 56)
         with self.assertRaises(ModelNotReady):
             plan("Analyze dependency boundaries", model="astra")
         with self.assertRaises(ModelNotReady):
@@ -109,7 +112,7 @@ class PricedRouterTests(unittest.TestCase):
         self.assertEqual(r["status"], "OFFLINE_MOCK_VALID")
         self.assertEqual(r["input_tokens"], 600)
         self.assertEqual(r["cached_input_tokens"], 100)
-        self.assertEqual(r["estimated_micro_usd"], 379)
+        self.assertEqual(r["estimated_micro_usd"], 237)
         self.assertFalse(r["provider_invoice_verified"])
         self.assertEqual(r["paid_calls"], "DISABLED")
 
@@ -136,12 +139,28 @@ class PricedRouterTests(unittest.TestCase):
             validate_mock_responses_reply(synthetic_answer(usage=None),
                 model="terra", input_cap=1000, output_cap=100)
 
+    def test_unknown_billable_response_usage_rejected(self):
+        altered = synthetic_answer(usage={"input_tokens": 100, "output_tokens": 10,
+                                          "cache_creation_input_tokens": 50})
+        with self.assertRaises(ModelNotReady):
+            validate_mock_responses_reply(altered, model="terra",
+                                          input_cap=1000, output_cap=100)
+
+    def test_inconsistent_total_tokens_rejected(self):
+        altered = synthetic_answer(usage={"input_tokens": 100, "output_tokens": 10,
+                                          "total_tokens": 999})
+        with self.assertRaises(ModelNotReady):
+            validate_mock_responses_reply(altered, model="terra",
+                                          input_cap=1000, output_cap=100)
+
     def test_price_source_and_disabled_network_visible(self):
         status = summary()
         self.assertEqual(status["price_status"], "HISTORICAL_QUOTE")
         self.assertEqual(status["api_contract"], "UNVERIFIED")
         self.assertEqual(status["paid_calls"], "DISABLED")
         self.assertIsNone(status["models"]["astra"]["input_per_million"])
+        self.assertEqual(status["models"]["astra"]["advertised_output_floor_usd_per_million"], "56")
+        self.assertFalse(status["models"]["astra"]["availability_verified"])
 
     def test_paid_transport_always_denied(self):
         with self.assertRaises(ModelNotReady):
