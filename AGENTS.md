@@ -70,7 +70,7 @@ and a shared admission ledger. No real Kie.ai paid transport is enabled.
   managed_connection() or contextlib.closing; never add transaction-only
   SQLite context managers. Regression gate includes an AST safety test.
   That source SHA passed 192/192 Windows offline tests (2 skips).
-  A new separate Terra one-shot changes the gate to 16 modules / 216
+  A new separate Terra one-shot changes the gate to 16 modules / 217
   tests; this newer code needs its own Windows PASS before any HTTP POST.
 - Run BCC_KIE_AGENT_CHECK.cmd from an isolated Windows agent checkout
   for offline regression. Do not claim a Windows PASS until actual output
