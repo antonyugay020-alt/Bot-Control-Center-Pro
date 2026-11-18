@@ -55,7 +55,7 @@
     "bcc/chart.py": "ab2ab197427939896c70c617023044ee53b470547517a6dcb413b168f237f86c",
     "bcc/clock_diagnostics.py": "b1a10358a11cab7d1d6ce7c10e627a35bfb450a18ae7930b226c3fd5ddbae94a",
     "bcc/coin_picker.py": "72e98f3edbeeb2753e495b762e3ab57163a30062a164123297c05a48d36d87e7",
-    "bcc/config.py": "5e82c0dd0d9680ad55fbe804c7d232f55877af2ca033e715f8372663e9385f82",
+    "bcc/config.py": "9ec832db4f283a46b15cd55bcbd51a698f9f79d8c11837f47629e0cff9159566",
     "bcc/constructor_contract.py": "0c9a81f69f204613629af8d3db64cf151222b6b7b904ec95d0e64febf2f416ef",
     "bcc/constructor_diagnostics.py": "33a21cddd4f705e77201e37cbe96fd9416732d636c3334e8f7c3f77fb0a6af7b",
     "bcc/constructor_edit_workspace.py": "6e94a346f70b7176a3d71fedf4181c501a4d490d59eb167821a1829ae5bf8ffe",
@@ -102,7 +102,7 @@
     "bcc/service_guard.py": "e622ffc5120972cfd2c6acdfeb6dd74b6b17228a562e193e9daa516483661ebb",
     "bcc/shared_risk.py": "807fa433a3724af8cdedcabe05427071f156d6ec397ca29055dd6e0ddad2adf1",
     "bcc/storage.py": "ba17abdb658721b413d83feb3583588798e902fce76e9de126d4bcaf3ee9003c",
-    "bcc/strategies.py": "1a9ac7897d8b51aa7853b20e0a277f650d963827d1e23a9b7cd17416ae5d95c7",
+    "bcc/strategies.py": "2253d569d006750825367cd4c0d12b7570821baefc406e6ceabb0055a95e4ad1",
     "bcc/strategy_dispatch.py": "69c15b98b2933afecc6eece7e2ddc8222516c15503025e7b54edd4e28cd0ac43",
     "bcc/strategy_picker.py": "e35e1afb869c308fe63db5a4ab3c9e8f147675f4510eb967d29e617227120ca5",
     "bcc/supervisor.py": "2a7da36d4ec9b514b0c0cb782e12bab3af599befcfc9dd9151d3baaf2af38ab0",
@@ -111,9 +111,9 @@
     "bcc/trading.py": "3f313e49cabcb7662d65933e7a247d043d3c5043784ca4cc77827c2e8f626415",
     "bcc/transfer.py": "cf3d209b50ca0d0dd0aec8f1e2462c1a2f61ddb403e3417d4f74cefafd413f70",
     "bcc/ui.py": "d26404cc0d13ec4230d5f60c26d083dc6536ecf7f9f3323d20db90278025d71d",
-    "bcc/widgets.py": "1a3c7adeb1d803316dab25166019fee036e428e8743e2c66525ce166351aaac0",
+    "bcc/widgets.py": "d25297217ad0c1f54fa824f4cd3855295cb64b5f800ba4fde82d88a5fa08bf1b",
     "bcc/wizard.py": "9d4accac33b355d067154e326e687e0770b4625bdc4dddaaed6115a2fe14a031",
-    "bcc/wizard_presentation.py": "aee1646cc799d362650aaf99a3f90c4f5c6f5dfc51a8b2ad8af81e5efba9d04b",
+    "bcc/wizard_presentation.py": "6859d567d72406758d4cc9f48d87cdcdcf7a139c69be3589866dfc237568c50e",
     "bcc/wizard_state.py": "08820a31c17f34c461fe4af2be0bcaf26dff2624983e0e3c9751581251e54b06",
     "bcc/wizard_stepper.py": "e7efa4d0d8c6ee88abd3bc1fad98abb93dbfb283c11cb6ed95a3d87ef714f4ef",
     "bcc/worker.py": "9eb144841bfcf9ad5bb0517e7bf7452890f57f76077728235525eb9537277119",
@@ -496,6 +496,9 @@
     "docs/BYBIT_ATOMIC_WS_PUBLICATION_QA_20261116.json": "e98c6b977c9ee2fbded13e3a787c641f38cde8af5e03e638ee8d8eb1daed7a07",
     "tests/test_offline_hub_boundary.py": "298f45e6d39a5d86db9e7f32efe22fd8bee9fe1088bf1b5b08aa5d150cf67e6c",
     "docs/BYBIT_OFFLINE_BOUNDARY_CHECKPOINT_20261117.md": "27abc219e510900270ee83530863219d862061a16dc27021164a605a54d4ab36",
-    "docs/BYBIT_OFFLINE_BOUNDARY_QA_20261117.json": "5124b9a40e10f5a6f2c6028c418d67aa710efd22a74ee08c27939fa29bf43561"
+    "docs/BYBIT_OFFLINE_BOUNDARY_QA_20261117.json": "5124b9a40e10f5a6f2c6028c418d67aa710efd22a74ee08c27939fa29bf43561",
+    "docs/VELES_COIN_MARGIN_INTEGRATION_20261118.md": "a94c00391990c02980ebe8c2cd595750ca49deae31992fdc009b721bc378c25b",
+    "tests/test_veles_capital_per_coin_mode.py": "372668cf685f9ddc5f4a48f0f90378bae5f26235120995effd5fee674d705306",
+    "tests/test_veles_fixed_capital_qt.py": "82b76062b9ae0dd525fae1c016eb16fde4bc377dd5692eab0b45ce3a8feae8da"
   }
 }
