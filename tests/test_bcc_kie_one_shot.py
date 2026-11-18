@@ -52,6 +52,18 @@ class OneShotPolicyTests(unittest.TestCase):
         return run_one_shot(approval_text=approval_text, store=self.store,
                             ledger_path=self.db, send=send or self.send)
 
+    def test_consumed_real_entrypoint_blocks_before_credential_read(self):
+        from tools.bcc_kie_one_shot import KNOWN_AUTHORIZATION_CONSUMED
+        self.assertTrue(KNOWN_AUTHORIZATION_CONSUMED)
+        with self.assertRaises(OneShotError):
+            run_one_shot(
+                approval_text=APPROVAL_PHRASE,
+                store=self.store,
+                ledger_path=self.db,
+            )
+        self.assertEqual(self.store.reads, 0)
+        self.assertFalse(self.db.exists())
+
     def test_reserve_is_exactly_one_cent(self):
         self.assertEqual(RESERVE_MICRO_USD, 10000)
         self.assertEqual(OUTPUT_LIMIT_TOKENS, 32)
