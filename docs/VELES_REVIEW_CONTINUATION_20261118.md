@@ -1,0 +1,11 @@
+# VELES constructor review continuation — NOT RELEASE
+
+Baseline 650d19b8e52586e34baf4ac0293925562afcc5bb; branch codex/ws-transport-isolated-20261113. Source-seal defect fixed at 344d0fc; VELES review schema fixed at fb05098; Qt preview assertion updated at d5d769f. No release, paid Actions, real orders, or changes to live user bots.
+
+The pre-existing manifest did not cover the VELES capital integration. The full source inventory has been rehashed. The first full Linux regression found that the constructor review rejects all VELES changes because the new allocation_mode and allocation_usdt fields were absent from its exhaustive risk category. They are now included, with focused regression cases for both fields. The existing Qt preview assertion was updated to the actual percent-mode label. Focused constructor and margin tests passed 67 cases, and Qt/review tests passed 128 cases on Linux offscreen. Public Bybit WS acceptance passed 24 rounds (240 paired samples) on the earlier, semantically identical transport code; Linux offscreen GUI passed. These are not native Windows acceptance.
+
+Complete regression for the final corrected source is running in a sealed independent copy: /workspace/work/qa-1118-frozen; inventory /workspace/work/qa-1118-frozen-inventory.json; shard results /workspace/work/qa-1118-frozen-regression. Do not assume PASS before the final status and exact JUnit inventory are verified. Earlier parallel runs overlapped changes to the original working tree and are not final evidence.
+
+The reported 19 positions do not establish a hard 19-position limit. The last saved report identified a stale independently timed ALCHUSDT mark which blocked Cross portfolio valuation; other constraints such as configured global risk and actual balances remain applicable. Determine the cause of any later 20th-entry failure from current diagnostics; do not weaken stale-price or risk gates.
+
+Remaining gates: complete actual whole-system regression; investigate all remaining failures and rerun after fixes; verify VELES DCA/ranges/coin-section budgets, GRID, Pump & Dump, Polymarket, risk, transfer, recovery and monitoring; independent review and isolated clean-unpack native Windows Qt E2E. Graphify integration was not available. No final package or release is certified.

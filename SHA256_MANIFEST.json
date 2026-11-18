@@ -499,6 +499,7 @@
     "docs/BYBIT_OFFLINE_BOUNDARY_QA_20261117.json": "5124b9a40e10f5a6f2c6028c418d67aa710efd22a74ee08c27939fa29bf43561",
     "docs/VELES_COIN_MARGIN_INTEGRATION_20261118.md": "a94c00391990c02980ebe8c2cd595750ca49deae31992fdc009b721bc378c25b",
     "tests/test_veles_capital_per_coin_mode.py": "372668cf685f9ddc5f4a48f0f90378bae5f26235120995effd5fee674d705306",
-    "tests/test_veles_fixed_capital_qt.py": "82b76062b9ae0dd525fae1c016eb16fde4bc377dd5692eab0b45ce3a8feae8da"
+    "tests/test_veles_fixed_capital_qt.py": "82b76062b9ae0dd525fae1c016eb16fde4bc377dd5692eab0b45ce3a8feae8da",
+    "docs/VELES_REVIEW_CONTINUATION_20261118.md": "495d151cafefe78577562e4f86636d2de3d924b60ac47740eb0ee7698c849312"
   }
 }
