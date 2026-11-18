@@ -91,7 +91,9 @@ class PricedRouterTests(unittest.TestCase):
         self.assertFalse(p.api_ready)
         self.assertFalse(p.network_enabled)
         self.assertFalse(p.paid_execution_enabled)
-        self.assertGreater(p.estimated_max_micro_usd, 0)
+        self.assertGreater(p.historical_quote_micro_usd, 0)
+        self.assertFalse(p.quote_is_spend_cap)
+        self.assertTrue(p.price_quote_conflict)
 
     def test_no_default_model_or_automatic_paid_fallback(self):
         with self.assertRaises(TypeError):
@@ -103,6 +105,15 @@ class PricedRouterTests(unittest.TestCase):
             "status": "incomplete", "content": [{"type": "output_text", "text": "fake"}]}])
         with self.assertRaises(ModelNotReady):
             validate_mock_responses_reply(altered, model="terra", input_cap=1000, output_cap=100)
+
+    def test_terra_catalog_conflicts_with_old_email_quote(self):
+        t = profile("terra")
+        self.assertTrue(t.price_quote_conflict)
+        self.assertEqual(str(t.advertised_input_floor_usd_per_million), "0.015")
+        self.assertEqual(str(t.advertised_output_floor_usd_per_million), "3")
+        self.assertEqual(str(t.output_usd_per_million), "1.50")
+        p = plan("no actual network", model="terra")
+        self.assertFalse(p.quote_is_spend_cap)
 
     def test_kimi_plan_is_possible_without_network(self):
         self.assertEqual(plan("test", model="kimi").model, "kimi")
