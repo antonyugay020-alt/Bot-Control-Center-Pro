@@ -262,5 +262,7 @@ def test_redirect_releases_shared_owner_lease_without_publishing_market_data(
     assert len(shared.finishes) == 1
     args, kwargs = shared.finishes[0]
     assert args == ("key", "owner", "api.bybit.com")
-    assert kwargs["cooldown"] >= 10
-    assert "data" not in kwargs
+    # A redirect is rejected and its lease retired without globally
+    # throttling unrelated symbols on the same public host.
+    assert kwargs == {}
+    assert "api.bybit.com" not in isolated_source.cooldowns
