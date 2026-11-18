@@ -171,6 +171,20 @@ def test_unknown_modes_never_fall_back_to_legacy(bad_mode):
         validate(c)
 
 
+@pytest.mark.parametrize("malformed", [
+    {"BTCUSDT": []},
+    {"BTCUSDT": {"settings": []}},
+    {"BTCUSDT": {"sections": []}},
+    {"BTCUSDT": {"sections": {"LONG_30_40": []}}},
+    {"BTCUSDT": {"sections": {"LONG_30_40": {"settings": []}}}},
+])
+def test_corrupt_coin_policy_tree_rejected_before_any_account_use(malformed):
+    c = cfg()
+    c["coin_overrides"] = malformed
+    with pytest.raises(ValueError, match="настройки монеты|Диапазоны монеты|секции монеты"):
+        validate(c)
+
+
 def test_nonexistent_symbol_or_missing_state_denies_coin_spending():
     c = cfg()
     c["settings"] = section_policy(COIN_FIXED)
