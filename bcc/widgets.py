@@ -622,7 +622,7 @@ class SettingsEditor(QTabWidget):
             pct = self.finance.controls["allocation_pct"][1]
             fixed = self.finance.controls["allocation_fixed_usdt"][1]
 
-            def allocation_visibility():
+            def allocation_visibility(*_unused):
                 selected = selector.currentData()
                 pct.setEnabled(selected != "coin_fixed")
                 fixed.setEnabled(selected == "coin_fixed")
