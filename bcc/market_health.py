@@ -12,7 +12,12 @@ def record_market_outcome(health, symbol, *, quote=None, history=None):
             continue  # No observation of this channel, not proof of recovery.
         if error:
             row[channel] = str(error)[:500]
+            # Time of the actual failed observation; a persisted error by
+            # itself cannot establish when a source last failed.
+            health.setdefault('last_failed_utc', {})[channel] = time.time()
         else:
+            if channel in row:
+                health.setdefault('last_recovered_utc', {})[channel] = time.time()
             row.pop(channel,None)
     if not row:
         unavailable.pop(symbol,None)
