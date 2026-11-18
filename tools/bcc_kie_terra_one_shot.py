@@ -57,6 +57,18 @@ class OneShotBlocked(RuntimeError):
     """Sanitized error; never include raw body, key or exception repr."""
 
 
+class OneShotTransportStageError(OneShotBlocked):
+    """Only stable stage identifiers; no secrets, raw HTTP data or URL params."""
+
+    ALLOWED_STAGES = frozenset(("CONNECT", "POST", "STATUS", "READ", "JSON", "ENVELOPE"))
+
+    def __init__(self, stage: str):
+        if stage not in self.ALLOWED_STAGES:
+            stage = "ENVELOPE"
+        self.stage = stage
+        super().__init__("TERRA_TRANSPORT_STAGE_" + stage)
+
+
 def request_body() -> Request:
     req = build_request(PROMPT, model="terra", max_output_tokens=OUTPUT_CAP)
     if (req.host != "api.kie.ai" or req.path != "/codex/v1/responses"
@@ -83,27 +95,33 @@ def _send_one_https(
         raise OneShotBlocked("Unexpected request: blocked")
     headers = _headers(secret)
     connection = None
+    stage = "CONNECT"
     try:
         connection = connection_factory(API_HOST, timeout=20)
+        stage = "POST"
         connection.request("POST", "/codex/v1/responses",
                            body=request.body, headers=headers)
+        stage = "STATUS"
         response = connection.getresponse()
         status = int(response.status)
         if status != 200:
             # Error bodies can reflect confidential information; do not read.
             return status, None
+        stage = "READ"
         raw_bytes = response.read(MAX_RESPONSE_UTF8 + 1)
         if type(raw_bytes) is not bytes or len(raw_bytes) > MAX_RESPONSE_UTF8:
-            raise OneShotBlocked("Terra reply exceeds allowed size")
+            raise OneShotTransportStageError("READ")
+        stage = "JSON"
         parsed = json.loads(raw_bytes.decode("utf-8"))
+        stage = "ENVELOPE"
         if type(parsed) is not dict:
-            raise OneShotBlocked("Unexpected Terra response envelope")
+            raise OneShotTransportStageError("ENVELOPE")
         return status, parsed
     except (OneShotBlocked, ResponsesBlocked):
         raise
     except Exception:
-        # Exception text may echo authorization headers or request body.
-        raise OneShotBlocked("Terra transport/response failed; no retries") from None
+        # Exception texts might contain credentials; only stage is surfaced.
+        raise OneShotTransportStageError(stage) from None
     finally:
         if connection is not None:
             try:
@@ -339,14 +357,18 @@ def main() -> int:
             state_directory=state_dir, sender=_send_one_https,
         )
         print(outcome.as_json())
-        if outcome.result == "CONNECTED":
-            print("ONE Terra API answer confirmed; billing not yet verified.")
+        if outcome.result in ("CONNECTED", "CONTENT_CONFIRMED_USAGE_UNVERIFIED"):
+            print("Terra response text confirmed; billing remains UNVERIFIED.")
             return 0
         print("No confirmed Terra reply; DO NOT RETRY; inspect Kie.ai Logs.")
         return 1
+    except OneShotTransportStageError as exc:
+        # Historical 2026-11-18 failures were not instrumented by stage.
+        print("BLOCKED/UNKNOWN: stage=" + exc.stage + "; no retry.")
+        return 1
     except (OneShotBlocked, SpendingDenied, ResponsesBlocked, CredentialError,
             OSError, ValueError):
-        print("BLOCKED/UNKNOWN: never retry; check local ledger and Kie.ai bill.")
+        print("BLOCKED/UNKNOWN: local validation failed; no retry.")
         return 1
 
 
