@@ -54,15 +54,24 @@ and a shared admission ledger. No real Kie.ai paid transport is enabled.
   permission to spend. Each paid request requires a NEW trusted user
   approval bound to exact task digest, source SHA, model, and amount.
   All model reservations share the existing Claude spending database.
-- No GitHub Actions spending, no actual model requests, no live bot
+- No GitHub Actions spending, no unattended model requests, no live bot
   changes, no stop/reboot and no intermediate releases.
+  Only the separate BCC_KIE_TERRA_ONE_TEST.cmd may offer ONE locally
+  confirmed text-only Terra connection after comprehensive Windows offline
+  PASS. It demands an explicit typed APPROVE TERRA 0.01, reserves $0.01
+  in the shared Kie ledger and writes a persistent consumed-attempt marker
+  before HTTPS. Local hold is NOT a Kie-enforced hard billing ceiling.
+  Model agent/tool calling and all other paid routes remain disabled.
+  Do not retry the one-shot after errors, and do not clear its ledger/marker.
 - The Windows 2026-11-18 QA at 3c8aa241 ran 186 cases and had 10
   WinError 32 fixture cleanup errors (2 skips). Cause: plain
   'with sqlite3.connect(...)' commits but does not close SQLite handles.
   All gateway connections MUST use tools/bcc_kie_sqlite_lifecycle.py
   managed_connection() or contextlib.closing; never add transaction-only
   SQLite context managers. Regression gate includes an AST safety test.
-  The revised acceptance target is 15 modules / 192 tests.
+  That source SHA passed 192/192 Windows offline tests (2 skips).
+  A new separate Terra one-shot changes the gate to 16 modules / 211
+  tests; this newer code needs its own Windows PASS before any HTTP POST.
 - Run BCC_KIE_AGENT_CHECK.cmd from an isolated Windows agent checkout
   for offline regression. Do not claim a Windows PASS until actual output
   from the revised SHA proves it. No Windows Qt E2E acceptance is implied.
