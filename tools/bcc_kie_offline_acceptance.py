@@ -36,7 +36,7 @@ EXPECTED_TEST_FILES = frozenset({
     "test_bcc_kie_sqlite_lifecycle.py",
     "test_bcc_kie_task_router.py",
 })
-MIN_TEST_COUNT = 191  # Baseline inventory: 15 modules, 191 test methods.
+MIN_TEST_COUNT = 192  # Baseline inventory: 15 modules, 192 test methods.
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 os.environ["PYTHONNOUSERSITE"] = "1"
 sys.dont_write_bytecode = True
