@@ -153,6 +153,21 @@ class ModelBudgetTests(unittest.TestCase):
                 with self.assertRaises(SpendingDenied):
                     self.new(limit=limit)
 
+    def test_astra_unpriced_cannot_reserve_even_with_permissive_verifier(self):
+        with self.assertRaises(SpendingDenied):
+            self.new(request="unpriced-astra", approval="astra-test", model="astra")
+        self.assertEqual(self.models.snapshot(now=self.nov)["model_occupied_micro_usd"], 0)
+
+    def test_space_padded_request_or_approval_is_rejected(self):
+        for request, approval in (
+            (" trailing ", "valid-approval"),
+            ("valid-request", " padded-approval"),
+        ):
+            with self.subTest(request=request, approval=approval):
+                with self.assertRaises(SpendingDenied):
+                    self.new(request=request, approval=approval)
+        self.assertEqual(self.models.snapshot(now=self.nov)["model_occupied_micro_usd"], 0)
+
     def test_model_approval_cannot_be_used_without_matching_model(self):
         strictly_kimi = KieModelBudget(self.db,
              approval_verifier=lambda approval, request, model, ceiling, source, prompt:
