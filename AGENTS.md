@@ -56,7 +56,15 @@ and a shared admission ledger. No real Kie.ai paid transport is enabled.
   All model reservations share the existing Claude spending database.
 - No GitHub Actions spending, no actual model requests, no live bot
   changes, no stop/reboot and no intermediate releases.
+- The Windows 2026-11-18 QA at 3c8aa241 ran 186 cases and had 10
+  WinError 32 fixture cleanup errors (2 skips). Cause: plain
+  'with sqlite3.connect(...)' commits but does not close SQLite handles.
+  All gateway connections MUST use tools/bcc_kie_sqlite_lifecycle.py
+  managed_connection() or contextlib.closing; never add transaction-only
+  SQLite context managers. Regression gate includes an AST safety test.
+  The revised acceptance target is 15 modules / 192 tests.
 - Run BCC_KIE_AGENT_CHECK.cmd from an isolated Windows agent checkout
-  for offline regression. No Windows E2E acceptance is implied.
+  for offline regression. Do not claim a Windows PASS until actual output
+  from the revised SHA proves it. No Windows Qt E2E acceptance is implied.
 - These instructions apply automatically only in checkouts including
   this AGENTS.md revision; other BCC branches do not inherit them.
