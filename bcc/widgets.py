@@ -599,7 +599,7 @@ class SettingsEditor(QTabWidget):
         self.data = deepcopy(data)
         finance = FINANCE
         if strategy != "VELES":
-            finance = [f for f in finance if f[0] != "reinvest_pct"]
+            finance = [f for f in finance if f[0] not in ("reinvest_pct", "allocation_mode", "allocation_usdt")]
         if strategy == "POLYMARKET":
             finance = [
                 f
