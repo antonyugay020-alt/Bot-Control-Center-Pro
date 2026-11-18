@@ -302,6 +302,8 @@ def project_constructor_coin_transaction(config, *, coin_rules):
         raise ValueError('Повреждены секции')
     staged = deepcopy(config)
     allowed = {'settings', 'sections', 'entry', 'exit'}
+    if strategy == 'VELES':
+        allowed.add('capital_limit')
     if strategy == 'POLYMARKET':
         allowed.add('parameters')
         poly = staged.get('polymarket')
