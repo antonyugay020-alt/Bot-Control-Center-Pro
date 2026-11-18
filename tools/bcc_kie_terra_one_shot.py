@@ -88,6 +88,11 @@ def _send_one_https(
     proxy fallback, retries or raw error bodies. Kept separate from the
     permanently disabled generic paid transport.
     """
+    # Non-negotiable: the 2026-11-18 authorization was already consumed.
+    # Even a direct low-level call holding the module-internal capability
+    # cannot cause a second paid HTTPS request from this retired client.
+    if KNOWN_TERRA_AUTHORIZATION_CONSUMED:
+        raise OneShotBlocked("Terra paid transport permanently retired")
     if approval_guard is not _TRANSPORT_GRANT:
         raise OneShotBlocked("Terra HTTPS requires a locally reserved attempt")
     _validate_request(request)
