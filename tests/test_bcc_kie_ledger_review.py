@@ -6,6 +6,7 @@ from pathlib import Path
 from contextlib import redirect_stdout
 import io
 from tools.bcc_kie_ledger_review import review, main, REQUEST_ID, APPROVAL_ID
+from tools.bcc_kie_sqlite_lifecycle import managed_connection
 
 
 class LedgerReviewTests(unittest.TestCase):
@@ -17,7 +18,7 @@ class LedgerReviewTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def prepare_db(self, status="HELD", charge=None, hold=10000):
-        with sqlite3.connect(self.db) as c:
+        with managed_connection(sqlite3.connect(self.db)) as c:
             c.execute("CREATE TABLE claude_spending (request_id TEXT, approval_id TEXT, "
                       "status TEXT, hold_micro INTEGER, charged_micro INTEGER, period TEXT)")
             c.execute("INSERT INTO claude_spending VALUES (?,?,?,?,?,?)",
@@ -53,13 +54,13 @@ class LedgerReviewTests(unittest.TestCase):
 
     def test_missing_row_fails_closed(self):
         self.prepare_db()
-        with sqlite3.connect(self.db) as conn:
+        with managed_connection(sqlite3.connect(self.db)) as conn:
             conn.execute("DELETE FROM claude_spending")
         self.assertEqual(review(self.db)["state"], "UNKNOWN_BLOCKED")
 
     def test_different_approval_row_fails_closed(self):
         self.prepare_db()
-        with sqlite3.connect(self.db) as conn:
+        with managed_connection(sqlite3.connect(self.db)) as conn:
             conn.execute("UPDATE claude_spending SET approval_id='wrong'")
         self.assertEqual(review(self.db)["state"], "UNKNOWN_BLOCKED")
 
