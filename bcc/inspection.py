@@ -76,6 +76,8 @@ NAMES = {
     "leverage": "Плечо",
     "margin_mode": "Маржа",
     "allocation_pct": "Доля капитала, %",
+    "allocation_mode": "Режим размера секции",
+    "allocation_usdt": "Фиксированная маржа секции, USDT",
     "fee_rate": "Комиссия, доля",
     "slippage_pct": "Проскальзывание, %",
     "disabled": "Новые входы отключены",

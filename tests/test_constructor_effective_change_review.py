@@ -6,7 +6,7 @@ import pytest
 
 from bcc.config import defaults, resolve_poly_market
 from bcc.constructor_review import (
-    constructor_change_summary, constructor_change_review_text,
+    constructor_change_summary, constructor_change_review_text, effective_risk_review_text,
 )
 from bcc.constructor_contract import validate_constructor_roundtrip
 from bcc.storage import Repository
@@ -37,6 +37,20 @@ def test_veles_margin_mode_changes_are_reviewed_as_risk(field, value):
     report = constructor_change_summary(original, proposed)
     assert report['risk_changed'] == len(original['symbols']) * len(original['sections'])
     assert report['combinations_modified'] == report['risk_changed']
+
+
+def test_effective_risk_review_uses_resolved_coin_section_margin():
+    cfg = veles()
+    cfg['capital'] = 1000
+    cfg['sections'] = cfg['sections'][:1]
+    sid = cfg['sections'][0]['id']
+    cfg['coin_overrides']['BTCUSDT'] = {'sections': {sid: {'settings': {
+        'allocation_mode': 'fixed_usdt', 'allocation_usdt': 37, 'leverage': 4}}}}
+    cfg['coin_overrides']['ETHUSDT'] = {'settings': {'allocation_pct': 2, 'leverage': 3}}
+    text = effective_risk_review_text(cfg)
+    btc, eth = text.splitlines()[1:3]
+    assert 'BTCUSDT' in btc and 'условная маржа 37 USDT; номинал 148 USDT' in btc
+    assert 'ETHUSDT' in eth and 'условная маржа 20 USDT; номинал 60 USDT' in eth
 
 
 def test_poly_review_counts_inherited_cutoffs_and_explicit_market_exception(tmp_path):

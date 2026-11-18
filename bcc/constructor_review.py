@@ -4,7 +4,7 @@ Compare what the worker would receive after save, not merely the raw override
 JSON.  The review is passive: it does not normalize/mutate drafts, access a
 repository, start workers, or submit PAPER/real orders.
 """
-from .config import coin_section, effective, resolve_poly_market
+from .config import coin_section, effective, resolve_poly_market, section_margin_budget
 
 # All persisted effective fields belong to an explicit review category. The
 # UI must not show "no entry changes" when a user changes entry mode/window
@@ -215,7 +215,7 @@ def effective_risk_review_text(draft, *, sample_limit=8):
                 break
             resolved = coin_section(draft, symbol, section)
             settings = effective(draft, symbol, section)
-            margin = draft["capital"] * settings["allocation_pct"] / 100
+            margin = section_margin_budget(settings, draft["capital"])
             notional = margin * settings["leverage"]
             stop = settings["stop"]
             stop_text = (f"{stop['pct']:g}%"
