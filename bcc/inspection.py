@@ -76,6 +76,8 @@ NAMES = {
     "leverage": "Плечо",
     "margin_mode": "Маржа",
     "allocation_pct": "Доля капитала, %",
+    "allocation_mode": "Распределение маржи: секция % / монета % / монета USDT",
+    "allocation_fixed_usdt": "Фиксированная квота маржи на монету, USDT",
     "fee_rate": "Комиссия, доля",
     "slippage_pct": "Проскальзывание, %",
     "disabled": "Новые входы отключены",
