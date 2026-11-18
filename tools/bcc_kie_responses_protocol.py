@@ -32,16 +32,20 @@ class Endpoint:
     host: str
     path: str
     request_model: str
-    agent_supported_by_page: bool
+    tools_documented: bool
+    chat_only_warning: bool
     api_documented: bool = True
     live_compatibility_verified: bool = False
+    agent_runtime_verified: bool = False
 
 
 ENDPOINTS = {
     "terra": Endpoint("terra", API_HOST, "/codex/v1/responses",
-                      "gpt-6-1-terra", agent_supported_by_page=True),
+                      "gpt-6-1-terra", tools_documented=True,
+                      chat_only_warning=False),
     "kimi": Endpoint("kimi", API_HOST, "/openai/v1/responses",
-                     "kimi-k3", agent_supported_by_page=False),
+                     "kimi-k3", tools_documented=True,
+                     chat_only_warning=True),
 }
 # Astra may appear in the pricing catalog, but the user hasn't supplied
 # an API contract for it. Never fall back to another endpoint or model.
@@ -222,7 +226,9 @@ def describe() -> dict[str, Any]:
                 "path": ep.path, "request_model": ep.request_model,
                 "api_documented": ep.api_documented,
                 "live_compatibility_verified": ep.live_compatibility_verified,
-                "agent_supported_by_page": ep.agent_supported_by_page,
+                "tools_documented": ep.tools_documented,
+                "chat_only_warning": ep.chat_only_warning,
+                "agent_runtime_verified": ep.agent_runtime_verified,
             }
             for name, ep in ENDPOINTS.items()
         },
