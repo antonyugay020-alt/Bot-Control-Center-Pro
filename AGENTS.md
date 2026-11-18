@@ -19,3 +19,35 @@ The software's hard safety boundaries are not configurable by AI. Maintain indep
 ## Current development target: Bot Control Center Pro
 Complete the Modern Qt Windows application with fully integrated common Market Data Hub/worker lifecycle, VELES multi-coin RSI bands, composable entry and exit, GRID, Pump & Dump, Polymarket PAPER, per-bot accounting and cross-bot risk, MY_BOTS inventory, trading history, exports/imports and recovery. Scale by actual machine resources rather than a fixed numeric bot ceiling.
 Start with current consolidated draft PR #11 and its checkpoint; stabilize architectural boundaries and verify actual integration and clean-unpack Windows Qt E2E. Prioritize workflows creating/editing/starting/stopping bots, market data, trades, persistence, restart, and global monitoring. Randomized nonduplicative regression tasks and systemic defects collection. No release until mandatory end-to-end acceptance; no real trading unless separately authorized.
+
+## Optional Kie.ai model gateway — disabled pending verified API contract
+This branch includes tools/bcc_kie_models.py, tools/bcc_kie_task_router.py,
+and tools/bcc_kie_model_budget.py. They provide only a no-network
+model catalog, source-SHA-bound task handoffs, synthetic response checks
+and a shared admission ledger. No real Kie.ai paid transport is enabled.
+
+- Terra is an economical candidate for implementation; Kimi can act as a
+  different reviewer on a pinned NEW implementation commit. No automatic
+  model choice, no fallback, no provider call and no GitHub write by a model.
+- Astra is only a user-selected exceptional architecture candidate, and
+  is NOT price-qualified: provider minimum rates starting 'from' are not
+  an invoice maximum.
+- Kie.ai Terra historical email rates conflict with a later Pricing
+  screenshot. Every quote is unverified until actual model contract,
+  pricing, endpoint, usage receipt and billing are confirmed.
+- The old Claude authorization was consumed on an HTTP 502 request;
+  support reports Claude unavailable. Never reuse approval or delete
+  or reset its unresolved local spending hold.
+- Never share credentials, raw trading logs, or entire private code trees.
+  Reviewer context is explicit paths and immutable source commit; actual
+  transmission of any code requires independent scope/consent review.
+- The $20 monthly limit, $18 admission threshold and $2 reserve are not
+  permission to spend. Each paid request requires a NEW trusted user
+  approval bound to exact task digest, source SHA, model, and amount.
+  All model reservations share the existing Claude spending database.
+- No GitHub Actions spending, no actual model requests, no live bot
+  changes, no stop/reboot and no intermediate releases.
+- Run BCC_KIE_AGENT_CHECK.cmd from an isolated Windows agent checkout
+  for offline regression. No Windows E2E acceptance is implied.
+- These instructions apply automatically only in checkouts including
+  this AGENTS.md revision; other BCC branches do not inherit them.
