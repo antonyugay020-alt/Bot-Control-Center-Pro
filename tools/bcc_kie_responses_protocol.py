@@ -145,7 +145,7 @@ def parse_response(raw: Any, *, model: str, output_cap: int,
         "kimi": frozenset(("kimi-k3", "moonshotai/kimi-k3")),
     }
     reply_model = raw.get("model")
-    if reply_model is not None and reply_model not in known_reply_models[model]:
+    if reply_model is not None and (type(reply_model) is not str or reply_model not in known_reply_models[model]):
         raise ResponsesBlocked("Unrecognized provider reply model")
     if raw.get("error") not in (None, {}):
         raise ResponsesBlocked("Provider returned an error")
