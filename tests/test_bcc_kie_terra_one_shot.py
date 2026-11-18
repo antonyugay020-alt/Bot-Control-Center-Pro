@@ -19,7 +19,8 @@ from tools.bcc_kie_responses_protocol import ResponsesBlocked, build_request
 from tools.bcc_kie_terra_one_shot import (
     APPROVAL_ID, CONFIRM_PHRASE, INPUT_CAP, OUTPUT_CAP, PROMPT,
     REQUEST_ID, RESERVE_MICRO_USD, SENTINEL_FILENAME, SOURCE_SHA,
-    EXPECTED_TEXT, OneShotBlocked, SafeOutcome, _send_one_https,
+    EXPECTED_TEXT, OneShotBlocked, OneShotTransportStageError,
+    SafeOutcome, _send_one_https,
     _TRANSPORT_GRANT,
     perform_one_attempt, request_body, verify_preflight,
     assess_terra_response,
@@ -392,6 +393,76 @@ class FakeHttpsTransportTests(unittest.TestCase):
         self.assertEqual(body, request_body().body)
         self.assertEqual(headers["Authorization"], "Bearer FAKE_ONLY")
         self.assertTrue(conn.closed)
+
+    def test_transport_reports_connect_stage_without_secret_leak(self):
+        def bad_factory(*_args, **_kwargs):
+            raise RuntimeError("FAKE_KEY_SHOULD_NOT_LEAK")
+        with self.assertRaises(OneShotTransportStageError) as raised:
+            _send_one_https("FAKE_KEY_SHOULD_NOT_LEAK", request_body(),
+                            approval_guard=_TRANSPORT_GRANT,
+                            connection_factory=bad_factory)
+        self.assertEqual(raised.exception.stage, "CONNECT")
+        self.assertNotIn("FAKE_KEY_SHOULD_NOT_LEAK", str(raised.exception))
+
+    def test_transport_reports_post_stage_without_extra_attempt(self):
+        class BadPost(FakeConn):
+            def request(self, *args, **kwargs):
+                self.sent.append("FAKE_SINGLE_POST")
+                raise OSError("FAKE_PRIVATE_ERROR")
+        with self.assertRaises(OneShotTransportStageError) as raised:
+            _send_one_https("FAKE_ONLY", request_body(),
+                            approval_guard=_TRANSPORT_GRANT,
+                            connection_factory=BadPost)
+        self.assertEqual(raised.exception.stage, "POST")
+        self.assertEqual(len(BadPost.instances), 1)
+        self.assertEqual(BadPost.instances[0].sent, ["FAKE_SINGLE_POST"])
+        self.assertTrue(BadPost.instances[0].closed)
+        self.assertNotIn("FAKE_PRIVATE_ERROR", str(raised.exception))
+
+    def test_transport_reports_status_stage_for_broken_getresponse(self):
+        class BadStatus(FakeConn):
+            def getresponse(self):
+                raise OSError("FAKE_STATUS_FAILURE")
+        with self.assertRaises(OneShotTransportStageError) as raised:
+            _send_one_https("FAKE_ONLY", request_body(),
+                            approval_guard=_TRANSPORT_GRANT,
+                            connection_factory=BadStatus)
+        self.assertEqual(raised.exception.stage, "STATUS")
+        self.assertEqual(len(BadStatus.instances), 1)
+        self.assertEqual(len(BadStatus.instances[0].sent), 1)
+        self.assertTrue(BadStatus.instances[0].closed)
+
+    def test_transport_reports_read_stage_for_incomplete_response(self):
+        class BrokenResp(FakeResp):
+            def read(self, amount):
+                self.reads += 1
+                raise OSError("FAKE_PRIVATE_READ_FAILURE")
+        class BrokenRead(FakeConn):
+            def getresponse(self):
+                return BrokenResp(200)
+        with self.assertRaises(OneShotTransportStageError) as raised:
+            _send_one_https("FAKE_ONLY", request_body(),
+                            approval_guard=_TRANSPORT_GRANT,
+                            connection_factory=BrokenRead)
+        self.assertEqual(raised.exception.stage, "READ")
+        self.assertEqual(len(BrokenRead.instances), 1)
+        self.assertEqual(len(BrokenRead.instances[0].sent), 1)
+        self.assertTrue(BrokenRead.instances[0].closed)
+
+    def test_transport_reports_json_stage_for_invalid_utf8(self):
+        class NonJsonResp(FakeResp):
+            def read(self, amount):
+                return b"\\xff"
+        class NonJson(FakeConn):
+            def getresponse(self):
+                return NonJsonResp(200)
+        with self.assertRaises(OneShotTransportStageError) as raised:
+            _send_one_https("FAKE_ONLY", request_body(),
+                            approval_guard=_TRANSPORT_GRANT,
+                            connection_factory=NonJson)
+        self.assertEqual(raised.exception.stage, "JSON")
+        self.assertEqual(len(NonJson.instances), 1)
+        self.assertTrue(NonJson.instances[0].closed)
 
     def test_http_503_does_not_read_error_body_or_retry(self):
         FakeConn.status = 503
