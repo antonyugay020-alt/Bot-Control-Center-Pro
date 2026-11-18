@@ -500,6 +500,7 @@
     "docs/VELES_COIN_MARGIN_INTEGRATION_20261118.md": "a94c00391990c02980ebe8c2cd595750ca49deae31992fdc009b721bc378c25b",
     "tests/test_veles_capital_per_coin_mode.py": "372668cf685f9ddc5f4a48f0f90378bae5f26235120995effd5fee674d705306",
     "tests/test_veles_fixed_capital_qt.py": "82b76062b9ae0dd525fae1c016eb16fde4bc377dd5692eab0b45ce3a8feae8da",
-    "docs/VELES_REVIEW_CONTINUATION_20261118.md": "2bc9ad44ffb17dec49a93436adaea529bc1951c4d2278bfb4d73412ef5841a15"
+    "docs/VELES_REVIEW_CONTINUATION_20261118.md": "2bc9ad44ffb17dec49a93436adaea529bc1951c4d2278bfb4d73412ef5841a15",
+    "tests/test_twentieth_position_risk_recovery.py": "9a6d3f3b28ef6807a7e5c72d065cc6ef7b84df39a0370430eb8f1bd54d589780"
   }
 }
