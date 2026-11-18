@@ -81,6 +81,9 @@ def normalize_config(cfg):
         cfg.setdefault("stop_after_deals", False)
     if isinstance(cfg, dict) and isinstance(cfg.get("settings"), dict):
         cfg["settings"].setdefault("reinvest_pct", 20.0)
+        # Legacy PAPER bots preserve percent sizing unless explicitly edited.
+        cfg["settings"].setdefault("allocation_mode", "percent")
+        cfg["settings"].setdefault("allocation_usdt", 25.0)
         if isinstance(cfg["settings"].get("stop"), dict):
             cfg["settings"]["stop"].setdefault("stop_after", False)
     if isinstance(cfg, dict) and cfg.get("strategy") == "POLYMARKET":
@@ -150,6 +153,8 @@ def defaults(strategy="VELES"):
             leverage=3.0,
             margin_mode="CROSS",
             allocation_pct=5.0,
+            allocation_mode="percent",
+            allocation_usdt=25.0,
             reinvest_pct=20.0,
             fee_rate=0.0006,
             slippage_pct=0.02,
@@ -490,6 +495,19 @@ def effective(cfg, symbol, section=None):
     return result
 
 
+def section_margin_budget(settings, capital):
+    """Single VELES sizing contract for PAPER execution and Qt previews.
+
+    Per-coin and per-section overrides are resolved by effective().
+    Fixed USDT means MARGIN per selected coin/range, not leveraged notional
+    and not a balance top-up; existing cash, risk, and liquidation gates
+    still decide if the position can be admitted.
+    """
+    if settings.get("allocation_mode", "percent") == "fixed_usdt":
+        return settings["allocation_usdt"]
+    return capital * settings["allocation_pct"] / 100
+
+
 def coin_section(cfg, symbol, section):
     coin = cfg["coin_overrides"].get(symbol, {})
     patch = coin.get("sections", {}).get(section["id"], {})
@@ -522,6 +540,9 @@ def validate_settings(s):
         raise ValueError("Неизвестная настройка: " + ",".join(set(s) - set(base)))
     number(s["leverage"], 1, 100, "Плечо")
     number(s["allocation_pct"], 0.001, 100, "Доля капитала")
+    if s.get("allocation_mode") not in ("percent", "fixed_usdt"):
+        raise ValueError("Режим капитала: процент или фиксированные USDT")
+    number(s.get("allocation_usdt"), 0.01, 1e9, "Сумма на секцию, USDT")
     number(s.get("reinvest_pct", 20.0), 0, 50, "Реинвестирование прибыли, %")
     number(s["fee_rate"], 0, 0.05, "Комиссия")
     number(s["slippage_pct"], 0, 5, "Проскальзывание")
