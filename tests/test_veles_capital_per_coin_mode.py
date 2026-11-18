@@ -12,6 +12,8 @@ from bcc.config import (
 from bcc.strategies import capital_margin
 from bcc.wizard_presentation import grid_preview_data, summary_rows
 from bcc.storage import initial_state
+from bcc.trading import enter, exit_position, plan, reserved
+from test_core import attach
 
 
 def bot():
@@ -135,3 +137,51 @@ def test_wizard_summary_shows_active_global_margin_mode():
     cfg["settings"]["allocation_usdt"] = 33
     rows = dict(summary_rows(cfg))
     assert rows["Размер секции"] == "33 USDT фиксированная маржа"
+
+
+def test_fixed_coin_margin_real_paper_entry_and_exit_conserve_cash():
+    """Exercise the actual PAPER order lifecycle, not just sizing algebra."""
+    cfg = bot()
+    cfg["coin_overrides"] = {
+        "BTCUSDT": {"settings": {"allocation_mode": "fixed_usdt",
+                                  "allocation_usdt": 37}}
+    }
+    validate(cfg)
+    state, events = initial_state(500), []
+    symbol, key = "BTCUSDT", "BTCUSDT:synthetic_fixed"
+    settings = effective(cfg, symbol)
+    margin = capital_margin(cfg, state, settings)
+    assert margin == 37
+    attach(state, symbol=symbol, price=100)
+    ok, reason = enter(
+        state, events, key, symbol, "LONG", settings, 100, margin,
+        plan(settings["orders"], "LONG", 100), "synthetic_fixed",
+    )
+    assert ok, reason
+    assert reserved(state) == pytest.approx(37, abs=0.01)
+    attach(state, symbol=symbol, price=110)
+    assert exit_position(state, events, key, 110, "SYNTHETIC_EXIT")
+    assert state["positions"] == {}
+    assert reserved(state) == 0
+    assert state["cash"] == pytest.approx(
+        cfg["capital"] + sum(event["cash_delta"] for event in events)
+    )
+
+
+def test_fixed_margin_larger_than_free_capital_cannot_force_entry():
+    """Fixed allocation does not bypass shared PAPER cash admission."""
+    cfg = bot()
+    cfg["settings"].update(allocation_mode="fixed_usdt", allocation_usdt=800)
+    validate(cfg)
+    state, events = initial_state(500), []
+    settings = cfg["settings"]
+    attach(state, price=100)
+    ok, reason = enter(
+        state, events, "BTCUSDT:oversized", "BTCUSDT", "LONG",
+        settings, 100, capital_margin(cfg, state, settings),
+        plan(settings["orders"], "LONG", 100), "oversized",
+    )
+    assert not ok
+    assert reason
+    assert not state["positions"]
+    assert state["cash"] == 500
