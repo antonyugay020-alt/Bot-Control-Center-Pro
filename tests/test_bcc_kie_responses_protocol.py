@@ -218,6 +218,14 @@ class KieResponsesOfflineTests(unittest.TestCase):
                 self.assertFalse(planned.api_ready)
                 self.assertFalse(planned.paid_execution_enabled)
 
+    def test_protocol_repr_hides_original_prompts_and_responses(self):
+        task = "PRIVATE_SYNTHETIC_SOURCE_DO_NOT_LOG"
+        request = build_request(task, model="terra")
+        self.assertNotIn(task, repr(request))
+        reply = parse_response(sample_reply(text="PRIVATE_FAKE_MODEL_OUTPUT"),
+                               model="terra", output_cap=100)
+        self.assertNotIn("PRIVATE_FAKE_MODEL_OUTPUT", repr(reply))
+
     def test_network_is_hard_disabled_without_secrets(self):
         self.assertFalse(NETWORK_ENABLED)
         self.assertFalse(PAID_CALLS_ENABLED)
