@@ -12,6 +12,7 @@ import unittest
 
 from tools.bcc_claude_budget import SpendingDenied
 from tools.bcc_kie_model_budget import KieModelBudget
+from tools.bcc_kie_sqlite_lifecycle import managed_connection
 from tools.bcc_kie_responses_protocol import ResponsesBlocked, build_request
 from tools.bcc_kie_terra_one_shot import (
     APPROVAL_ID, CONFIRM_PHRASE, INPUT_CAP, OUTPUT_CAP, PROMPT,
@@ -113,7 +114,7 @@ class TerraOneTimeTests(unittest.TestCase):
         budget = KieModelBudget(self.state / "claude_budget.sqlite3")
         snap = budget.snapshot()
         self.assertEqual(snap["model_occupied_micro_usd"], 10_000)
-        with sqlite3.connect(str(self.state / "claude_budget.sqlite3")) as conn:
+        with managed_connection(sqlite3.connect(str(self.state / "claude_budget.sqlite3"))) as conn:
             row = conn.execute(
                 "SELECT model, approval_id, source_sha, prompt_sha256, status "
                 "FROM kie_model_spending WHERE request_id=?", (REQUEST_ID,)).fetchone()
