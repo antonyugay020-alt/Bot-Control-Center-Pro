@@ -873,10 +873,15 @@ class PublicData:
                     + ")"
                 ) from e
         except (requests.RequestException, ValueError) as e:
-            delay = max(10, self.cooldowns.get(host, now) - now)
-            self.cooldowns[host] = max(self.cooldowns.get(host, 0), time.time() + delay)
+            # A failed request is NOT a host-wide rate refusal. The old
+            # fallback installed a >=10s shared cooldown for any timeout,
+            # HTTP 5xx or invalid JSON and prevented unrelated symbols from
+            # receiving fresh candles/marks. Only a real 418/429 response
+            # above may publish a fleet-wide request cooldown; 403/451 uses
+            # the separate provider-denial fence. The producer's own
+            # subscription backoff handles this failed URL independently.
             if self.shared:
-                self._finish_shared(shared_key, owner, host, cooldown=delay)
+                self._finish_shared(shared_key, owner, host)
             raise DataUnavailable(f"{host}: {e}") from e
         # HTTP 200 does not make a Bybit business refusal valid market data.
         # Never poison risk/candle caches with an error payload (risk TTL is
