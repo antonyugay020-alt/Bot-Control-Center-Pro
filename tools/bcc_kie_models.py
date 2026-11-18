@@ -33,7 +33,7 @@ class ModelProfile:
     cached_input_usd_per_million: Decimal | None
     output_usd_per_million: Decimal | None
     cache_write_usd_per_million: Decimal | None
-    # None means the provider API model ID was NOT verified, not an empty ID.
+    # API labels and routes below come from screenshot docs; not live-tested.
     api_model_id: str | None = None
     api_endpoint: str | None = None
     availability_verified: bool = False
@@ -49,11 +49,15 @@ PROFILES = {
         Decimal("0.015"), Decimal("1.50"), Decimal("0.375"),
         catalog_listed=True, price_quote_conflict=True,
         advertised_input_floor_usd_per_million=Decimal("0.015"),
-        advertised_output_floor_usd_per_million=Decimal("3")),
+        advertised_output_floor_usd_per_million=Decimal("3"),
+        api_model_id="gpt-6-1-terra",
+        api_endpoint="/codex/v1/responses"),
     "kimi": ModelProfile(
         "kimi", "Kimi K3.1 Pro", Decimal("0.80"),
         Decimal("0.08"), Decimal("4.00"), None,
-        catalog_listed=True),
+        catalog_listed=True,
+        api_model_id="kimi-k3",
+        api_endpoint="/openai/v1/responses"),
     # Historical Kie.ai pricing screenshot shows "gpt-6-astra". The
     # listed minimum rates are NOT a verified per-request invoice tariff.
     # Presence in a catalog does not establish Astra Pro equivalence,
@@ -172,7 +176,19 @@ def validate_mock_responses_reply(raw: Any, *, model: str,
         raise ModelNotReady("Invalid response items")
     chunks = []
     for item in outputs:
-        if not isinstance(item, dict) or item.get("type") != "message" or item.get("role") != "assistant":
+        if not isinstance(item, dict):
+            raise ModelNotReady("Unexpected provider output")
+        if item.get("type") == "reasoning":
+            if item.get("status") not in (None, "completed"):
+                raise ModelNotReady("Incomplete reasoning output")
+            summary = item.get("summary", [])
+            if not isinstance(summary, list) or len(summary) > 16:
+                raise ModelNotReady("Invalid reasoning summary")
+            for part in summary:
+                if not isinstance(part, dict) or part.get("type") != "summary_text" or not isinstance(part.get("text"), str):
+                    raise ModelNotReady("Invalid reasoning summary")
+            continue
+        if item.get("type") != "message" or item.get("role") != "assistant":
             raise ModelNotReady("Tool call or unexpected output is not allowed")
         if item.get("status") not in (None, "completed"):
             raise ModelNotReady("Assistant message incomplete")
@@ -187,7 +203,7 @@ def validate_mock_responses_reply(raw: Any, *, model: str,
                 raise ModelNotReady("Missing output text")
             chunks.append(text)
     whole = "".join(chunks)
-    if not whole or len(whole.encode("utf-8")) > 131072:
+    if not chunks or not whole or len(whole.encode("utf-8")) > 131072:
         raise ModelNotReady("Empty or oversized text")
     usage = raw.get("usage")
     if not isinstance(usage, dict):
@@ -230,7 +246,7 @@ def summary() -> dict[str, Any]:
         "selection_mode": "EXPLICIT_ONLY",
         "source_price_floor_warning": "Catalog prices beginning with from are not authoritative maximum costs",
         "price_status": "HISTORICAL_QUOTE",
-        "api_contract": "UNVERIFIED", "network_enabled": False,
+        "api_contract": "DOCUMENTED_NOT_LIVE_VERIFIED", "network_enabled": False,
         "paid_calls": "DISABLED",
         "models": {
             name: {
