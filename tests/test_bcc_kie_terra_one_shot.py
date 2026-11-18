@@ -71,6 +71,15 @@ class TerraOneTimeTests(unittest.TestCase):
             sender=sender or self.fake,
         )
 
+    def test_direct_actual_sender_cannot_bypass_windows_qa(self):
+        with patch("tools.bcc_kie_terra_one_shot.verify_preflight",
+                   side_effect=OneShotBlocked("QA_FAIL")) as qa:
+            with self.assertRaises(OneShotBlocked):
+                self.run_test(sender=_send_one_https)
+        self.assertEqual(qa.call_count, 1)
+        self.assertEqual(self.store.read_count, 0)
+        self.assertFalse((self.state / "claude_budget.sqlite3").exists())
+
     def test_canonical_request_is_small_and_has_no_tools(self):
         req = request_body()
         p = json.loads(req.body)
