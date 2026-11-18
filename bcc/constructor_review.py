@@ -22,7 +22,7 @@ POLY_REVIEW_FIELDS = {
 }
 VELES_REVIEW_FIELDS = {
     "risk_changed": frozenset((
-        "leverage", "margin_mode", "allocation_pct", "reinvest_pct",
+        "leverage", "margin_mode", "allocation_pct", "allocation_mode", "allocation_usdt", "reinvest_pct",
         "daily_loss_pct", "disabled", "stop_after_cycle")),
     "execution_changed": frozenset((
         "fee_rate", "slippage_pct", "execution_policy")),

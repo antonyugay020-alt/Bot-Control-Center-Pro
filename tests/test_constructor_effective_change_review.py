@@ -29,6 +29,16 @@ def veles():
     return c
 
 
+@pytest.mark.parametrize('field,value', [('allocation_mode', 'fixed_usdt'), ('allocation_usdt', 123.0)])
+def test_veles_margin_mode_changes_are_reviewed_as_risk(field, value):
+    original = veles()
+    proposed = deepcopy(original)
+    proposed['settings'][field] = value
+    report = constructor_change_summary(original, proposed)
+    assert report['risk_changed'] == len(original['symbols']) * len(original['sections'])
+    assert report['combinations_modified'] == report['risk_changed']
+
+
 def test_poly_review_counts_inherited_cutoffs_and_explicit_market_exception(tmp_path):
     original = poly()
     original["polymarket"]["overrides"]["BTC:300"] = {
