@@ -73,3 +73,68 @@ def test_reader_cannot_write_and_closes_all_native_handles(tmp_path):
     assert cache._connection is cache._reader_connection is None
     with pytest.raises(sqlite3.ProgrammingError):connection.execute('SELECT 1')
     renamed=cache.path.with_name('moved.sqlite');cache.path.rename(renamed);renamed.unlink()
+
+
+def test_slow_scanner_reader_does_not_block_portfolio_reader(tmp_path):
+    cache,_=seeded(tmp_path); entered=threading.Event(); release=threading.Event(); errors=[]
+    handles=[]
+    def scanner():
+        try:
+            with cache.read_db() as db:
+                handles.append(db)
+                db.execute('BEGIN')
+                db.execute('SELECT count(*) FROM cache').fetchone()
+                entered.set()
+                assert release.wait(5)
+        except BaseException as exc:
+            errors.append(exc)
+    thread=threading.Thread(target=scanner); thread.start()
+    try:
+        assert entered.wait(2)
+        # The first connection remains occupied beyond the old 200ms lock
+        # deadline. This independent snapshot must retain provider policy.
+        assert cache.read_fresh_many([(URL,PARAMS)],HOST)[0]['price']==100
+        assert cache.stats['read_connections']==2
+        with cache.read_db() as db:
+            handles.append(db)
+            with pytest.raises(sqlite3.OperationalError):
+                db.execute('DELETE FROM cache')
+        with cache.db() as db:
+            db.execute('BEGIN IMMEDIATE'); cache._store_denial(db,HOST,60,451); db.commit()
+        with pytest.raises(ProviderDenied):cache.read_fresh(URL,PARAMS,HOST)
+    finally:
+        release.set(); thread.join(5); cache.close()
+    assert not errors and not thread.is_alive()
+    for connection in handles:
+        with pytest.raises(sqlite3.ProgrammingError):connection.execute('SELECT 1')
+
+
+def test_saturated_reader_pool_reuses_any_released_slot(tmp_path):
+    cache,_=seeded(tmp_path)
+    entered=[threading.Event() for _ in range(4)]
+    release=[threading.Event() for _ in range(4)]
+    errors=[]; done=threading.Event(); result=[]
+    def hold(index):
+        try:
+            with cache.read_db():
+                entered[index].set()
+                assert release[index].wait(5)
+        except BaseException as exc:errors.append(exc)
+    threads=[]
+    try:
+        for i in range(4):
+            thread=threading.Thread(target=hold,args=(i,));thread.start();threads.append(thread)
+            assert entered[i].wait(2)
+        def read():
+            try:result.append(cache.read_fresh(URL,PARAMS,HOST))
+            except BaseException as exc:errors.append(exc)
+            finally:done.set()
+        waiter=threading.Thread(target=read);waiter.start();threads.append(waiter)
+        release[1].set()
+        assert done.wait(2)
+        assert result == [{'retCode':0,'price':100}]
+    finally:
+        for event in release:event.set()
+        for thread in threads:thread.join(5)
+        cache.close()
+    assert not errors and all(not thread.is_alive() for thread in threads)
