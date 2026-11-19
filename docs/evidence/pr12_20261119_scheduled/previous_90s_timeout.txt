@@ -1,0 +1,35 @@
+elapsed 15.0 symbols 22 ticks 182 failures 0 positions 6 queue 0
+elapsed 30.0 symbols 78 ticks 406 failures 0 positions 6 queue 0
+elapsed 45.0 symbols 120 ticks 616 failures 0 positions 6 queue 0
+elapsed 60.0 symbols 158 ticks 819 failures 0 positions 6 queue 0
+elapsed 75.0 symbols 187 ticks 1016 failures 0 positions 6 queue 0
+elapsed 90.0 symbols 214 ticks 1211 failures 0 positions 6 queue 0
+elapsed 105.1 symbols 248 ticks 1408 failures 0 positions 6 queue 0
+elapsed 120.0 symbols 289 ticks 1611 failures 0 positions 6 queue 0
+elapsed 135.1 symbols 319 ticks 1808 failures 0 positions 6 queue 0
+elapsed 150.0 symbols 343 ticks 1997 failures 0 positions 6 queue 0
+elapsed 165.0 symbols 367 ticks 2187 failures 0 positions 6 queue 0
+elapsed 180.0 symbols 407 ticks 2388 failures 0 positions 6 queue 10
+elapsed 195.0 symbols 435 ticks 2578 failures 0 positions 6 queue 0
+elapsed 210.0 symbols 474 ticks 2771 failures 0 positions 6 queue 0
+elapsed 225.0 symbols 496 ticks 2946 failures 0 positions 6 queue 0
+elapsed 240.0 symbols 542 ticks 3154 failures 0 positions 6 queue 16
+elapsed 255.1 symbols 577 ticks 3355 failures 0 positions 6 queue 0
+elapsed 270.1 symbols 616 ticks 3557 failures 0 positions 6 queue 4
+elapsed 285.0 symbols 655 ticks 3759 failures 0 positions 6 queue 16
+elapsed 300.0 symbols 679 ticks 3947 failures 0 positions 6 queue 0
+elapsed 315.0 symbols 709 ticks 4132 failures 0 positions 6 queue 0
+elapsed 330.0 symbols 741 ticks 4315 failures 0 positions 6 queue 0
+elapsed 345.0 symbols 780 ticks 4513 failures 0 positions 6 queue 13
+elapsed 360.0 symbols 815 ticks 4708 failures 0 positions 6 queue 0
+elapsed 375.0 symbols 822 ticks 4900 failures 0 positions 6 queue 0
+RESULT symbols 824 ticks 4937 failures 0 positions 6 thread_errors [] elapsed 378.2
+synthetic history faults 10 source recovery 10
+synthetic 429 HTTP fence elapsed PASS
+Traceback (most recent call last):
+  File "/workspace/Bot-Control-Center-Pro/tools/soak_pr12_scheduled_hub.py", line 190, in <module>
+    main()
+  File "/workspace/Bot-Control-Center-Pro/tools/soak_pr12_scheduled_hub.py", line 180, in main
+    assert entry, 'scheduler failed to resume the signal after fresh tier and quotes'
+           ^^^^^
+AssertionError: scheduler failed to resume the signal after fresh tier and quotes
