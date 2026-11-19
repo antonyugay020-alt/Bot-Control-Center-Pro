@@ -12,7 +12,8 @@ from .data_cache import CacheBusy
 from .market_clock import book_is_fresh, market_now, observed_quote, quote_is_recent
 from .market_health import record_market_outcome
 from .margin import MODEL, attach_snapshot, margin_status
-from .liquidation import REASONS, is_liquidating, status as liquidation_status
+from .liquidation import (REASONS, is_liquidating, status as liquidation_status,
+                          refresh_margin_data_diagnostics)
 from .scheduler import MarketScheduler
 from .strategies import record_completed_exit
 from .shared_risk import risk_transaction
@@ -42,17 +43,22 @@ def _apply_observations(state, observations):
     if observations is None:
         return
     marks, quotes = observations
+    changed = False
     for symbol, row in state.get('margin_data', {}).items():
         incoming, current = marks.get(symbol), row.get('quote')
         if (quote_is_recent(incoming, maximum=3)
                 and (not quote_is_recent(current, maximum=3) or incoming['at'] >= current['at'])):
             row['quote'] = dict(incoming)
+            changed = True
     exposed = {p['symbol'] for p in state['positions'].values()}
     for symbol, incoming in quotes.items():
         current = state['marks'].get(symbol)
         if (symbol in exposed and quote_is_recent(incoming, maximum=3)
                 and (not quote_is_recent(current, maximum=3) or incoming['at'] >= current['at'])):
             state['marks'][symbol] = dict(incoming)
+            changed = True
+    if changed:
+        refresh_margin_data_diagnostics(state)
 
 
 def process_tick(cfg, store, engine, tick, *, observations=None):
@@ -74,6 +80,9 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
                     errors.pop(symbol,None)
                     attach_snapshot(state,symbol,{'margin_required':True,'margin_data':tick.margin_data})
                 _apply_observations(state,observations)
+                # Tier data and WS marks can recover on different lanes.
+                # Revalidate diagnostics even if no price observation changed.
+                refresh_margin_data_diagnostics(state)
                 update_equity_metrics(state)
         return
     if book is None:
