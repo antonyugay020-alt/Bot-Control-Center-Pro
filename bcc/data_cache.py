@@ -54,6 +54,7 @@ class PublicCache:
         # creating an unbounded connection for every transient worker thread.
         self._reader_guards = [self._reader_guard] + [threading.RLock() for _ in range(3)]
         self._reader_connections = [None] * len(self._reader_guards)
+        self._reader_intent = threading.local()
         self.stats = {
             "connections": 0,
             "operations": 0,
@@ -246,12 +247,26 @@ class PublicCache:
                 self._guard.release()
 
     @contextmanager
+    def priority_reads(self):
+        """Reserve read capacity for portfolio observations, without bypassing policy."""
+        previous = getattr(self._reader_intent, 'priority', False)
+        self._reader_intent.priority = True
+        try:
+            yield
+        finally:
+            self._reader_intent.priority = previous
+
+    @contextmanager
     def read_db(self):
         deadline = time.monotonic() + .2
         slot = None
+        # Ordinary scanner reads cannot occupy the last slot. Critical
+        # portfolio readers try that slot first and may also use idle others.
+        indices = ((3, 0, 1, 2) if getattr(self._reader_intent, 'priority', False)
+                   else (0, 1, 2))
         while slot is None:
-            slot = next((i for i, guard in enumerate(self._reader_guards)
-                         if guard.acquire(blocking=False)), None)
+            slot = next((i for i in indices
+                         if self._reader_guards[i].acquire(blocking=False)), None)
             remaining = deadline - time.monotonic()
             if slot is not None or remaining <= 0:
                 break

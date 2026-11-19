@@ -111,8 +111,8 @@ def test_slow_scanner_reader_does_not_block_portfolio_reader(tmp_path):
 
 def test_saturated_reader_pool_reuses_any_released_slot(tmp_path):
     cache,_=seeded(tmp_path)
-    entered=[threading.Event() for _ in range(4)]
-    release=[threading.Event() for _ in range(4)]
+    entered=[threading.Event() for _ in range(3)]
+    release=[threading.Event() for _ in range(3)]
     errors=[]; done=threading.Event(); result=[]
     def hold(index):
         try:
@@ -122,7 +122,7 @@ def test_saturated_reader_pool_reuses_any_released_slot(tmp_path):
         except BaseException as exc:errors.append(exc)
     threads=[]
     try:
-        for i in range(4):
+        for i in range(3):
             thread=threading.Thread(target=hold,args=(i,));thread.start();threads.append(thread)
             assert entered[i].wait(2)
         def read():
@@ -135,6 +135,34 @@ def test_saturated_reader_pool_reuses_any_released_slot(tmp_path):
         assert result == [{'retCode':0,'price':100}]
     finally:
         for event in release:event.set()
+        for thread in threads:thread.join(5)
+        cache.close()
+    assert not errors and all(not thread.is_alive() for thread in threads)
+
+
+def test_portfolio_reserved_reader_survives_full_scanner_pool(tmp_path):
+    cache,_=seeded(tmp_path)
+    entered=[threading.Event() for _ in range(3)]
+    release=threading.Event();threads=[];errors=[]
+    def scanner(index):
+        try:
+            with cache.read_db():
+                entered[index].set()
+                assert release.wait(5)
+        except BaseException as exc:errors.append(exc)
+    try:
+        for i in range(3):
+            thread=threading.Thread(target=scanner,args=(i,));thread.start();threads.append(thread)
+            assert entered[i].wait(2)
+        with pytest.raises(CacheBusy):cache.read_fresh(URL,PARAMS,HOST)
+        with cache.priority_reads():
+            assert cache.read_fresh_many([(URL,PARAMS)],HOST)[0]['price']==100
+        with cache.db() as db:
+            db.execute('BEGIN IMMEDIATE');cache._store_denial(db,HOST,60,451);db.commit()
+        with cache.priority_reads(), pytest.raises(ProviderDenied):
+            cache.read_fresh(URL,PARAMS,HOST)
+    finally:
+        release.set()
         for thread in threads:thread.join(5)
         cache.close()
     assert not errors and all(not thread.is_alive() for thread in threads)

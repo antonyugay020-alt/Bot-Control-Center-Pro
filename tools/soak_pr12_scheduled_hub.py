@@ -1,5 +1,6 @@
 """Isolated scheduler + Hub + real WS parsers + real worker; fake provider only."""
-import os,time,json,tempfile,threading,traceback
+import argparse,os,time,json,tempfile,threading,traceback
+from pathlib import Path
 from types import SimpleNamespace
 import bcc.market as market
 import bcc.market_clock as mc
@@ -22,9 +23,20 @@ from test_margin_finance import use_mark,raw_tiers
 from test_bybit_ws_position_fast_lane import _instrument
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--symbols-file',type=Path,
+                        help='JSON list of 824 symbols; omit for synthetic identifiers')
+    parser.add_argument('--accelerate-risk-retry',action='store_true',
+                        help='Advance the test-only risk retry deadline (not real-time recovery)')
+    args=parser.parse_args()
     for k in ('BCC_PUBLIC_CACHE','BCC_MARKET_HUB_MODE','BCC_BYBIT_WS_QUOTES','BCC_BYBIT_WS_BOOKS','BCC_BYBIT_WS_KLINES'):os.environ.pop(k,None)
     clock=mc.MarketClock();clock.ensure=lambda:None;clock.bounds=lambda:(time.time(),time.time());mc.clock=clock;market.clock=clock
-    symbols=[f'COIN{i}USDT' for i in range(824)];held=symbols[:6];target=symbols[-1];enabled=[False]
+    symbols=(json.loads(args.symbols_file.read_text(encoding='utf-8')) if args.symbols_file
+             else [f'COIN{i}USDT' for i in range(824)])
+    if (not isinstance(symbols,list) or len(symbols)!=824 or
+            any(type(s) is not str or not s.strip() for s in symbols) or len(set(symbols))!=824):
+     raise ValueError('symbols file must contain 824 distinct nonempty strings')
+    held=symbols[:6];target=symbols[-1];enabled=[False]
     cfg=defaults('VELES');cfg['name']='isolated full scheduler hub';cfg['symbols']=symbols;cfg['sections']=[range_section(30,40)];cfg['settings']['orders']['count']=1
     strategies.signal=lambda state,key,spec,bars,now:SimpleNamespace(matched=enabled[0] and key.startswith(target+':') and key.endswith(':entry'),available=True,observations=[])
     stop=threading.Event();errors=[];queue=MarketEventQueue(capacity=16384);seq=[0]
@@ -161,10 +173,11 @@ def main():
       process_tick(cfg,store,Veles(),MarketTick(target,bars,depth,[],{}),observations=(marks,quotes))
       snapshot=store.read();assert len(snapshot['positions'])==6
       assert any('Устарели публичные ступени риска' in row.get('reason','') for row in snapshot['diagnostics'][target])
-      # The test models a tier whose normal retry time has arrived. The actual
-      # scheduler must fetch and commit valid tier evidence itself.
-      with reader._lock:reader._risk_refresh_due[held[0]]=0
-      scheduler.risk_due[held[0]]=0
+      # Normally retain real retry deadlines. An explicit accelerated mode
+      # is available for diagnosis and must not be reported as real timing.
+      if args.accelerate_risk_retry:
+       with reader._lock:reader._risk_refresh_due[held[0]]=0
+       scheduler.risk_due[held[0]]=0
       # The scanner's complete measured 824-symbol cycle takes several
       # minutes in this constrained isolated environment. Keep the signal
       # continuously valid through a full cycle; never replay the old book.

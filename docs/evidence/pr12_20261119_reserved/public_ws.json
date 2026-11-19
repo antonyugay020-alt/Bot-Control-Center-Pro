@@ -1,0 +1,2863 @@
+{
+  "at": "2026-11-19T11:10:51.462418+00:00",
+  "scope": "BYBIT_PUBLIC_WS_BOOK_AND_MARK",
+  "require_mark": true,
+  "real_orders": false,
+  "source_integrity": {
+    "status": "PASS",
+    "verified_files": 536,
+    "checkpoint": "BCC_HUB_DIAGNOSTIC_20261118_NOT_RELEASE",
+    "manifest_sha256": "e03c64f67242700eb43bef9b05570b09011c85dc2e5e1f2856adf3713ff0530c"
+  },
+  "requested_rounds": 24,
+  "isolated_root": "/workspace/work/pr12_reserved_public_20261119/isolated_hub",
+  "release_ready": false,
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "LINKUSDT",
+    "AVAXUSDT",
+    "AUSDT",
+    "4USDT"
+  ],
+  "rounds": [
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.027,
+        "age_upper_seconds": 0.241,
+        "mark_age_lower_seconds": 1.263,
+        "mark_age_seconds": 1.477,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 2.287
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.059,
+        "age_upper_seconds": 0.273,
+        "mark_age_lower_seconds": 0.404,
+        "mark_age_seconds": 0.618,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 2.396
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.042,
+        "age_upper_seconds": 0.256,
+        "mark_age_lower_seconds": 0.53,
+        "mark_age_seconds": 0.744,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 2.389
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.037,
+        "age_upper_seconds": 0.251,
+        "mark_age_lower_seconds": 1.756,
+        "mark_age_seconds": 1.97,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 2.384
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.031,
+        "age_upper_seconds": 0.245,
+        "mark_age_lower_seconds": 1.08,
+        "mark_age_seconds": 1.294,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 2.354
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.046,
+        "age_upper_seconds": 0.26,
+        "mark_age_lower_seconds": 1.014,
+        "mark_age_seconds": 1.228,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 2.288
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.04,
+        "age_upper_seconds": 0.254,
+        "mark_age_lower_seconds": 0.684,
+        "mark_age_seconds": 0.898,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 2.39
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.07,
+        "age_upper_seconds": 0.283,
+        "mark_age_lower_seconds": 1.415,
+        "mark_age_seconds": 1.629,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 2.252
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.551,
+        "age_upper_seconds": 0.765,
+        "mark_age_lower_seconds": 0.546,
+        "mark_age_seconds": 0.76,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 2.236
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.488,
+        "age_upper_seconds": 1.702,
+        "mark_age_lower_seconds": 1.873,
+        "mark_age_seconds": 2.087,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 2.242
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.06,
+        "age_upper_seconds": 0.275,
+        "mark_age_lower_seconds": 0.697,
+        "mark_age_seconds": 0.911,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.018
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.03,
+        "age_upper_seconds": 0.244,
+        "mark_age_lower_seconds": 0.336,
+        "mark_age_seconds": 0.55,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.026
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.033,
+        "age_upper_seconds": 0.247,
+        "mark_age_lower_seconds": 1.361,
+        "mark_age_seconds": 1.575,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.024
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.035,
+        "age_upper_seconds": 0.25,
+        "mark_age_lower_seconds": 1.794,
+        "mark_age_seconds": 2.009,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.026
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.034,
+        "age_upper_seconds": 0.248,
+        "mark_age_lower_seconds": 1.143,
+        "mark_age_seconds": 1.357,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.021
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.034,
+        "age_upper_seconds": 0.249,
+        "mark_age_lower_seconds": 1.142,
+        "mark_age_seconds": 1.357,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.02
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.17,
+        "age_upper_seconds": 0.385,
+        "mark_age_lower_seconds": 1.014,
+        "mark_age_seconds": 1.229,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.326
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.168,
+        "age_upper_seconds": 0.382,
+        "mark_age_lower_seconds": 1.573,
+        "mark_age_seconds": 1.787,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.016
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.157,
+        "age_upper_seconds": 1.371,
+        "mark_age_lower_seconds": 2.732,
+        "mark_age_seconds": 2.946,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.027
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.168,
+        "age_upper_seconds": 1.382,
+        "mark_age_lower_seconds": 2.049,
+        "mark_age_seconds": 2.263,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.027
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.073,
+        "age_upper_seconds": 0.288,
+        "mark_age_lower_seconds": 0.029,
+        "mark_age_seconds": 0.244,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.008
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.04,
+        "age_upper_seconds": 0.254,
+        "mark_age_lower_seconds": 2.265,
+        "mark_age_seconds": 2.479,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.012
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.04,
+        "age_upper_seconds": 0.254,
+        "mark_age_lower_seconds": 0.688,
+        "mark_age_seconds": 0.902,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.004
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.037,
+        "age_upper_seconds": 0.251,
+        "mark_age_lower_seconds": 0.536,
+        "mark_age_seconds": 0.75,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.02
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.036,
+        "age_upper_seconds": 0.25,
+        "mark_age_lower_seconds": 1.485,
+        "mark_age_seconds": 1.699,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.014
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.176,
+        "age_upper_seconds": 0.39,
+        "mark_age_lower_seconds": 1.484,
+        "mark_age_seconds": 1.698,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.013
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.444,
+        "age_upper_seconds": 0.659,
+        "mark_age_lower_seconds": 1.049,
+        "mark_age_seconds": 1.264,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.012
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.068,
+        "age_upper_seconds": 0.283,
+        "mark_age_lower_seconds": 1.913,
+        "mark_age_seconds": 2.128,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.006
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.595,
+        "age_upper_seconds": 0.81,
+        "mark_age_lower_seconds": 0.97,
+        "mark_age_seconds": 1.185,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.015
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.509,
+        "age_upper_seconds": 0.724,
+        "mark_age_lower_seconds": 0.395,
+        "mark_age_seconds": 0.61,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.017
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.077,
+        "age_upper_seconds": 0.293,
+        "mark_age_lower_seconds": 0.912,
+        "mark_age_seconds": 1.128,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.06
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.024,
+        "age_upper_seconds": 0.239,
+        "mark_age_lower_seconds": 0.849,
+        "mark_age_seconds": 1.064,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.064
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.063,
+        "age_upper_seconds": 0.278,
+        "mark_age_lower_seconds": 0.071,
+        "mark_age_seconds": 0.286,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.059
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.027,
+        "age_upper_seconds": 0.242,
+        "mark_age_lower_seconds": 0.206,
+        "mark_age_seconds": 0.421,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.062
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.056,
+        "age_upper_seconds": 0.271,
+        "mark_age_lower_seconds": 1.146,
+        "mark_age_seconds": 1.361,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.045
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.207,
+        "age_upper_seconds": 0.422,
+        "mark_age_lower_seconds": 1.515,
+        "mark_age_seconds": 1.73,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.011
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.317,
+        "age_upper_seconds": 0.532,
+        "mark_age_lower_seconds": 1.122,
+        "mark_age_seconds": 1.337,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.049
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.072,
+        "age_upper_seconds": 0.287,
+        "mark_age_lower_seconds": 1.956,
+        "mark_age_seconds": 2.171,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.014
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.703,
+        "age_upper_seconds": 0.918,
+        "mark_age_lower_seconds": 1.138,
+        "mark_age_seconds": 1.353,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.048
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.073,
+        "age_upper_seconds": 1.288,
+        "mark_age_lower_seconds": 2.459,
+        "mark_age_seconds": 2.674,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.047
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.036,
+        "age_upper_seconds": 0.251,
+        "mark_age_lower_seconds": 1.151,
+        "mark_age_seconds": 1.366,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.022
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.04,
+        "age_upper_seconds": 0.256,
+        "mark_age_lower_seconds": 0.786,
+        "mark_age_seconds": 1.002,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.026
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.035,
+        "age_upper_seconds": 0.251,
+        "mark_age_lower_seconds": 0.903,
+        "mark_age_seconds": 1.119,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.015
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.048,
+        "age_upper_seconds": 0.264,
+        "mark_age_lower_seconds": 0.447,
+        "mark_age_seconds": 0.663,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.027
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.042,
+        "age_upper_seconds": 0.257,
+        "mark_age_lower_seconds": 1.612,
+        "mark_age_seconds": 1.827,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.036
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.123,
+        "age_upper_seconds": 0.338,
+        "mark_age_lower_seconds": 1.611,
+        "mark_age_seconds": 1.826,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.036
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.09,
+        "age_upper_seconds": 0.306,
+        "mark_age_lower_seconds": 1.154,
+        "mark_age_seconds": 1.37,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.013
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.174,
+        "age_upper_seconds": 0.389,
+        "mark_age_lower_seconds": 2.039,
+        "mark_age_seconds": 2.254,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.029
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.755,
+        "age_upper_seconds": 0.97,
+        "mark_age_lower_seconds": 1.19,
+        "mark_age_seconds": 1.405,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.033
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.258,
+        "age_upper_seconds": 0.474,
+        "mark_age_lower_seconds": 2.504,
+        "mark_age_seconds": 2.72,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.025
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.069,
+        "age_upper_seconds": 0.284,
+        "mark_age_lower_seconds": 0.204,
+        "mark_age_seconds": 0.419,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.027
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.027,
+        "age_upper_seconds": 0.243,
+        "mark_age_lower_seconds": 0.453,
+        "mark_age_seconds": 0.669,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.017
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.057,
+        "age_upper_seconds": 0.273,
+        "mark_age_lower_seconds": 0.584,
+        "mark_age_seconds": 0.8,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.421
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.04,
+        "age_upper_seconds": 0.256,
+        "mark_age_lower_seconds": 1.118,
+        "mark_age_seconds": 1.334,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.821
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.047,
+        "age_upper_seconds": 0.263,
+        "mark_age_lower_seconds": 0.176,
+        "mark_age_seconds": 0.392,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.023
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.086,
+        "age_upper_seconds": 0.302,
+        "mark_age_lower_seconds": 1.673,
+        "mark_age_seconds": 1.889,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.017
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.118,
+        "age_upper_seconds": 0.334,
+        "mark_age_lower_seconds": 1.243,
+        "mark_age_seconds": 1.459,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.019
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.357,
+        "age_upper_seconds": 0.573,
+        "mark_age_lower_seconds": 0.822,
+        "mark_age_seconds": 1.038,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.729
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.824,
+        "age_upper_seconds": 1.04,
+        "mark_age_lower_seconds": 1.258,
+        "mark_age_seconds": 1.474,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.011
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.479,
+        "age_upper_seconds": 0.695,
+        "mark_age_lower_seconds": 0.585,
+        "mark_age_seconds": 0.801,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.015
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.036,
+        "age_upper_seconds": 0.252,
+        "mark_age_lower_seconds": 0.052,
+        "mark_age_seconds": 0.268,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.005
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.074,
+        "age_upper_seconds": 0.29,
+        "mark_age_lower_seconds": 0.94,
+        "mark_age_seconds": 1.156,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.062
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.049,
+        "age_upper_seconds": 0.265,
+        "mark_age_lower_seconds": 1.017,
+        "mark_age_seconds": 1.233,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.012
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.043,
+        "age_upper_seconds": 0.259,
+        "mark_age_lower_seconds": 1.202,
+        "mark_age_seconds": 1.418,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.065
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.061,
+        "age_upper_seconds": 0.277,
+        "mark_age_lower_seconds": 0.85,
+        "mark_age_seconds": 1.066,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.358
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.027,
+        "age_upper_seconds": 0.244,
+        "mark_age_lower_seconds": 0.516,
+        "mark_age_seconds": 0.732,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.021
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.381,
+        "age_upper_seconds": 0.597,
+        "mark_age_lower_seconds": 0.725,
+        "mark_age_seconds": 0.941,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.662
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.294,
+        "age_upper_seconds": 0.511,
+        "mark_age_lower_seconds": 0.998,
+        "mark_age_seconds": 1.215,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.068
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.203,
+        "age_upper_seconds": 1.419,
+        "mark_age_lower_seconds": 2.137,
+        "mark_age_seconds": 2.353,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.059
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.131,
+        "age_upper_seconds": 0.348,
+        "mark_age_lower_seconds": 1.417,
+        "mark_age_seconds": 1.634,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.011
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.033,
+        "age_upper_seconds": 0.25,
+        "mark_age_lower_seconds": 0.949,
+        "mark_age_seconds": 1.166,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.025
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.035,
+        "age_upper_seconds": 0.252,
+        "mark_age_lower_seconds": 1.98,
+        "mark_age_seconds": 2.197,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.022
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.037,
+        "age_upper_seconds": 0.254,
+        "mark_age_lower_seconds": 1.705,
+        "mark_age_seconds": 1.922,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.018
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.038,
+        "age_upper_seconds": 0.255,
+        "mark_age_lower_seconds": 0.236,
+        "mark_age_seconds": 0.453,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.019
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.029,
+        "age_upper_seconds": 0.246,
+        "mark_age_lower_seconds": 1.199,
+        "mark_age_seconds": 1.416,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.023
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.108,
+        "age_upper_seconds": 0.325,
+        "mark_age_lower_seconds": 1.196,
+        "mark_age_seconds": 1.413,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.02
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.114,
+        "age_upper_seconds": 0.331,
+        "mark_age_lower_seconds": 0.818,
+        "mark_age_seconds": 1.035,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.075
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.248,
+        "age_upper_seconds": 0.465,
+        "mark_age_lower_seconds": 1.632,
+        "mark_age_seconds": 1.849,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.022
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.93,
+        "age_upper_seconds": 1.147,
+        "mark_age_lower_seconds": 0.683,
+        "mark_age_seconds": 0.9,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.026
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.719,
+        "age_upper_seconds": 0.936,
+        "mark_age_lower_seconds": 2.105,
+        "mark_age_seconds": 2.322,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.024
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.066,
+        "age_upper_seconds": 0.284,
+        "mark_age_lower_seconds": 0.622,
+        "mark_age_seconds": 0.84,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.002
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.06,
+        "age_upper_seconds": 0.278,
+        "mark_age_lower_seconds": 0.866,
+        "mark_age_seconds": 1.084,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.813
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.04,
+        "age_upper_seconds": 0.258,
+        "mark_age_lower_seconds": 1.788,
+        "mark_age_seconds": 2.006,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.005
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.054,
+        "age_upper_seconds": 0.271,
+        "mark_age_lower_seconds": 0.232,
+        "mark_age_seconds": 0.449,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.019
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.038,
+        "age_upper_seconds": 0.256,
+        "mark_age_lower_seconds": 1.287,
+        "mark_age_seconds": 1.505,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.018
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.074,
+        "age_upper_seconds": 0.291,
+        "mark_age_lower_seconds": 1.282,
+        "mark_age_seconds": 1.499,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.009
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.206,
+        "age_upper_seconds": 0.424,
+        "mark_age_lower_seconds": 0.95,
+        "mark_age_seconds": 1.168,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.111
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.139,
+        "age_upper_seconds": 0.357,
+        "mark_age_lower_seconds": 1.723,
+        "mark_age_seconds": 1.941,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.015
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.441,
+        "age_upper_seconds": 0.659,
+        "mark_age_lower_seconds": 0.875,
+        "mark_age_seconds": 1.093,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.019
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.807,
+        "age_upper_seconds": 1.024,
+        "mark_age_lower_seconds": 2.192,
+        "mark_age_seconds": 2.409,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.013
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.072,
+        "age_upper_seconds": 0.29,
+        "mark_age_lower_seconds": 0.507,
+        "mark_age_seconds": 0.725,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.06
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.039,
+        "age_upper_seconds": 0.257,
+        "mark_age_lower_seconds": 0.445,
+        "mark_age_seconds": 0.663,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.066
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.039,
+        "age_upper_seconds": 0.257,
+        "mark_age_lower_seconds": 1.067,
+        "mark_age_seconds": 1.285,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.459
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.082,
+        "age_upper_seconds": 0.3,
+        "mark_age_lower_seconds": 0.802,
+        "mark_age_seconds": 1.02,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.062
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.059,
+        "age_upper_seconds": 0.277,
+        "mark_age_lower_seconds": 2.148,
+        "mark_age_seconds": 2.366,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.052
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.372,
+        "age_upper_seconds": 0.59,
+        "mark_age_lower_seconds": 2.16,
+        "mark_age_seconds": 2.378,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.064
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.277,
+        "age_upper_seconds": 0.495,
+        "mark_age_lower_seconds": 1.721,
+        "mark_age_seconds": 1.939,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.055
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.166,
+        "age_upper_seconds": 0.384,
+        "mark_age_lower_seconds": 0.591,
+        "mark_age_seconds": 0.809,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.055
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.798,
+        "age_upper_seconds": 1.016,
+        "mark_age_lower_seconds": 1.732,
+        "mark_age_seconds": 1.95,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.049
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.178,
+        "age_upper_seconds": 1.396,
+        "mark_age_lower_seconds": 1.064,
+        "mark_age_seconds": 1.282,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.057
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.03,
+        "age_upper_seconds": 0.249,
+        "mark_age_lower_seconds": 1.125,
+        "mark_age_seconds": 1.344,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.005
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.035,
+        "age_upper_seconds": 0.253,
+        "mark_age_lower_seconds": 1.36,
+        "mark_age_seconds": 1.578,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.007
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.028,
+        "age_upper_seconds": 0.247,
+        "mark_age_lower_seconds": 1.097,
+        "mark_age_seconds": 1.316,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.018
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.035,
+        "age_upper_seconds": 0.254,
+        "mark_age_lower_seconds": 1.235,
+        "mark_age_seconds": 1.454,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.025
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.04,
+        "age_upper_seconds": 0.258,
+        "mark_age_lower_seconds": 1.09,
+        "mark_age_seconds": 1.308,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.023
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.082,
+        "age_upper_seconds": 0.301,
+        "mark_age_lower_seconds": 0.89,
+        "mark_age_seconds": 1.109,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.324
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.16,
+        "age_upper_seconds": 1.379,
+        "mark_age_lower_seconds": 0.144,
+        "mark_age_seconds": 0.363,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.012
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.043,
+        "age_upper_seconds": 0.262,
+        "mark_age_lower_seconds": 1.027,
+        "mark_age_seconds": 1.246,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.027
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.229,
+        "age_upper_seconds": 1.447,
+        "mark_age_lower_seconds": 2.164,
+        "mark_age_seconds": 2.382,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.014
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.153,
+        "age_upper_seconds": 1.372,
+        "mark_age_lower_seconds": 1.479,
+        "mark_age_seconds": 1.698,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.005
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.085,
+        "age_upper_seconds": 0.304,
+        "mark_age_lower_seconds": 0.5,
+        "mark_age_seconds": 0.719,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.044
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.026,
+        "age_upper_seconds": 0.245,
+        "mark_age_lower_seconds": 0.091,
+        "mark_age_seconds": 0.31,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.003
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.108,
+        "age_upper_seconds": 0.327,
+        "mark_age_lower_seconds": 1.476,
+        "mark_age_seconds": 1.695,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.059
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.095,
+        "age_upper_seconds": 0.314,
+        "mark_age_lower_seconds": 1.614,
+        "mark_age_seconds": 1.833,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.065
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.038,
+        "age_upper_seconds": 0.257,
+        "mark_age_lower_seconds": 0.468,
+        "mark_age_seconds": 0.687,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.064
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.02,
+        "age_upper_seconds": 0.239,
+        "mark_age_lower_seconds": 1.068,
+        "mark_age_seconds": 1.287,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.163
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.154,
+        "age_upper_seconds": 0.373,
+        "mark_age_lower_seconds": 2.538,
+        "mark_age_seconds": 2.757,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.067
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.092,
+        "age_upper_seconds": 0.311,
+        "mark_age_lower_seconds": 1.378,
+        "mark_age_seconds": 1.597,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.036
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.339,
+        "age_upper_seconds": 1.558,
+        "mark_age_lower_seconds": 2.553,
+        "mark_age_seconds": 2.772,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.063
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.49,
+        "age_upper_seconds": 1.709,
+        "mark_age_lower_seconds": 1.876,
+        "mark_age_seconds": 2.095,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.064
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.035,
+        "age_upper_seconds": 0.254,
+        "mark_age_lower_seconds": 0.55,
+        "mark_age_seconds": 0.769,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.013
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.036,
+        "age_upper_seconds": 0.255,
+        "mark_age_lower_seconds": 0.481,
+        "mark_age_seconds": 0.701,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.012
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.04,
+        "age_upper_seconds": 0.26,
+        "mark_age_lower_seconds": 0.628,
+        "mark_age_seconds": 0.848,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.032
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.028,
+        "age_upper_seconds": 0.248,
+        "mark_age_lower_seconds": 1.047,
+        "mark_age_seconds": 1.267,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.019
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.079,
+        "age_upper_seconds": 0.298,
+        "mark_age_lower_seconds": 0.548,
+        "mark_age_seconds": 0.767,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.061
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.147,
+        "age_upper_seconds": 0.366,
+        "mark_age_lower_seconds": 1.095,
+        "mark_age_seconds": 1.314,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.008
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.094,
+        "age_upper_seconds": 0.313,
+        "mark_age_lower_seconds": 0.678,
+        "mark_age_seconds": 0.897,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.025
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.332,
+        "age_upper_seconds": 0.551,
+        "mark_age_lower_seconds": 0.276,
+        "mark_age_seconds": 0.495,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.052
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.074,
+        "age_upper_seconds": 0.293,
+        "mark_age_lower_seconds": 0.829,
+        "mark_age_seconds": 1.048,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.156
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.076,
+        "age_upper_seconds": 0.295,
+        "mark_age_lower_seconds": 2.001,
+        "mark_age_seconds": 2.22,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.007
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.042,
+        "age_upper_seconds": 0.222,
+        "mark_age_lower_seconds": 0.017,
+        "mark_age_seconds": 0.197,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.011
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.062,
+        "age_upper_seconds": 0.242,
+        "mark_age_lower_seconds": 0.567,
+        "mark_age_seconds": 0.747,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.027
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.027,
+        "age_upper_seconds": 0.207,
+        "mark_age_lower_seconds": 1.795,
+        "mark_age_seconds": 1.975,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.028
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.073,
+        "age_upper_seconds": 0.253,
+        "mark_age_lower_seconds": 1.932,
+        "mark_age_seconds": 2.112,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.029
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.023,
+        "age_upper_seconds": 0.203,
+        "mark_age_lower_seconds": 1.272,
+        "mark_age_seconds": 1.452,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.014
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.197,
+        "age_upper_seconds": 0.377,
+        "mark_age_lower_seconds": 1.285,
+        "mark_age_seconds": 1.465,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.027
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.087,
+        "age_upper_seconds": 0.267,
+        "mark_age_lower_seconds": 0.851,
+        "mark_age_seconds": 1.031,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.026
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.072,
+        "age_upper_seconds": 0.252,
+        "mark_age_lower_seconds": 1.717,
+        "mark_age_seconds": 1.897,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.023
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.029,
+        "age_upper_seconds": 0.209,
+        "mark_age_lower_seconds": 0.963,
+        "mark_age_seconds": 1.143,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.121
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.109,
+        "age_upper_seconds": 0.29,
+        "mark_age_lower_seconds": 0.075,
+        "mark_age_seconds": 0.256,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.011
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.021,
+        "age_upper_seconds": 0.202,
+        "mark_age_lower_seconds": 0.056,
+        "mark_age_seconds": 0.237,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.005
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.022,
+        "age_upper_seconds": 0.203,
+        "mark_age_lower_seconds": 0.888,
+        "mark_age_seconds": 1.069,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.006
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.029,
+        "age_upper_seconds": 0.21,
+        "mark_age_lower_seconds": 1.916,
+        "mark_age_seconds": 2.097,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.008
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.014,
+        "age_upper_seconds": 0.194,
+        "mark_age_lower_seconds": 0.352,
+        "mark_age_seconds": 0.532,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.312
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.018,
+        "age_upper_seconds": 0.198,
+        "mark_age_lower_seconds": 0.908,
+        "mark_age_seconds": 1.088,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.012
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.014,
+        "age_upper_seconds": 0.195,
+        "mark_age_lower_seconds": 1.402,
+        "mark_age_seconds": 1.583,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.006
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.012,
+        "age_upper_seconds": 0.192,
+        "mark_age_lower_seconds": 0.076,
+        "mark_age_seconds": 0.256,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.014
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.074,
+        "age_upper_seconds": 0.255,
+        "mark_age_lower_seconds": 1.838,
+        "mark_age_seconds": 2.019,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.007
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.19,
+        "age_upper_seconds": 0.37,
+        "mark_age_lower_seconds": 0.984,
+        "mark_age_seconds": 1.164,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.005
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.425,
+        "age_upper_seconds": 0.605,
+        "mark_age_lower_seconds": 0.307,
+        "mark_age_seconds": 0.487,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.009
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.032,
+        "age_upper_seconds": 0.213,
+        "mark_age_lower_seconds": 1.487,
+        "mark_age_seconds": 1.668,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.015
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.024,
+        "age_upper_seconds": 0.205,
+        "mark_age_lower_seconds": 0.83,
+        "mark_age_seconds": 1.011,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.326
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.02,
+        "age_upper_seconds": 0.201,
+        "mark_age_lower_seconds": 0.048,
+        "mark_age_seconds": 0.229,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.017
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.041,
+        "age_upper_seconds": 0.222,
+        "mark_age_lower_seconds": 0.38,
+        "mark_age_seconds": 0.561,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.016
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.025,
+        "age_upper_seconds": 0.206,
+        "mark_age_lower_seconds": 0.534,
+        "mark_age_seconds": 0.715,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.016
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.108,
+        "age_upper_seconds": 0.289,
+        "mark_age_lower_seconds": 1.736,
+        "mark_age_seconds": 1.917,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.017
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.039,
+        "age_upper_seconds": 0.22,
+        "mark_age_lower_seconds": 1.303,
+        "mark_age_seconds": 1.484,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.018
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.204,
+        "age_upper_seconds": 0.385,
+        "mark_age_lower_seconds": 2.169,
+        "mark_age_seconds": 2.35,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.016
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.743,
+        "age_upper_seconds": 0.924,
+        "mark_age_lower_seconds": 1.317,
+        "mark_age_seconds": 1.498,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.016
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.533,
+        "age_upper_seconds": 0.714,
+        "mark_age_lower_seconds": 0.639,
+        "mark_age_seconds": 0.82,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.016
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.018,
+        "age_upper_seconds": 0.2,
+        "mark_age_lower_seconds": 0.513,
+        "mark_age_seconds": 0.695,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.005
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.024,
+        "age_upper_seconds": 0.206,
+        "mark_age_lower_seconds": 0.849,
+        "mark_age_seconds": 1.031,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.01
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.018,
+        "age_upper_seconds": 0.199,
+        "mark_age_lower_seconds": 0.586,
+        "mark_age_seconds": 0.767,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.019
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.036,
+        "age_upper_seconds": 0.218,
+        "mark_age_lower_seconds": 0.114,
+        "mark_age_seconds": 0.296,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.016
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.129,
+        "age_upper_seconds": 0.31,
+        "mark_age_lower_seconds": 1.679,
+        "mark_age_seconds": 1.86,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.025
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.165,
+        "age_upper_seconds": 0.346,
+        "mark_age_lower_seconds": 2.073,
+        "mark_age_seconds": 2.254,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.019
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.065,
+        "age_upper_seconds": 0.246,
+        "mark_age_lower_seconds": 1.629,
+        "mark_age_seconds": 1.81,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.009
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.302,
+        "age_upper_seconds": 0.483,
+        "mark_age_lower_seconds": 2.506,
+        "mark_age_seconds": 2.687,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.018
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.218,
+        "age_upper_seconds": 1.4,
+        "mark_age_lower_seconds": 1.653,
+        "mark_age_seconds": 1.835,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.017
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.096,
+        "age_upper_seconds": 1.277,
+        "mark_age_lower_seconds": 0.982,
+        "mark_age_seconds": 1.163,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.024
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.035,
+        "age_upper_seconds": 0.217,
+        "mark_age_lower_seconds": 0.57,
+        "mark_age_seconds": 0.752,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.03
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.03,
+        "age_upper_seconds": 0.212,
+        "mark_age_lower_seconds": 0.896,
+        "mark_age_seconds": 1.078,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.024
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.02,
+        "age_upper_seconds": 0.201,
+        "mark_age_lower_seconds": 0.628,
+        "mark_age_seconds": 0.81,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.029
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.027,
+        "age_upper_seconds": 0.209,
+        "mark_age_lower_seconds": 1.066,
+        "mark_age_seconds": 1.248,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.335
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.023,
+        "age_upper_seconds": 0.204,
+        "mark_age_lower_seconds": 2.113,
+        "mark_age_seconds": 2.295,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.026
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.063,
+        "age_upper_seconds": 0.245,
+        "mark_age_lower_seconds": 2.112,
+        "mark_age_seconds": 2.294,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.026
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.051,
+        "age_upper_seconds": 0.233,
+        "mark_age_lower_seconds": 1.675,
+        "mark_age_seconds": 1.857,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.022
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.224,
+        "age_upper_seconds": 0.406,
+        "mark_age_lower_seconds": 2.549,
+        "mark_age_seconds": 2.731,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.026
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.266,
+        "age_upper_seconds": 0.448,
+        "mark_age_lower_seconds": 1.7,
+        "mark_age_seconds": 1.882,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.03
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.113,
+        "age_upper_seconds": 0.295,
+        "mark_age_lower_seconds": 0.999,
+        "mark_age_seconds": 1.181,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.006
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.018,
+        "age_upper_seconds": 0.2,
+        "mark_age_lower_seconds": 0.893,
+        "mark_age_seconds": 1.075,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.003
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.021,
+        "age_upper_seconds": 0.203,
+        "mark_age_lower_seconds": 0.626,
+        "mark_age_seconds": 0.808,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.005
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.014,
+        "age_upper_seconds": 0.197,
+        "mark_age_lower_seconds": 0.762,
+        "mark_age_seconds": 0.945,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.014
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.1,
+        "age_upper_seconds": 0.283,
+        "mark_age_lower_seconds": 1.098,
+        "mark_age_seconds": 1.281,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.02
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.018,
+        "age_upper_seconds": 0.201,
+        "mark_age_lower_seconds": 0.847,
+        "mark_age_seconds": 1.03,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.412
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.044,
+        "age_upper_seconds": 0.227,
+        "mark_age_lower_seconds": 0.552,
+        "mark_age_seconds": 0.735,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.115
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.215,
+        "age_upper_seconds": 0.397,
+        "mark_age_lower_seconds": 0.02,
+        "mark_age_seconds": 0.202,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.016
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.195,
+        "age_upper_seconds": 0.377,
+        "mark_age_lower_seconds": 0.979,
+        "mark_age_seconds": 1.161,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.107
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.606,
+        "age_upper_seconds": 0.789,
+        "mark_age_lower_seconds": 2.041,
+        "mark_age_seconds": 2.224,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.021
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.072,
+        "age_upper_seconds": 0.254,
+        "mark_age_lower_seconds": 1.358,
+        "mark_age_seconds": 1.54,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.015
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.027,
+        "age_upper_seconds": 0.21,
+        "mark_age_lower_seconds": 0.423,
+        "mark_age_seconds": 0.606,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.015
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.017,
+        "age_upper_seconds": 0.2,
+        "mark_age_lower_seconds": 1.662,
+        "mark_age_seconds": 1.845,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.023
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.017,
+        "age_upper_seconds": 0.2,
+        "mark_age_lower_seconds": 1.386,
+        "mark_age_seconds": 1.569,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.019
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.018,
+        "age_upper_seconds": 0.201,
+        "mark_age_lower_seconds": 1.517,
+        "mark_age_seconds": 1.7,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.019
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.015,
+        "age_upper_seconds": 0.198,
+        "mark_age_lower_seconds": 0.964,
+        "mark_age_seconds": 1.147,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.112
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.021,
+        "age_upper_seconds": 0.204,
+        "mark_age_lower_seconds": 0.869,
+        "mark_age_seconds": 1.052,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.017
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.697,
+        "age_upper_seconds": 0.88,
+        "mark_age_lower_seconds": 2.421,
+        "mark_age_seconds": 2.604,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.003
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.047,
+        "age_upper_seconds": 0.23,
+        "mark_age_lower_seconds": 1.311,
+        "mark_age_seconds": 1.494,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.024
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.103,
+        "age_upper_seconds": 0.286,
+        "mark_age_lower_seconds": 0.497,
+        "mark_age_seconds": 0.68,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.063
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.669,
+        "age_upper_seconds": 0.852,
+        "mark_age_lower_seconds": 1.775,
+        "mark_age_seconds": 1.958,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.018
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.127,
+        "age_upper_seconds": 0.31,
+        "mark_age_lower_seconds": 0.442,
+        "mark_age_seconds": 0.625,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.011
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.013,
+        "age_upper_seconds": 0.196,
+        "mark_age_lower_seconds": 1.279,
+        "mark_age_seconds": 1.462,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.014
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.03,
+        "age_upper_seconds": 0.213,
+        "mark_age_lower_seconds": 0.498,
+        "mark_age_seconds": 0.681,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.006
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.022,
+        "age_upper_seconds": 0.205,
+        "mark_age_lower_seconds": 0.941,
+        "mark_age_seconds": 1.124,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.018
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.045,
+        "age_upper_seconds": 0.229,
+        "mark_age_lower_seconds": 0.996,
+        "mark_age_seconds": 1.18,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.018
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.077,
+        "age_upper_seconds": 0.26,
+        "mark_age_lower_seconds": 0.985,
+        "mark_age_seconds": 1.168,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.007
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.939,
+        "age_upper_seconds": 1.122,
+        "mark_age_lower_seconds": 0.563,
+        "mark_age_seconds": 0.746,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.018
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.685,
+        "age_upper_seconds": 0.869,
+        "mark_age_lower_seconds": 1.429,
+        "mark_age_seconds": 1.613,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.016
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.635,
+        "age_upper_seconds": 0.818,
+        "mark_age_lower_seconds": 0.57,
+        "mark_age_seconds": 0.753,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.007
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.513,
+        "age_upper_seconds": 0.696,
+        "mark_age_lower_seconds": 1.899,
+        "mark_age_seconds": 2.082,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.013
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.011,
+        "age_upper_seconds": 0.195,
+        "mark_age_lower_seconds": 0.686,
+        "mark_age_seconds": 0.87,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.012
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.027,
+        "age_upper_seconds": 0.211,
+        "mark_age_lower_seconds": 0.354,
+        "mark_age_seconds": 0.537,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.047
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.017,
+        "age_upper_seconds": 0.201,
+        "mark_age_lower_seconds": 0.386,
+        "mark_age_seconds": 0.57,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.052
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.034,
+        "age_upper_seconds": 0.218,
+        "mark_age_lower_seconds": 1.673,
+        "mark_age_seconds": 1.857,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.008
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.06,
+        "age_upper_seconds": 0.244,
+        "mark_age_lower_seconds": 1.07,
+        "mark_age_seconds": 1.254,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.049
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.054,
+        "age_upper_seconds": 0.237,
+        "mark_age_lower_seconds": 1.061,
+        "mark_age_seconds": 1.244,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.041
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.15,
+        "age_upper_seconds": 0.334,
+        "mark_age_lower_seconds": 1.033,
+        "mark_age_seconds": 1.217,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.046
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.382,
+        "age_upper_seconds": 0.565,
+        "mark_age_lower_seconds": 1.506,
+        "mark_age_seconds": 1.689,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.049
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.719,
+        "age_upper_seconds": 0.903,
+        "mark_age_lower_seconds": 0.653,
+        "mark_age_seconds": 0.837,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.047
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.647,
+        "age_upper_seconds": 0.831,
+        "mark_age_lower_seconds": 1.973,
+        "mark_age_seconds": 2.157,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.045
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.048,
+        "age_upper_seconds": 0.232,
+        "mark_age_lower_seconds": 0.664,
+        "mark_age_seconds": 0.848,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.023
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.055,
+        "age_upper_seconds": 0.24,
+        "mark_age_lower_seconds": 0.581,
+        "mark_age_seconds": 0.765,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.009
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.021,
+        "age_upper_seconds": 0.205,
+        "mark_age_lower_seconds": 0.409,
+        "mark_age_seconds": 0.593,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.007
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.021,
+        "age_upper_seconds": 0.205,
+        "mark_age_lower_seconds": 1.761,
+        "mark_age_seconds": 1.945,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.028
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.034,
+        "age_upper_seconds": 0.218,
+        "mark_age_lower_seconds": 0.623,
+        "mark_age_seconds": 0.807,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.035
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.054,
+        "age_upper_seconds": 0.238,
+        "mark_age_lower_seconds": 1.122,
+        "mark_age_seconds": 1.306,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.034
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.585,
+        "age_upper_seconds": 0.769,
+        "mark_age_lower_seconds": 0.99,
+        "mark_age_seconds": 1.174,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.334
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.307,
+        "age_upper_seconds": 0.491,
+        "mark_age_lower_seconds": 1.532,
+        "mark_age_seconds": 1.716,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.006
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.692,
+        "age_upper_seconds": 0.876,
+        "mark_age_lower_seconds": 0.687,
+        "mark_age_seconds": 0.871,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.014
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.031,
+        "age_upper_seconds": 0.215,
+        "mark_age_lower_seconds": 2.01,
+        "mark_age_seconds": 2.194,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.021
+      }
+    ],
+    [
+      {
+        "symbol": "BTCUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.026,
+        "age_upper_seconds": 0.211,
+        "mark_age_lower_seconds": 1.921,
+        "mark_age_seconds": 2.106,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.028
+      },
+      {
+        "symbol": "ETHUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.043,
+        "age_upper_seconds": 0.228,
+        "mark_age_lower_seconds": 1.748,
+        "mark_age_seconds": 1.933,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.023
+      },
+      {
+        "symbol": "SOLUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.022,
+        "age_upper_seconds": 0.207,
+        "mark_age_lower_seconds": 0.69,
+        "mark_age_seconds": 0.875,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.037
+      },
+      {
+        "symbol": "XRPUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.019,
+        "age_upper_seconds": 0.204,
+        "mark_age_lower_seconds": 0.317,
+        "mark_age_seconds": 0.502,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.234
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.025,
+        "age_upper_seconds": 0.21,
+        "mark_age_lower_seconds": 1.474,
+        "mark_age_seconds": 1.659,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.036
+      },
+      {
+        "symbol": "ADAUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.027,
+        "age_upper_seconds": 0.212,
+        "mark_age_lower_seconds": 1.475,
+        "mark_age_seconds": 1.66,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.037
+      },
+      {
+        "symbol": "LINKUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.032,
+        "age_upper_seconds": 0.216,
+        "mark_age_lower_seconds": 1.037,
+        "mark_age_seconds": 1.221,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.032
+      },
+      {
+        "symbol": "AVAXUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.289,
+        "age_upper_seconds": 0.473,
+        "mark_age_lower_seconds": 1.914,
+        "mark_age_seconds": 2.098,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.035
+      },
+      {
+        "symbol": "AUSDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 1.121,
+        "age_upper_seconds": 1.305,
+        "mark_age_lower_seconds": 1.055,
+        "mark_age_seconds": 1.239,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.026
+      },
+      {
+        "symbol": "4USDT",
+        "status": "PASS",
+        "book_age_lower_seconds": 0.492,
+        "age_upper_seconds": 0.676,
+        "mark_age_lower_seconds": 2.378,
+        "mark_age_seconds": 2.562,
+        "mark_price_verified": true,
+        "snapshot_attempts": 1,
+        "received_in_seconds": 0.027
+      }
+    ]
+  ],
+  "status": "PUBLIC_WS_HUB_CLIENT_PASS",
+  "trading_clock": {
+    "status": "PASS",
+    "os_clock_adjusted": false,
+    "selected_sources": [
+      "Bitget",
+      "OKX"
+    ],
+    "fallback_used": true,
+    "provider_errors": {
+      "Bybit": "Нет двух точных некэшированных ответов времени Bybit",
+      "Binance": "Нет двух точных некэшированных ответов времени Binance"
+    },
+    "server_minus_pc_lower_seconds": -0.08521413803100586,
+    "server_minus_pc_upper_seconds": 0.09476041793823242,
+    "sources": [
+      {
+        "source": "Bybit",
+        "url": "https://api.bybit.com/v5/market/time",
+        "samples": [
+          {
+            "received_monotonic": 284481.422858114,
+            "http_status": 403,
+            "http_date": "Thu, 19 Nov 2026 11:11:25 GMT",
+            "cache_age": null,
+            "cache_status": null,
+            "error": "403 Client Error: Forbidden for url: https://api.bybit.com/v5/market/time"
+          },
+          {
+            "received_monotonic": 284481.638431356,
+            "http_status": 403,
+            "http_date": "Thu, 19 Nov 2026 11:11:25 GMT",
+            "cache_age": null,
+            "cache_status": null,
+            "error": "403 Client Error: Forbidden for url: https://api.bybit.com/v5/market/time"
+          }
+        ]
+      },
+      {
+        "source": "Binance",
+        "url": "https://api.binance.com/api/v3/time",
+        "samples": [
+          {
+            "received_monotonic": 284481.183332746,
+            "http_status": 451,
+            "http_date": "Thu, 19 Nov 2026 11:11:25 GMT",
+            "cache_age": null,
+            "cache_status": null,
+            "error": "451 Client Error: Unknown for url: https://api.binance.com/api/v3/time"
+          },
+          {
+            "received_monotonic": 284481.350807039,
+            "http_status": 451,
+            "http_date": "Thu, 19 Nov 2026 11:11:25 GMT",
+            "cache_age": null,
+            "cache_status": null,
+            "error": "451 Client Error: Unknown for url: https://api.binance.com/api/v3/time"
+          }
+        ]
+      },
+      {
+        "source": "OKX",
+        "url": "https://www.okx.com/api/v5/public/time",
+        "samples": [
+          {
+            "received_monotonic": 284482.019988817,
+            "http_status": 200,
+            "http_date": "Thu, 19 Nov 2026 11:11:26 GMT",
+            "cache_age": null,
+            "cache_status": "DYNAMIC",
+            "server_unix": 1795086686.05,
+            "server_precision_seconds": 0.001,
+            "local_sent_unix": 1795086685.7603736,
+            "local_received_unix": 1795086686.135184,
+            "round_trip_seconds": 0.37481090798974037,
+            "local_clock_changed_during_request": false,
+            "server_minus_pc_lower_seconds": -0.08518409729003906,
+            "server_minus_pc_upper_seconds": 0.29062628746032715,
+            "cached_response": false
+          },
+          {
+            "received_monotonic": 284482.205571713,
+            "http_status": 200,
+            "http_date": "Thu, 19 Nov 2026 11:11:26 GMT",
+            "cache_age": null,
+            "cache_status": "DYNAMIC",
+            "server_unix": 1795086686.229,
+            "server_precision_seconds": 0.001,
+            "local_sent_unix": 1795086686.1352518,
+            "local_received_unix": 1795086686.3207672,
+            "round_trip_seconds": 0.18551577697508037,
+            "local_clock_changed_during_request": false,
+            "server_minus_pc_lower_seconds": -0.0917670726776123,
+            "server_minus_pc_upper_seconds": 0.09474825859069824,
+            "cached_response": false
+          }
+        ]
+      },
+      {
+        "source": "Bitget",
+        "url": "https://api.bitget.com/api/v2/public/time",
+        "samples": [
+          {
+            "received_monotonic": 284482.072794983,
+            "http_status": 200,
+            "http_date": "Thu, 19 Nov 2026 11:11:26 GMT",
+            "cache_age": null,
+            "cache_status": "DYNAMIC",
+            "server_unix": 1795086686.084,
+            "server_precision_seconds": 0.001,
+            "local_sent_unix": 1795086685.7635298,
+            "local_received_unix": 1795086686.1879902,
+            "round_trip_seconds": 0.42446095100604,
+            "local_clock_changed_during_request": false,
+            "server_minus_pc_lower_seconds": -0.10399007797241211,
+            "server_minus_pc_upper_seconds": 0.3214702606201172,
+            "cached_response": false
+          },
+          {
+            "received_monotonic": 284482.319771687,
+            "http_status": 200,
+            "http_date": "Thu, 19 Nov 2026 11:11:26 GMT",
+            "cache_age": null,
+            "cache_status": "DYNAMIC",
+            "server_unix": 1795086686.34,
+            "server_precision_seconds": 0.001,
+            "local_sent_unix": 1795086686.188017,
+            "local_received_unix": 1795086686.434967,
+            "round_trip_seconds": 0.2469506159541197,
+            "local_clock_changed_during_request": false,
+            "server_minus_pc_lower_seconds": -0.09496712684631348,
+            "server_minus_pc_upper_seconds": 0.1529829502105713,
+            "cached_response": false
+          }
+        ]
+      }
+    ]
+  },
+  "steady_state_max_seconds": 0.821,
+  "isolated_hub_retired": true,
+  "source_integrity_final": {
+    "status": "PASS",
+    "verified_files": 536,
+    "checkpoint": "BCC_HUB_DIAGNOSTIC_20261118_NOT_RELEASE",
+    "manifest_sha256": "e03c64f67242700eb43bef9b05570b09011c85dc2e5e1f2856adf3713ff0530c"
+  }
+}

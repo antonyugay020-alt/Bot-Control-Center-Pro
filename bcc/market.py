@@ -1297,8 +1297,9 @@ class PublicData:
             return None
         try:
             clock.bounds()
-            value = self.shared.read_fresh('https://api.bybit.com/v5/market/orderbook',
-                {'category':'linear','symbol':symbol,'limit':50}, 'api.bybit.com')
+            with self.shared.priority_reads():
+                value = self.shared.read_fresh('https://api.bybit.com/v5/market/orderbook',
+                    {'category':'linear','symbol':symbol,'limit':50}, 'api.bybit.com')
         except ProviderDenied as exc:
             raise SourceAccessDenied(exc.host, exc.http_status) from exc
         except CacheBusy as exc:
@@ -1331,6 +1332,11 @@ class PublicData:
         """
         if self.shared is None:
             return {}, {}
+        with self.shared.priority_reads():
+            return self._ws_portfolio_observations_reserved()
+
+    def _ws_portfolio_observations_reserved(self):
+        """Read the policy fence and portfolio on reserved cache capacity."""
         self._assert_provider_allowed("api.bybit.com")
         with self._lock:
             symbols = self._position_symbols
