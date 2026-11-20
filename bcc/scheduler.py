@@ -427,7 +427,12 @@ class MarketScheduler:
                     or self.due.get(symbol, 0) > now):
                 return False
             history_only = self._separate_quotes and symbol in priority_set
-            if history_only and (risk_mode or not book_is_fresh(self._quote_ready.get(symbol, 0))):
+            # Portfolio admission can be fenced by a different unmarked
+            # position. That must not starve history for this position once
+            # its own independent executable book is fresh: signal-based
+            # protection and recovery still need current candles. The owner
+            # retains its portfolio-wide entry/DCA risk checks.
+            if history_only and not book_is_fresh(self._quote_ready.get(symbol, 0)):
                 return False
             opened = [
                 p["opened"]
