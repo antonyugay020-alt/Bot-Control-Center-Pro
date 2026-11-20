@@ -95,6 +95,16 @@ class MarketScheduler:
         self._retry_ticks[tick.symbol] = tick
         self._quote_ready.pop(tick.symbol, None)
 
+    def retry_data_blocked(self, symbol):
+        """Reconsider a data-blocked scanner symbol using newly fetched inputs.
+
+        This does not retain the old signal, book, or trading authority. The
+        ordinary bounded retry lane re-fetches all inputs and re-evaluates the
+        strategy; removed or newly prioritised symbols are pruned in collect.
+        """
+        if symbol in self.cfg['symbols']:
+            self._scan_retries.setdefault(symbol, time.monotonic() + max(.05, self.period))
+
     def _retry_book(self, symbol, urgent):
         getter = getattr(self.source, 'position_orderbook', None) if urgent else None
         getter = getter if callable(getter) else self.source.orderbook

@@ -1,0 +1,47 @@
+elapsed 15.1 symbols 29 ticks 321 failures 0 positions 17 queue 0
+elapsed 30.2 symbols 70 ticks 691 failures 0 positions 17 queue 0
+elapsed 45.1 symbols 98 ticks 1013 failures 0 positions 17 queue 0
+elapsed 60.2 symbols 126 ticks 1350 failures 0 positions 17 queue 0
+elapsed 75.1 symbols 155 ticks 1661 failures 0 positions 17 queue 0
+elapsed 90.4 symbols 182 ticks 1881 failures 0 positions 17 queue 0
+elapsed 105.4 symbols 210 ticks 2094 failures 0 positions 17 queue 0
+elapsed 120.1 symbols 236 ticks 2292 failures 0 positions 17 queue 0
+elapsed 135.5 symbols 260 ticks 2458 failures 0 positions 17 queue 0
+elapsed 150.2 symbols 282 ticks 2593 failures 0 positions 17 queue 0
+elapsed 165.3 symbols 308 ticks 2735 failures 0 positions 17 queue 0
+elapsed 180.1 symbols 330 ticks 2857 failures 0 positions 17 queue 5
+elapsed 195.2 symbols 352 ticks 2983 failures 0 positions 17 queue 7
+elapsed 210.2 symbols 375 ticks 3123 failures 0 positions 17 queue 0
+elapsed 225.2 symbols 399 ticks 3263 failures 0 positions 17 queue 0
+elapsed 240.1 symbols 424 ticks 3490 failures 0 positions 17 queue 0
+elapsed 255.6 symbols 448 ticks 3610 failures 0 positions 17 queue 0
+elapsed 270.4 symbols 469 ticks 3737 failures 0 positions 17 queue 0
+elapsed 285.2 symbols 494 ticks 3861 failures 0 positions 17 queue 10
+elapsed 300.1 symbols 513 ticks 3965 failures 0 positions 17 queue 3
+elapsed 315.1 symbols 535 ticks 4079 failures 0 positions 17 queue 69
+elapsed 330.4 symbols 558 ticks 4191 failures 0 positions 17 queue 0
+elapsed 346.0 symbols 577 ticks 4298 failures 0 positions 17 queue 0
+elapsed 360.5 symbols 599 ticks 4423 failures 0 positions 17 queue 0
+elapsed 375.5 symbols 616 ticks 4540 failures 0 positions 17 queue 0
+elapsed 390.2 symbols 636 ticks 4656 failures 0 positions 17 queue 0
+elapsed 405.4 symbols 658 ticks 4806 failures 0 positions 17 queue 4
+elapsed 420.0 symbols 679 ticks 4998 failures 0 positions 17 queue 4
+elapsed 435.1 symbols 697 ticks 5179 failures 0 positions 17 queue 0
+elapsed 450.2 symbols 719 ticks 5362 failures 0 positions 17 queue 4
+elapsed 465.2 symbols 744 ticks 5542 failures 0 positions 17 queue 72
+elapsed 480.1 symbols 765 ticks 5711 failures 0 positions 17 queue 1
+elapsed 495.1 symbols 785 ticks 5881 failures 0 positions 17 queue 5
+elapsed 510.2 symbols 803 ticks 6042 failures 0 positions 17 queue 0
+elapsed 525.1 symbols 821 ticks 6254 failures 0 positions 17 queue 4
+RESULT symbols 828 ticks 6302 failures 0 positions 17 thread_errors [] elapsed 529.6
+synthetic history faults 10 source recovery 10
+synthetic 429 HTTP fence elapsed PASS
+recovery target [redacted]; diagnostic details withheld
+Traceback (most recent call last):
+  File "/workspace/Bot-Control-Center-Pro/tools/soak_pr12_scheduled_hub.py", line 224, in <module>
+    'diagnostics',snapshot['diagnostics'].get(target),flush=True)
+^^
+  File "/workspace/Bot-Control-Center-Pro/tools/soak_pr12_scheduled_hub.py", line 214, in main
+    try:
+         
+AssertionError: scheduler failed to resume the signal after fresh tier and quotes

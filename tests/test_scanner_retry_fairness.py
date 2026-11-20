@@ -90,6 +90,59 @@ def test_failed_scanner_book_is_retried_without_replaying_the_full_universe():
         scheduler.close()
 
 
+def test_data_blocked_candidate_is_reconsidered_with_new_book_before_full_scan():
+    symbols = [f'COIN{i}USDT' for i in range(828)]
+    class HealthySource(ScanSource):
+        def candles(self, symbol, required):
+            with self.lock:
+                self.attempts[symbol] = self.attempts.get(symbol, 0) + 1
+            time.sleep(.004)
+            return [{'t': int(time.time() * 1000)}]
+    source=HealthySource()
+    scheduler=MarketScheduler(source, {'symbols':symbols}, lambda *_:100, workers=8, period=.01)
+    first=None; retried=None
+    try:
+        deadline=time.monotonic()+12
+        while time.monotonic()<deadline and retried is None:
+            for symbol,tick,error in scheduler.collect(empty_state(),timeout=.02):
+                if symbol!=symbols[0] or not tick or not tick.book:
+                    continue
+                if first is None:
+                    first=tick.book['at']
+                    scheduler.retry_data_blocked(symbol)
+                else:
+                    retried=tick.book['at']
+                    break
+        with source.lock: discovered=len(source.attempts)
+        assert first is not None and retried is not None and retried>first
+        assert discovered<200, f'data-blocked retry waited behind {discovered} symbols'
+    finally:
+        scheduler.close()
+
+
+@pytest.mark.parametrize('workers',[1,2,8])
+def test_sustained_data_blocks_do_not_starve_untouched_scans(workers):
+    symbols=[f'COIN{i}USDT' for i in range(828)];blocked=set(symbols[:8])
+    class HealthySource(ScanSource):
+        def candles(self,symbol,required):
+            with self.lock:self.attempts[symbol]=self.attempts.get(symbol,0)+1
+            time.sleep(.004)
+            return [{'t':int(time.time()*1000)}]
+    source=HealthySource();scheduler=MarketScheduler(source,{'symbols':symbols},lambda *_:100,
+                                                       workers=workers,period=.01)
+    try:
+        deadline=time.monotonic()+12;retried=False;fresh=0
+        while time.monotonic()<deadline and not (retried and fresh>=100):
+            for symbol,tick,error in scheduler.collect(empty_state(),timeout=.02):
+                if symbol in blocked and tick and not error:
+                    scheduler.retry_data_blocked(symbol)
+            with source.lock:
+                retried=any(source.attempts.get(s,0)>1 for s in blocked)
+                fresh=len(set(source.attempts)-blocked)
+        assert retried and fresh>=100
+    finally:scheduler.close()
+
+
 def test_removed_symbol_is_not_resurrected_by_retry_queue():
     symbols = ['COIN0USDT', 'COIN1USDT']
     source = ScanSource(always_fail={'COIN0USDT'})

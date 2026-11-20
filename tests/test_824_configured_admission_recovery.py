@@ -67,7 +67,7 @@ def test_expired_tier_and_market_failures_block_then_fresh_evidence_resumes(tmp_
                    open=100, high=101, low=99, close=100, volume=1)
         return MarketTick(candidate, [bar], book(), [], {}, margin_data=candidate_margin)
 
-    process_tick(cfg, store, Veles(), tick(), observations=held_observations())
+    assert process_tick(cfg, store, Veles(), tick(), observations=held_observations()) is True
     blocked = Store(folder).read()
     assert len(blocked['positions']) == 6
     assert any('Устарели публичные ступени риска' in row['reason']

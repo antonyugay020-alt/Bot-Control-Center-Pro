@@ -11,7 +11,7 @@ from bcc.ws_dispatch import MarketEventQueue
 from bcc.data_cache import PublicCache
 from bcc.market_hub import MarketDataHub
 from bcc.market import PublicData,DataUnavailable
-from bcc.market_clock import observed_quote
+from bcc.market_clock import book_is_fresh, observed_quote, quote_is_recent
 from bcc.config import defaults,range_section
 from bcc.storage import Repository,Store
 from bcc.runtime import process_tick
@@ -22,23 +22,60 @@ from test_core import attach
 from test_margin_finance import use_mark,raw_tiers
 from test_bybit_ws_position_fast_lane import _instrument
 
+
+def load_universe(symbols_file, held_count):
+    symbols=(json.loads(symbols_file.read_text(encoding='utf-8')) if symbols_file
+             else [f'COIN{i}USDT' for i in range(824)])
+    if (not isinstance(symbols,list) or any(type(s) is not str or not s.strip() for s in symbols)
+            or len(set(symbols))!=len(symbols) or held_count<1
+            or len(symbols)<held_count+10):
+        raise ValueError('symbols must be distinct nonempty strings with room for held symbols and ten faults')
+    return symbols, symbols[:held_count]
+
+
+def capture_probe_inputs(reader, target, held, *, timeout=40):
+    """Refresh the owner cohort and rebase depth without retimestamping."""
+    deadline=time.monotonic()+timeout
+    while True:
+        try:
+            bars=reader.candles(target,100)
+            depth=reader.orderbook(target)
+            marks,quotes=reader.cached_position_observations()
+            if all(quote_is_recent(marks.get(s),maximum=3) and
+                   quote_is_recent(quotes.get(s),maximum=3) for s in held):
+                # Match the real owner's final cache handoff: only a genuine
+                # newer WS depth can replace the original exchange book.
+                latest=reader.cached_execution_book(target,depth)
+                if latest is not None:depth=latest
+                if book_is_fresh(depth['at']):return bars,depth,(marks,quotes)
+        except DataUnavailable:
+            pass
+        if time.monotonic()>=deadline:
+            raise AssertionError('fresh post-outage market observations unavailable')
+        time.sleep(.1)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--symbols-file',type=Path,
-                        help='JSON list of 824 symbols; omit for synthetic identifiers')
+                        help='JSON list of symbols; omit for 824 synthetic identifiers')
+    parser.add_argument('--sections-file',type=Path,
+                        help='Optional JSON list of isolated VELES sections')
+    parser.add_argument('--held-count',type=int,default=6,
+                        help='Number of initially held synthetic PAPER symbols')
     parser.add_argument('--accelerate-risk-retry',action='store_true',
                         help='Advance the test-only risk retry deadline (not real-time recovery)')
     args=parser.parse_args()
     for k in ('BCC_PUBLIC_CACHE','BCC_MARKET_HUB_MODE','BCC_BYBIT_WS_QUOTES','BCC_BYBIT_WS_BOOKS','BCC_BYBIT_WS_KLINES'):os.environ.pop(k,None)
     clock=mc.MarketClock();clock.ensure=lambda:None;clock.bounds=lambda:(time.time(),time.time());mc.clock=clock;market.clock=clock
-    symbols=(json.loads(args.symbols_file.read_text(encoding='utf-8')) if args.symbols_file
-             else [f'COIN{i}USDT' for i in range(824)])
-    if (not isinstance(symbols,list) or len(symbols)!=824 or
-            any(type(s) is not str or not s.strip() for s in symbols) or len(set(symbols))!=824):
-     raise ValueError('symbols file must contain 824 distinct nonempty strings')
-    held=symbols[:6];target=symbols[-1];enabled=[False]
-    cfg=defaults('VELES');cfg['name']='isolated full scheduler hub';cfg['symbols']=symbols;cfg['sections']=[range_section(30,40)];cfg['settings']['orders']['count']=1
-    strategies.signal=lambda state,key,spec,bars,now:SimpleNamespace(matched=enabled[0] and key.startswith(target+':') and key.endswith(':entry'),available=True,observations=[])
+    symbols,held=load_universe(args.symbols_file,args.held_count)
+    target=symbols[-1];enabled=[False]
+    sections=(json.loads(args.sections_file.read_text(encoding='utf-8')) if args.sections_file
+              else [range_section(30,40)])
+    if not isinstance(sections,list) or not sections:
+     raise ValueError('sections file must contain a nonempty list')
+    cfg=defaults('VELES');cfg['name']='isolated full scheduler hub';cfg['symbols']=symbols;cfg['sections']=sections;cfg['settings']['orders']['count']=1
+    strategies.signal=lambda state,key,spec,bars,now:SimpleNamespace(matched=enabled[0] and key==target+':'+cfg['sections'][0]['id']+':entry',available=True,observations=[])
     stop=threading.Event();errors=[];queue=MarketEventQueue(capacity=16384);seq=[0]
     q=BybitQuoteStream(on_update=queue.notify);b=BybitOrderbookWS(on_update=queue.notify)
     class FakeSocket:
@@ -63,7 +100,7 @@ def main():
       host='api.bybit.com';key,owner,value=self.shared.begin(url,params,host,priority=bool(getattr(self._thread,'position_mark',False)))
       if owner is None:return value
       sym=params['symbol'];now=int(time.time()*1000)
-      if url.endswith('/kline') and sym in symbols[6:16]:
+      if url.endswith('/kline') and sym in symbols[len(held):len(held)+10]:
        with self.lock:
         deadline=self.history_deadline.setdefault(sym,time.monotonic()+10)
         failing=time.monotonic()<deadline
@@ -114,12 +151,13 @@ def main():
      for t in threads:t.start()
      start=time.monotonic();next_report=start+15;seen=set();failures=0;processed=0
      try:
-      while time.monotonic()-start<600 and len(seen)<824 and not stop.is_set():
+      while time.monotonic()-start<1000 and len(seen)<len(symbols) and not stop.is_set():
        for sym,tick,error in scheduler.collect(store.read(include_charts=False),timeout=.05):
         if error:failures+=1;continue
         try:
          observations=reader.cached_position_observations()
-         process_tick(cfg,store,Veles(),tick,observations=observations)
+         if process_tick(cfg,store,Veles(),tick,observations=observations):
+          scheduler.retry_data_blocked(sym)
         except DataUnavailable:
          if tick and tick.book:scheduler.retry_tick(tick)
          failures+=1;continue
@@ -129,7 +167,7 @@ def main():
         print('elapsed',round(time.monotonic()-start,1),'symbols',len(seen),'ticks',processed,'failures',failures,'positions',len(store.read()['positions']),'queue',queue.stats()['pending'],flush=True);next_report+=15
       print('RESULT symbols',len(seen),'ticks',processed,'failures',failures,'positions',len(store.read()['positions']),'thread_errors',errors,'elapsed',round(time.monotonic()-start,1),flush=True)
       store.audit()
-      if len(seen)!=824 or errors:raise AssertionError('full synthetic scheduler/Hub scan did not complete')
+      if len(seen)!=len(symbols) or errors:raise AssertionError('full synthetic scheduler/Hub scan did not complete')
       with producer.lock:
        print('synthetic history faults',len(producer.history_failed),'source recovery',len(producer.history_recovered),flush=True)
        assert len(producer.history_failed)==10 and len(producer.history_recovered)==10
@@ -158,27 +196,20 @@ def main():
       before=len(store.history());time.sleep(3.2);assert len(store.history())==before
       # Choose one genuine in-flight scanner target; never restart the scheduler.
       candidates=[s for s in scheduler.jobs if s not in held]
-      if not candidates:raise AssertionError('no in-flight scanner candidate')
-      target=candidates[0]
-      ready_deadline=time.monotonic()+40
-      while True:
-       try:
-        depth=reader.orderbook(target);bars=reader.candles(target,100);marks,quotes=reader.cached_position_observations()
-        if all(s in marks and s in quotes for s in held):break
-       except DataUnavailable:pass
-       if time.monotonic()>=ready_deadline:raise AssertionError('fresh post-outage market observations unavailable')
-       time.sleep(.1)
+      target=candidates[0] if candidates else symbols[-1]
       with store.transaction() as (state,events):state['margin_data'][held[0]]['risk_at']=time.time()-301
+      bars,depth,observations=capture_probe_inputs(reader,target,held)
       enabled[0]=True
-      process_tick(cfg,store,Veles(),MarketTick(target,bars,depth,[],{}),observations=(marks,quotes))
-      snapshot=store.read();assert len(snapshot['positions'])==6
-      assert any('Устарели публичные ступени риска' in row.get('reason','') for row in snapshot['diagnostics'][target])
+      if process_tick(cfg,store,Veles(),MarketTick(target,bars,depth,[],{}),observations=observations):
+       scheduler.retry_data_blocked(target)
+      snapshot=store.read();assert len(snapshot['positions'])==len(held)
+      assert any('Устарели публичные ступени риска' in row.get('reason','') for row in snapshot['diagnostics'][target]), repr(snapshot['diagnostics'].get(target))
       # Normally retain real retry deadlines. An explicit accelerated mode
       # is available for diagnosis and must not be reported as real timing.
       if args.accelerate_risk_retry:
        with reader._lock:reader._risk_refresh_due[held[0]]=0
        scheduler.risk_due[held[0]]=0
-      # The scanner's complete measured 824-symbol cycle takes several
+      # The scanner's complete measured large-universe cycle takes several
       # minutes in this constrained isolated environment. Keep the signal
       # continuously valid through a full cycle; never replay the old book.
       recovery_deadline=time.monotonic()+480;entry=False
@@ -186,18 +217,20 @@ def main():
        for sym,tick,error in scheduler.collect(store.read(include_charts=False),timeout=.05):
         if error:continue
         try:
-         obs=reader.cached_position_observations();process_tick(cfg,store,Veles(),tick,observations=obs)
+         obs=reader.cached_position_observations()
+         if process_tick(cfg,store,Veles(),tick,observations=obs):
+          scheduler.retry_data_blocked(sym)
         except DataUnavailable:
          if tick and tick.book:scheduler.retry_tick(tick)
          continue
-        if len(store.read(include_charts=False)['positions'])==7:entry=True;break
+        if len(store.read(include_charts=False)['positions'])==len(held)+1:entry=True;break
        if entry:break
       store.audit()
       snapshot=store.read()
       print('recovery target',target,'tier_age',round(time.time()-snapshot['margin_data'][held[0]]['risk_at'],1),
             'diagnostics',snapshot['diagnostics'].get(target),flush=True)
       assert entry, 'scheduler failed to resume the signal after fresh tier and quotes'
-      assert len(store.history())==7
+      assert len(store.history())==len(held)+1
       print('outage recovery, source denial expiry, stale tier fence, automatically resumed entry: PASS',flush=True)
      finally:
       stop.set();reader.stop_event.set();scheduler.close()

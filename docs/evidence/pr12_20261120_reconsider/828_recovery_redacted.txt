@@ -1,0 +1,37 @@
+elapsed 15.0 symbols 28 ticks 379 failures 0 positions 17 queue 0
+elapsed 30.0 symbols 71 ticks 849 failures 0 positions 17 queue 0
+elapsed 45.0 symbols 93 ticks 1324 failures 0 positions 17 queue 70
+elapsed 60.1 symbols 121 ticks 1733 failures 0 positions 17 queue 0
+elapsed 75.1 symbols 144 ticks 2197 failures 0 positions 17 queue 6
+elapsed 90.0 symbols 172 ticks 2637 failures 0 positions 17 queue 0
+elapsed 105.0 symbols 203 ticks 3084 failures 0 positions 17 queue 0
+elapsed 120.1 symbols 231 ticks 3514 failures 0 positions 17 queue 15
+elapsed 135.1 symbols 259 ticks 3966 failures 0 positions 17 queue 15
+elapsed 150.0 symbols 289 ticks 4409 failures 0 positions 17 queue 14
+elapsed 165.1 symbols 317 ticks 4852 failures 0 positions 17 queue 16
+elapsed 180.1 symbols 347 ticks 5229 failures 0 positions 17 queue 0
+elapsed 195.1 symbols 373 ticks 5527 failures 0 positions 17 queue 0
+elapsed 210.2 symbols 401 ticks 5842 failures 0 positions 17 queue 0
+elapsed 225.4 symbols 428 ticks 6087 failures 0 positions 17 queue 8
+elapsed 240.1 symbols 449 ticks 6317 failures 0 positions 17 queue 6
+elapsed 255.3 symbols 470 ticks 6550 failures 0 positions 17 queue 0
+elapsed 270.2 symbols 494 ticks 6782 failures 0 positions 17 queue 10
+elapsed 285.2 symbols 519 ticks 7034 failures 0 positions 17 queue 12
+elapsed 300.4 symbols 545 ticks 7249 failures 0 positions 17 queue 12
+elapsed 315.3 symbols 569 ticks 7472 failures 0 positions 17 queue 7
+elapsed 330.2 symbols 593 ticks 7679 failures 0 positions 17 queue 7
+elapsed 345.2 symbols 615 ticks 7861 failures 0 positions 17 queue 4
+elapsed 360.7 symbols 635 ticks 8027 failures 0 positions 17 queue 0
+elapsed 375.2 symbols 659 ticks 8220 failures 0 positions 17 queue 0
+elapsed 390.1 symbols 682 ticks 8428 failures 0 positions 17 queue 6
+elapsed 405.0 symbols 706 ticks 8619 failures 0 positions 17 queue 0
+elapsed 420.1 symbols 730 ticks 8805 failures 0 positions 17 queue 13
+elapsed 435.1 symbols 754 ticks 8999 failures 0 positions 17 queue 8
+elapsed 450.2 symbols 774 ticks 9172 failures 0 positions 17 queue 5
+elapsed 465.1 symbols 796 ticks 9349 failures 0 positions 17 queue 0
+elapsed 480.4 symbols 819 ticks 9522 failures 0 positions 17 queue 0
+RESULT symbols 828 ticks 9597 failures 0 positions 17 thread_errors [] elapsed 488.9
+synthetic history faults 10 source recovery 10
+synthetic 429 HTTP fence elapsed PASS
+recovery target [redacted]; diagnostic details withheld
+outage recovery, source denial expiry, stale tier fence, automatically resumed entry: PASS

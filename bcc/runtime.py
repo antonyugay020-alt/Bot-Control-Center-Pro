@@ -138,6 +138,7 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
         # Commit those tiers atomically with the executable WS snapshot;
         # attach_snapshot then applies the newer independently timed markPrice.
         book = dict(book, margin_data=tick.margin_data)
+    data_blocked = False
     with risk_transaction(store) as (state, events):
         attach_snapshot(state, symbol, book)
         _apply_observations(state, observations)
@@ -202,6 +203,11 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
         margin_error = margin_status(state) if state.get("margin_model") == MODEL else ""
         if liquidating or liquidation_breach or margin_error:
             state["_entry_blocked"] = margin_error or "Сокращение риска; новые входы и DCA приостановлены"
+        # The scanner must revisit a candidate after genuine market evidence
+        # recovers; never retain its old signal or executable book. Manual
+        # stops, liquidation and insufficient capital alone do not request retries.
+        data_blocked = bool(symbol in cfg['symbols'] and tick.bars and not tick.history_error
+                            and (stale or margin_error or book.get('margin_error')))
         if not tick.bars or tick.history_error:
             for key, position in list(state["positions"].items()):
                 if position["symbol"] != symbol or position.get("exit_pending") or is_liquidating(position):
@@ -225,6 +231,7 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
             state.setdefault("charts", {})[symbol] = tick.bars[-120:]
         update_equity_metrics(state)
     log_events(events)
+    return data_blocked
 
 
 
@@ -396,7 +403,11 @@ def run_loop(
                                 perf['deferred_refreshes'] += 1
                                 continue
                             raise DataUnavailable('Стакан устарел после фонового обновления')
-                        process_tick(cfg, store, engine, tick, observations=observations)
+                        data_blocked = process_tick(cfg, store, engine, tick, observations=observations)
+                        if data_blocked:
+                            retry_data_blocked = getattr(scheduler, 'retry_data_blocked', None)
+                            if callable(retry_data_blocked):
+                                retry_data_blocked(symbol)
                         if tick.risk_only:
                             perf['risk_metadata_ticks'] += 1
                             perf['risk_metadata_errors'] += bool(tick.risk_error)
