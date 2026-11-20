@@ -167,3 +167,31 @@ def test_worker_schedules_reconsideration_when_data_blocks_candidate(tmp_path,mo
     assert len(state['positions'])==1 and len(store.history())==1
     assert any('ступени риска' in item['reason'] for item in state['diagnostics'][candidate])
     store.audit()
+
+
+def test_worker_reconsiders_scanner_after_background_book_also_expires(tmp_path, monkeypatch):
+    from bcc import runtime
+    cfg, store, folder = account(tmp_path, ['BTCUSDT'])
+    candidate = 'CANDIDATEUSDT'
+    cfg['symbols'].append(candidate)
+    retried = []
+    class Scheduler:
+        def __init__(self, *args): self.delivered = False
+        def collect(self, *args):
+            if self.delivered: return []
+            self.delivered = True
+            depth = book()
+            depth['at'] = time.time() - 30
+            return [(candidate, MarketTick(candidate, [{}], depth, [], {},
+                                           refresh_attempted=True), None)]
+        def retry_data_blocked(self, symbol): retried.append(symbol)
+        def close(self): pass
+    monkeypatch.setattr(runtime, 'MarketScheduler', Scheduler)
+    deadline = time.monotonic() + 3
+    run_loop(folder, cfg, store, object(), NeverTrades(), {},
+             lambda: bool(store.read(False)['diagnostics'].get(candidate)) or time.monotonic() >= deadline,
+             lambda *a: 100, None)
+    assert retried == [candidate]
+    assert 'устарел' in store.read(False)['diagnostics'][candidate][0]['reason']
+    assert len(store.history()) == 1
+    store.audit()

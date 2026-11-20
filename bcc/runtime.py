@@ -461,6 +461,15 @@ def run_loop(
                         IndexError,
                         TypeError,
                     ) as exc:
+                        # A transport refresh can itself age out before the
+                        # owner receives it. Revisit scanner candidates via
+                        # the bounded fair lane, fetching a new book and a
+                        # new signal; never replay the expired transaction.
+                        # Exposed symbols keep their independent priority lane.
+                        if isinstance(exc, DataUnavailable) and not (tick and tick.risk_only):
+                            retry_data_blocked = getattr(scheduler, 'retry_data_blocked', None)
+                            if callable(retry_data_blocked):
+                                retry_data_blocked(symbol)
                         seen.add(symbol)
                         perf["data_errors"] += 1
                         market_health["market_errors"] += 1
