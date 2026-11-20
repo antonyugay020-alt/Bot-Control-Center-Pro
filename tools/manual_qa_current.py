@@ -118,13 +118,23 @@ def copy_existing_automated_evidence(root, output):
     dest.mkdir()
     copied = []
     for rel in ('check_summary.json', 'automated/windows_report.json',
-                'automated/collected_tests.json', 'automated/tests.xml'):
+                'automated/collected_tests.json', 'automated/tests.xml',
+                'automated/public_sources.json', 'automated/screenshots/gui_report.json'):
         src = folder / rel
         if src.is_file() and not src.is_symlink():
             target = dest / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, target)
             copied.append(rel)
+    screenshots = folder / 'automated' / 'screenshots'
+    if screenshots.is_dir() and not screenshots.is_symlink():
+        for src in sorted(screenshots.glob('*.png')):
+            if src.is_file() and not src.is_symlink() and src.stat().st_size <= 20_000_000:
+                rel = 'automated/screenshots/' + src.name
+                target = dest / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, target)
+                copied.append(rel)
     return {'status': 'COPIED', 'files': copied, 'reported_status': summary.get('status'),
             'reported_test_totals': report.get('test_totals'),
             'meaning': 'Copied prior receipt, not an independent re-execution or acceptance'}

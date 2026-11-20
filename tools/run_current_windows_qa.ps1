@@ -13,7 +13,14 @@ if (Test-Path -LiteralPath 'check_workspaces') { throw 'Existing QA accounts are
 if (Test-Path -LiteralPath 'verification_reports') { throw 'Existing reports are not adopted.' }
 Write-Host 'Running isolated Windows automated QA. No manual acceptance is implied.'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\tools\start_windows_check.ps1' -AutomatedOnly -Venue all
-if ($LASTEXITCODE -ne 0) { throw 'Automated QA failed. Send the BCC_VALIDATION_RESULTS ZIP from the QA folder.' }
-Write-Host 'Automated checks finished. Starting the independent manual PAPER session.'
-& '.\.check_venv\Scripts\python.exe' '.\tools\manual_qa_current.py' $root $Commit
-if ($LASTEXITCODE -ne 0) { throw 'Manual QA did not finish; preserve the verification_reports folder.' }
+$qaExit = $LASTEXITCODE
+if (-not (Test-Path -LiteralPath '.\.check_venv\Scripts\python.exe')) {
+    throw 'QA environment was not created. Send the BCC_VALIDATION_RESULTS ZIP from the QA folder.'
+}
+Write-Host 'Generating the automatic checklist and public WebSocket evidence. No questions or manual bot actions.'
+& '.\.check_venv\Scripts\python.exe' -m tools.auto_qa_current $root $Commit
+$reportExit = $LASTEXITCODE
+if ($qaExit -ne 0 -or $reportExit -ne 0) {
+    throw 'Automatic QA has failures or unconfirmed evidence. Send the BCC_TEST_REPORT_AUTOMATED ZIP and, if present, BCC_VALIDATION_RESULTS ZIP.'
+}
+Write-Host 'Automated checks finished. Full live PAPER acceptance is not implied.'
