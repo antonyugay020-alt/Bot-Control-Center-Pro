@@ -170,7 +170,7 @@ def launch(life, folder, runner, *, accept_start=None):
         return life.active_snapshot(folder)
 
     try:
-        wait_for(ready, seconds=20)
+        ready_snapshot = wait_for(ready, seconds=20)
     except BaseException as exc:
         status = None
         try:
@@ -200,12 +200,46 @@ def launch(life, folder, runner, *, accept_start=None):
         folder / "test_launch.json",
         {
             "launcher_pid": proc.pid,
-            "worker_pid": life.active_snapshot(folder)["pid"],
-            "worker_parent_pid": life.active_snapshot(folder).get("parent_pid"),
+            "worker_pid": ready_snapshot["pid"],
+            "worker_parent_pid": ready_snapshot.get("parent_pid"),
             "independently_verified": life.process(folder) is not None,
         },
     )
     return proc
+
+
+def test_launch_retains_the_verified_ready_snapshot_during_transient_read(tmp_path, monkeypatch):
+    repo = Repository(tmp_path / 'app')
+    life = Lifecycle(repo)
+    runner = tmp_path / 'replay_worker.py'
+    runner.write_text(RUNNER, encoding='utf-8')
+    folder, _ = setup_bot(repo, runner)
+    original = life.active_snapshot
+    accepted = []
+
+    def active_snapshot(path):
+        if accepted:
+            return None  # Simulate an independently unavailable next read.
+        snapshot = original(path)
+        if snapshot:
+            accepted.append(snapshot)
+        return snapshot
+
+    monkeypatch.setattr(life, 'active_snapshot', active_snapshot)
+    child = None
+    try:
+        child = launch(life, folder, runner)
+        receipt = json.loads((folder / 'test_launch.json').read_text(encoding='utf-8'))
+        assert receipt['worker_pid'] == accepted[0]['pid']
+        assert receipt['worker_parent_pid'] == accepted[0].get('parent_pid')
+        assert child.poll() is None
+    finally:
+        monkeypatch.setattr(life, 'active_snapshot', original)
+        # A failed launch can still own a child; retire only this test's child.
+        child = child or life.children.get(str(folder))
+        if child is not None and child.poll() is None:
+            life.stop(folder, force=True)
+            child.wait(timeout=10)
 
 
 def test_process_stop_restart_force_and_recovery(tmp_path):
