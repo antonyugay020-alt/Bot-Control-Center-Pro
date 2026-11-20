@@ -1,0 +1,6 @@
+OWNED_HUB_RETIRED
+Traceback (most recent call last):
+  File "/workspace/work/pr12_828_public_scheduler_resume.py", line 40, in <module>
+    if source.shared.denied_status('api.bybit.com') in (403,451):raise RuntimeError('provider access denied by active shared fence')
+                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: provider access denied by active shared fence

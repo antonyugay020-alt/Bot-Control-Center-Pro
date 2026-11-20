@@ -1,5 +1,6 @@
 """An account commits a fresh WS portfolio together, rather than a slow N-mark sweep."""
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -116,6 +117,31 @@ def test_batch_is_coalesced_without_changing_original_observation_receipts(portf
         frames=list(pool.map(lambda _:reader._ws_portfolio_observations(),range(4)))
     assert len(calls)==1
     assert all(frame==frames[0] for frame in frames)
+
+
+def test_live_portfolio_uses_reserved_reader_during_scanner_saturation(portfolio):
+    symbols,reader,_,_=portfolio
+    wall,mono=time.time(),time.monotonic()
+    market_clock.clock._reference=(wall,wall+.001,wall,mono)
+    entered=[threading.Event() for _ in range(3)]
+    release=threading.Event();threads=[];errors=[]
+    def scanner(index):
+        try:
+            with reader.shared.read_db():
+                entered[index].set()
+                assert release.wait(5)
+        except BaseException as exc:errors.append(exc)
+    try:
+        for index in range(3):
+            thread=threading.Thread(target=scanner,args=(index,));thread.start();threads.append(thread)
+            assert entered[index].wait(2)
+        marks,quotes=reader.cached_position_observations()
+        assert set(marks)==set(symbols)
+        assert symbols[0] in quotes
+    finally:
+        release.set()
+        for thread in threads:thread.join(5)
+    assert not errors and all(not thread.is_alive() for thread in threads)
 
 
 def test_cached_batch_still_obeys_local_and_shared_provider_denial(portfolio):

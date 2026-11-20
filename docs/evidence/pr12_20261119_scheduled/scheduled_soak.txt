@@ -1,0 +1,30 @@
+elapsed 15.0 symbols 26 ticks 186 failures 0 positions 6 queue 0
+elapsed 30.0 symbols 70 ticks 400 failures 0 positions 6 queue 18
+elapsed 45.0 symbols 107 ticks 609 failures 0 positions 6 queue 0
+elapsed 60.0 symbols 135 ticks 805 failures 0 positions 6 queue 0
+elapsed 75.0 symbols 157 ticks 995 failures 0 positions 6 queue 0
+elapsed 90.0 symbols 190 ticks 1196 failures 0 positions 6 queue 0
+elapsed 105.0 symbols 241 ticks 1412 failures 0 positions 6 queue 22
+elapsed 120.0 symbols 270 ticks 1609 failures 0 positions 6 queue 0
+elapsed 135.0 symbols 303 ticks 1816 failures 0 positions 6 queue 0
+elapsed 150.0 symbols 314 ticks 1995 failures 0 positions 6 queue 0
+elapsed 165.0 symbols 357 ticks 2206 failures 0 positions 6 queue 0
+elapsed 180.0 symbols 392 ticks 2408 failures 0 positions 6 queue 0
+elapsed 195.0 symbols 422 ticks 2606 failures 0 positions 6 queue 0
+elapsed 210.0 symbols 451 ticks 2798 failures 0 positions 6 queue 5
+elapsed 225.0 symbols 486 ticks 2997 failures 0 positions 6 queue 1
+elapsed 240.0 symbols 516 ticks 3190 failures 0 positions 6 queue 0
+elapsed 255.0 symbols 548 ticks 3392 failures 0 positions 6 queue 0
+elapsed 270.0 symbols 582 ticks 3590 failures 0 positions 6 queue 6
+elapsed 285.0 symbols 617 ticks 3787 failures 0 positions 6 queue 0
+elapsed 300.0 symbols 645 ticks 3979 failures 0 positions 6 queue 0
+elapsed 315.0 symbols 689 ticks 4187 failures 0 positions 6 queue 0
+elapsed 330.0 symbols 715 ticks 4375 failures 0 positions 6 queue 0
+elapsed 345.0 symbols 755 ticks 4561 failures 0 positions 6 queue 9
+elapsed 360.1 symbols 767 ticks 4732 failures 0 positions 6 queue 0
+elapsed 375.0 symbols 803 ticks 4937 failures 0 positions 6 queue 0
+RESULT symbols 824 ticks 5062 failures 0 positions 6 thread_errors [] elapsed 385.4
+synthetic history faults 10 source recovery 10
+synthetic 429 HTTP fence elapsed PASS
+recovery target COIN9USDT tier_age 29.2 diagnostics [{'section': 'LONG RSI 30–40', 'conditions': [], 'reason': 'Открыто'}]
+outage recovery, source denial expiry, stale tier fence, automatically resumed entry: PASS

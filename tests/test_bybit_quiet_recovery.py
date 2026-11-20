@@ -123,9 +123,18 @@ def test_initial_grace_and_recovery_batching_remain_bounded_for_fleet():
     socket.sent.clear()
     assert stream.refresh_stale_marks(symbols) == 0
     advance(c, 3)
-    assert stream.refresh_stale_marks(symbols) == 120
+    # Scan demand must be drained fairly in bounded batches, not 120
+    # simultaneous unsubscribe/subscribe requests on one control socket.
+    for batch in range(6):
+        assert stream.refresh_stale_marks(symbols) == 20
+        assert len(socket.sent) == 4 * (batch + 1)
     assert len(socket.sent) == 24
     assert all(len(row['args']) == 10 for row in socket.sent)
+    refreshed = [
+        topic for item in socket.sent if item['op'] == 'subscribe'
+        for topic in item['args']
+    ]
+    assert len(refreshed) == len(set(refreshed)) == 120
     assert stream.refresh_stale_marks(symbols) == 0
 
 

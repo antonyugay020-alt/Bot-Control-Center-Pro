@@ -254,8 +254,9 @@ class BybitQuoteStream:
         Never reuse or restamp old observations. A bounded unsubscribe/
         resubscribe on the established public socket asks Bybit to send a
         fresh snapshot before independent mark or quote sides expire. Background
-        symbols are throttled to one recovery per second; owned exposure has a
-        half-second lead/cooldown and is sent first. Refresh begins before expiry,
+        symbols are admitted in oldest-due batches of at most 20 per turn;
+        owned exposure is never capped and keeps its half-second
+        lead/cooldown. Refresh begins before expiry,
         allowing a quiet symbol to retain genuine independent observations.
         The subsequent genuine WebSocket event is still required before
         margin/risk becomes available again.
@@ -270,8 +271,19 @@ class BybitQuoteStream:
             now = self._mono()
             wall = self._wall()
             stale = []
-            for symbol in sorted(set(symbols) & self._subscriptions,
-                                 key=lambda symbol: (symbol not in self._priority_symbols, symbol)):
+            # Never throttle a mark belonging to an open position. Bound only
+            # background refresh commands and serve the oldest due requests
+            # first, so thousands of discovered symbols cannot flood Bybit's
+            # WS control channel or starve held-position price evidence.
+            background_selected = 0
+            for symbol in sorted(
+                set(symbols) & self._subscriptions,
+                key=lambda symbol: (
+                    symbol not in self._priority_symbols,
+                    self._mark_refresh_due.get(symbol, 0),
+                    symbol,
+                ),
+            ):
                 priority = symbol in self._priority_symbols
                 lead_age = self._max_age / (4 if priority else 2)
                 row = self._marks.get(symbol)
@@ -288,7 +300,10 @@ class BybitQuoteStream:
                 )
                 if (fresh and quote_fresh) or now < self._mark_refresh_due.get(symbol, 0):
                     continue
+                if not priority and background_selected >= 20:
+                    continue
                 stale.append(symbol)
+                background_selected += int(not priority)
                 self._mark_refresh_due[symbol] = now + (.5 if priority else 1.)
             if not stale:
                 return 0

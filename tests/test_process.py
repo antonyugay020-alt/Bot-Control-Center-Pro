@@ -22,14 +22,19 @@ from pathlib import Path
 import os
 print('REPLAY_START pid=%s parent=%s' % (os.getpid(), os.getppid()), flush=True)
 import bcc.worker as worker
-from bcc.market_clock import market_now, observed_quote
+from bcc.market_clock import clock, market_now, observed_quote
 class Session:
  def close(self):pass
 class ReplayPublicData:
  def __init__(self): self.session=Session()
  def candles(self,symbol,required):
   path=Path(__import__('sys').argv[__import__('sys').argv.index('--folder')+1])
-  self.frame=json.loads((path/'feed.json').read_text(encoding='utf-8'));return self.frame['bars']
+  self.frame=json.loads((path/'feed.json').read_text(encoding='utf-8'))
+  if 'market_origin' in self.frame:
+   wall=time.time(); mono=time.monotonic()
+   market=self.frame['market_origin']+(wall-self.frame['wall_origin'])+self.frame.get('clock_advance',0)
+   clock._reference=(market,market,wall,mono)
+  return self.frame['bars']
  def orderbook(self,symbol):
   p=self.frame['price'];stamp=market_now();return dict(at=stamp,bids=[[p-.01,10000]],asks=[[p+.01,10000]],qty_step=.0001,min_qty=.0001,min_notional=.01,tick_size=.01,
    margin_data=dict(symbol=symbol,quote=observed_quote(dict(at=stamp,bid=p,ask=p)),risk_at=stamp,
@@ -108,12 +113,16 @@ def setup_bot(repo, runner, name="Process"):
     cfg["sections"][0]["exit"] = group(condition("PRICE", 110, "cross_up", 1))
     cfg["settings"]["orders"]["count"] = 1
     folder = repo.create(cfg)
-    base = int(time.time()) // 60 * 60000 - 180000
+    wall_origin = time.time()
+    market_origin = int(wall_origin) // 60 * 60 + 10
+    base = int(market_origin) // 60 * 60000 - 120000
     frame = {
         "price": 101,
+        "market_origin": market_origin,
+        "wall_origin": wall_origin,
         "bars": [
             dict(t=base + i * 60000, open=x, high=x + 1, low=x - 1, close=x, volume=10)
-            for i, x in enumerate([99, 101])
+            for i, x in enumerate([99, 101, 101])
         ],
     }
     atomic_json(folder / "feed.json", frame)
@@ -161,7 +170,7 @@ def launch(life, folder, runner, *, accept_start=None):
         return life.active_snapshot(folder)
 
     try:
-        wait_for(ready, seconds=20)
+        ready_snapshot = wait_for(ready, seconds=20)
     except BaseException as exc:
         status = None
         try:
@@ -191,12 +200,46 @@ def launch(life, folder, runner, *, accept_start=None):
         folder / "test_launch.json",
         {
             "launcher_pid": proc.pid,
-            "worker_pid": life.active_snapshot(folder)["pid"],
-            "worker_parent_pid": life.active_snapshot(folder).get("parent_pid"),
+            "worker_pid": ready_snapshot["pid"],
+            "worker_parent_pid": ready_snapshot.get("parent_pid"),
             "independently_verified": life.process(folder) is not None,
         },
     )
     return proc
+
+
+def test_launch_retains_the_verified_ready_snapshot_during_transient_read(tmp_path, monkeypatch):
+    repo = Repository(tmp_path / 'app')
+    life = Lifecycle(repo)
+    runner = tmp_path / 'replay_worker.py'
+    runner.write_text(RUNNER, encoding='utf-8')
+    folder, _ = setup_bot(repo, runner)
+    original = life.active_snapshot
+    accepted = []
+
+    def active_snapshot(path):
+        if accepted:
+            return None  # Simulate an independently unavailable next read.
+        snapshot = original(path)
+        if snapshot:
+            accepted.append(snapshot)
+        return snapshot
+
+    monkeypatch.setattr(life, 'active_snapshot', active_snapshot)
+    child = None
+    try:
+        child = launch(life, folder, runner)
+        receipt = json.loads((folder / 'test_launch.json').read_text(encoding='utf-8'))
+        assert receipt['worker_pid'] == accepted[0]['pid']
+        assert receipt['worker_parent_pid'] == accepted[0].get('parent_pid')
+        assert child.poll() is None
+    finally:
+        monkeypatch.setattr(life, 'active_snapshot', original)
+        # A failed launch can still own a child; retire only this test's child.
+        child = child or life.children.get(str(folder))
+        if child is not None and child.poll() is None:
+            life.stop(folder, force=True)
+            child.wait(timeout=10)
 
 
 def test_process_stop_restart_force_and_recovery(tmp_path):
@@ -242,6 +285,7 @@ def test_process_stop_restart_force_and_recovery(tmp_path):
             dict(t=last["t"] + 60000, open=111, high=112, low=110, close=111, volume=10)
         )
         frame["price"] = 111
+        frame["clock_advance"] = 120
         atomic_json(folder / "feed.json", frame)
         proc = launch(life, folder, runner)
         # A restarted worker may be scheduled behind real OS/PAPER processes
@@ -358,6 +402,7 @@ def test_worker_stops_automatically_after_deal_when_configured(tmp_path):
             dict(t=last["t"] + 60000, open=111, high=112, low=110, close=111, volume=10)
         )
         frame["price"] = 111
+        frame["clock_advance"] = 120
         atomic_json(folder / "feed.json", frame)
         child.wait(timeout=7)
         assert child.returncode == 0

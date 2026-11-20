@@ -1,6 +1,8 @@
 """Bounded parallel public reads; accounting stays on the single worker thread."""
 
+import math
 import time
+from collections import OrderedDict
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 
@@ -22,6 +24,9 @@ class MarketTick:
     refresh_attempted: bool = False
     risk_only: bool = False
     risk_error: str = ''
+    # Runtime must recheck the original exchange candle timestamp after an
+    # asynchronous handoff, including each reuse alongside a fresh quote.
+    live_history: bool = False
 
 
 class MarketScheduler:
@@ -61,10 +66,26 @@ class MarketScheduler:
         self._quote_ready = {}
         self._retry_ticks = {}
         self._retry_jobs = {}
+        # Failed discovery needs a bounded retry lane: otherwise its next
+        # attempt waits for the cursor to traverse an entire large universe.
+        self._scan_retries = OrderedDict()
+        self._scan_retry_active = set()
+        self._scan_retry_turn = True
         self.risk_pool = None
         self.risk_jobs = {}
         self.risk_due = {}
-        self.risk_capacity = max(1,workers//4)
+        # Independent tier renewal must cover exposed symbols before the
+        # source's 300s risk timestamp expires, even with eight history jobs
+        # blocked behind cold scanner candles. This lane cannot mutate trades.
+        self.risk_capacity = max(1, workers // 2)
+
+    @staticmethod
+    def _oldest_tier_first(priority, state):
+        """Put missing/oldest actual exchange tier timestamps first."""
+        def tier_age_key(symbol):
+            at = state.get('margin_data', {}).get(symbol, {}).get('risk_at')
+            return at if type(at) in (int, float) and math.isfinite(at) else -math.inf
+        return sorted(priority, key=tier_age_key)
 
     def _risk(self, symbol):
         try:
@@ -76,6 +97,16 @@ class MarketScheduler:
         """Retry an aged handoff on its transport pool, never on the owner."""
         self._retry_ticks[tick.symbol] = tick
         self._quote_ready.pop(tick.symbol, None)
+
+    def retry_data_blocked(self, symbol):
+        """Reconsider a data-blocked scanner symbol using newly fetched inputs.
+
+        This does not retain the old signal, book, or trading authority. The
+        ordinary bounded retry lane re-fetches all inputs and re-evaluates the
+        strategy; removed or newly prioritised symbols are pruned in collect.
+        """
+        if symbol in self.cfg['symbols']:
+            self._scan_retries.setdefault(symbol, time.monotonic() + max(.05, self.period))
 
     def _retry_book(self, symbol, urgent):
         getter = getattr(self.source, 'position_orderbook', None) if urgent else None
@@ -147,7 +178,7 @@ class MarketScheduler:
                 book = None
                 quote_error = str(exc)
         return MarketTick(symbol, bars, book, rates, marks, history_error, quote_error,
-                          margin_data)
+                          margin_data, live_history=True)
 
     def _quote(self, symbol):
         try:
@@ -183,6 +214,11 @@ class MarketScheduler:
             set_positions(priority)
         priority_set = set(priority)
         scan = [s for s in symbols if s not in priority_set]
+        scan_set = set(scan)
+        configured_set = set(self.cfg['symbols'])
+        for symbol in list(self._scan_retries):
+            if symbol not in scan_set or symbol not in configured_set:
+                del self._scan_retries[symbol]
         # A portfolio with unmarked/unfresh positions is in risk-management
         # mode: do not spend HTTP/worker capacity discovering new entries.
         marks = state.get('marks', {})
@@ -227,7 +263,9 @@ class MarketScheduler:
                 utc = market_now()
             except ValueError:
                 utc = None
-            for symbol in priority:
+            # Configuration/insertion order is not a risk priority. Renew
+            # missing or oldest exchange evidence before recent exposures.
+            for symbol in self._oldest_tier_first(priority, state):
                 if len(self.risk_jobs)>=self.risk_capacity:
                     break
                 at = state.get('margin_data',{}).get(symbol,{}).get('risk_at')
@@ -244,6 +282,7 @@ class MarketScheduler:
                 if not job.done():
                     continue
                 del self.jobs[symbol]
+                self._scan_retry_active.discard(symbol)
                 primary_drained.add(symbol)
                 # A zero-period round may still have other symbols in flight.
                 # Remember completions from BOTH drains (before admission and
@@ -254,16 +293,26 @@ class MarketScheduler:
                 self.due[symbol] = time.monotonic() + self.period
                 try:
                     tick = job.result()
+                    if symbol in scan_set and symbol in configured_set:
+                        if tick.history_error or tick.quote_error or not tick.bars:
+                            self._scan_retries[symbol] = time.monotonic() + max(.05, self.period)
+                            self._scan_retries.move_to_end(symbol)
+                        else:
+                            self._scan_retries.pop(symbol, None)
                     if self._separate_quotes and (symbol in priority_set or symbol in self._history_only):
                         # This plane publishes indicator inputs only. A scanner
                         # admitted just before OPEN must not emit a second book
                         # for the same position alongside the quote lane.
                         self._history_results[symbol] = MarketTick(
                             symbol, tick.bars, None, tick.rates, tick.funding_marks,
-                            tick.history_error, '', tick.margin_data)
+                            tick.history_error, '', tick.margin_data,
+                            live_history=tick.live_history)
                     else:
                         completed.append((symbol, tick, None))
                 except Exception as exc:
+                    if symbol in scan_set and symbol in configured_set:
+                        self._scan_retries[symbol] = time.monotonic() + max(.05, self.period)
+                        self._scan_retries.move_to_end(symbol)
                     completed.append((symbol, None, exc))
                 self._history_only.discard(symbol)
             self.pool.collect()
@@ -313,7 +362,8 @@ class MarketScheduler:
                                       history.rates if history else [],
                                       history.funding_marks if history else {},
                                       history.history_error if history else '', error,
-                                      history.margin_data if history else None)
+                                      history.margin_data if history else None,
+                                      live_history=bool(history and history.live_history))
                     if history is not None:
                         # A refreshed margin snapshot is delivered once;
                         # replaying it on each quote would regress newer
@@ -377,7 +427,12 @@ class MarketScheduler:
                     or self.due.get(symbol, 0) > now):
                 return False
             history_only = self._separate_quotes and symbol in priority_set
-            if history_only and (risk_mode or not book_is_fresh(self._quote_ready.get(symbol, 0))):
+            # Portfolio admission can be fenced by a different unmarked
+            # position. That must not starve history for this position once
+            # its own independent executable book is fresh: signal-based
+            # protection and recovery still need current candles. The owner
+            # retains its portfolio-wide entry/DCA risk checks.
+            if history_only and not book_is_fresh(self._quote_ready.get(symbol, 0)):
                 return False
             opened = [
                 p["opened"]
@@ -430,12 +485,46 @@ class MarketScheduler:
             self.priority_cursor = (self.priority_cursor + 1) % len(priority)
             active_jobs += int(submit(symbol))
         admitted_scans = 0
+        # Alternate a bounded failed-symbol retry with untouched discovery.
+        # Limit concurrent retries by actual worker capacity, retain the
+        # position lane, and in risk mode obey its one-scan admission rule.
+        # If every eligible scan is already a retry, leaving most workers
+        # idle needlessly prolongs recovery after a fleet-wide outage. Share
+        # capacity only while untouched discovery can actually use it.
+        discovery_ready = any(
+            symbol not in self._scan_retries and symbol not in self.jobs
+            and symbol not in self._retry_ticks
+            and (self.period != 0 or symbol not in self._zero_period_round)
+            and self.due.get(symbol, 0) <= now
+            for symbol in scan
+        )
+        retry_limit = (max(1, self.capacity // 4) if discovery_ready else
+                       max(1, self.capacity - int(bool(priority))))
+        if self._scan_retry_turn and len(self._scan_retry_active) < retry_limit:
+            for symbol, retry_at in list(self._scan_retries.items()):
+                if len(self.jobs) + sum(not lane for _, lane in self._retry_jobs.values()) >= self.capacity:
+                    break
+                if retry_at > now:
+                    continue
+                if submit(symbol):
+                    self._scan_retries.pop(symbol, None)
+                    self._scan_retry_active.add(symbol)
+                    self._scan_retry_turn = False
+                    admitted_scans += 1
+                    break
+        discovered = False
         for _ in range(len(scan)):
             if len(self.jobs) + sum(not lane for _, lane in self._retry_jobs.values()) >= self.capacity or (risk_mode and admitted_scans >= 1):
                 break
             symbol = scan[self.cursor % len(scan)]
             self.cursor = (self.cursor + 1) % len(scan)
-            admitted_scans += int(submit(symbol))
+            if symbol in self._scan_retries:
+                continue
+            if submit(symbol):
+                admitted_scans += 1
+                discovered = True
+        if discovered or (not admitted_scans and self._scan_retries):
+            self._scan_retry_turn = True
         pending_jobs = [*self.jobs.values(), *self.quote_jobs.values(),
                         *(job for job, _ in self._retry_jobs.values()),*self.risk_jobs.values()]
         if pending_jobs:

@@ -7,7 +7,7 @@ import sqlite3
 import threading
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from functools import lru_cache
 from pathlib import Path
 
@@ -49,6 +49,12 @@ class PublicCache:
         # fences without sharing mutable connection transaction state.
         self._reader_guard = threading.RLock()
         self._reader_connection = None
+        # SQLite WAL permits concurrent readers. Bound the pool to avoid
+        # serializing the portfolio owner behind slow scanner reads without
+        # creating an unbounded connection for every transient worker thread.
+        self._reader_guards = [self._reader_guard] + [threading.RLock() for _ in range(3)]
+        self._reader_connections = [None] * len(self._reader_guards)
+        self._reader_intent = threading.local()
         self.stats = {
             "connections": 0,
             "operations": 0,
@@ -241,20 +247,53 @@ class PublicCache:
                 self._guard.release()
 
     @contextmanager
+    def priority_reads(self):
+        """Reserve read capacity for portfolio observations, without bypassing policy."""
+        previous = getattr(self._reader_intent, 'priority', False)
+        self._reader_intent.priority = True
+        try:
+            yield
+        finally:
+            self._reader_intent.priority = previous
+
+    @contextmanager
     def read_db(self):
-        if not self._reader_guard.acquire(timeout=.2):
+        deadline = time.monotonic() + .2
+        slot = None
+        # Ordinary scanner reads cannot occupy the last slot. Critical
+        # portfolio readers try that slot first and may also use idle others.
+        indices = ((3, 0, 1, 2) if getattr(self._reader_intent, 'priority', False)
+                   else (0, 1, 2))
+        while slot is None:
+            slot = next((i for i in indices
+                         if self._reader_guards[i].acquire(blocking=False)), None)
+            remaining = deadline - time.monotonic()
+            if slot is not None or remaining <= 0:
+                break
+            time.sleep(min(.005, remaining))
+        if slot is None:
             self.stats['read_local_busy'] += 1
             raise CacheContention('Чтение общего кэша занято другим читателем')
+        connection = None
         try:
-            if self._reader_connection is None:
-                self._reader_connection = sqlite3.connect(
+            connection = self._reader_connections[slot]
+            if connection is None:
+                connection = sqlite3.connect(
                     self.path.resolve().as_uri()+'?mode=ro',uri=True,
                     timeout=.2,isolation_level=None,check_same_thread=False)
-                self._reader_connection.execute('PRAGMA query_only=ON')
-                self._reader_connection.execute('PRAGMA busy_timeout=200')
+                try:
+                    connection.execute('PRAGMA query_only=ON')
+                    connection.execute('PRAGMA busy_timeout=200')
+                except BaseException:
+                    connection.close()
+                    connection = None
+                    raise
+                self._reader_connections[slot] = connection
+                if slot == 0:
+                    self._reader_connection = connection
                 self.stats['read_connections'] += 1
             self.stats['read_operations'] += 1
-            yield self._reader_connection
+            yield connection
         except sqlite3.Error as exc:
             self.stats['sqlite_busy'] += 1
             code = getattr(exc,'sqlite_errorcode',None)
@@ -263,16 +302,20 @@ class PublicCache:
                 'Чтение общего кэша недоступно: '+str(exc)) from exc
         finally:
             try:
-                if self._reader_connection is not None and self._reader_connection.in_transaction:
-                    self._reader_connection.rollback()
+                if connection is not None and connection.in_transaction:
+                    connection.rollback()
             finally:
-                self._reader_guard.release()
+                self._reader_guards[slot].release()
 
     def close(self):
-        with self._guard, self._reader_guard:
-            if self._reader_connection is not None:
-                self._reader_connection.close()
-                self._reader_connection = None
+        with self._guard, ExitStack() as stack:
+            for guard in self._reader_guards:
+                stack.enter_context(guard)
+            for index, connection in enumerate(self._reader_connections):
+                if connection is not None:
+                    connection.close()
+                    self._reader_connections[index] = None
+            self._reader_connection = None
             if self._connection is not None:
                 self._connection.close()
                 self._connection = None

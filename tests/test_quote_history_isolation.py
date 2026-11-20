@@ -139,6 +139,36 @@ def test_recovered_history_reaches_quotes_without_holding_new_books():
         scheduler.close()
 
 
+def test_unmarked_position_does_not_starve_history_for_other_exposure():
+    """A portfolio-wide risk fence must not freeze all position history."""
+    calls = []
+    class Source:
+        def position_orderbook(self, symbol):
+            return book(100)
+        def orderbook(self, symbol):
+            return book(100)
+        def candles(self, symbol, required):
+            calls.append(symbol)
+            return [dict(t=(int(time.time()) // 60) * 60000, open=100,
+                         high=101, low=99, close=100, volume=1)]
+        def funding(self, symbol):
+            return []
+    state = initial_state(500)
+    names = ['BTCUSDT', 'ETHUSDT']
+    state['positions'] = {s: dict(symbol=s, opened=time.time()) for s in names}
+    state['marks']['BTCUSDT'] = observed_quote(dict(at=time.time(), bid=100, ask=101))
+    scheduler = MarketScheduler(Source(), dict(symbols=names), lambda *_: 30,
+                                workers=2, period=.03)
+    try:
+        until = time.monotonic() + 1.5
+        while 'BTCUSDT' not in calls and time.monotonic() < until:
+            scheduler.collect(state, timeout=.02)
+        assert scheduler.last_pressure['entry_admission_paused'] is True
+        assert 'BTCUSDT' in calls, 'Risk fencing starved independently managed position history'
+    finally:
+        scheduler.close()
+
+
 def test_stale_quote_from_position_reader_is_not_executable(tmp_path):
     import pytest
     from bcc.config import defaults

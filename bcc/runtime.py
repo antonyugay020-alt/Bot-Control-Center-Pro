@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import sqlite3
 import time
 
@@ -12,7 +13,8 @@ from .data_cache import CacheBusy
 from .market_clock import book_is_fresh, market_now, observed_quote, quote_is_recent
 from .market_health import record_market_outcome
 from .margin import MODEL, attach_snapshot, margin_status
-from .liquidation import REASONS, is_liquidating, status as liquidation_status
+from .liquidation import (REASONS, is_liquidating, status as liquidation_status,
+                          refresh_margin_data_diagnostics)
 from .scheduler import MarketScheduler
 from .strategies import record_completed_exit
 from .shared_risk import risk_transaction
@@ -42,17 +44,38 @@ def _apply_observations(state, observations):
     if observations is None:
         return
     marks, quotes = observations
+    changed = False
     for symbol, row in state.get('margin_data', {}).items():
         incoming, current = marks.get(symbol), row.get('quote')
         if (quote_is_recent(incoming, maximum=3)
                 and (not quote_is_recent(current, maximum=3) or incoming['at'] >= current['at'])):
             row['quote'] = dict(incoming)
+            changed = True
     exposed = {p['symbol'] for p in state['positions'].values()}
     for symbol, incoming in quotes.items():
         current = state['marks'].get(symbol)
         if (symbol in exposed and quote_is_recent(incoming, maximum=3)
                 and (not quote_is_recent(current, maximum=3) or incoming['at'] >= current['at'])):
             state['marks'][symbol] = dict(incoming)
+            changed = True
+    if changed:
+        refresh_margin_data_diagnostics(state)
+
+
+def _expire_live_history(tick, now):
+    if not tick.live_history or not tick.bars or tick.history_error:
+        return False
+    last = tick.bars[-1]
+    stamp = last.get('t') if isinstance(last, dict) else None
+    try:
+        age = now - stamp / 1000 if type(stamp) is int else math.inf
+    except (OverflowError, TypeError):
+        age = math.inf
+    if math.isfinite(age) and 0 <= age < 120:
+        return False
+    tick.bars = []
+    tick.history_error = 'Устаревшие свечи'
+    return True
 
 
 def process_tick(cfg, store, engine, tick, *, observations=None):
@@ -74,8 +97,15 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
                     errors.pop(symbol,None)
                     attach_snapshot(state,symbol,{'margin_required':True,'margin_data':tick.margin_data})
                 _apply_observations(state,observations)
+                # Tier data and WS marks can recover on different lanes.
+                # Revalidate diagnostics even if no price observation changed.
+                refresh_margin_data_diagnostics(state)
                 update_equity_metrics(state)
         return
+    # A scheduler handoff and the account transaction can each outlive a
+    # source candle. Recheck both before entering and at the strategy boundary.
+    # A fresh book remains usable for independent protective exits below.
+    live_history_expired = _expire_live_history(tick, now)
     if book is None:
         # Published funding is still valid accounting evidence when the book is
         # unavailable, or the coin was removed after its last trade was closed.
@@ -129,6 +159,7 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
         # Commit those tiers atomically with the executable WS snapshot;
         # attach_snapshot then applies the newer independently timed markPrice.
         book = dict(book, margin_data=tick.margin_data)
+    data_blocked = False
     with risk_transaction(store) as (state, events):
         attach_snapshot(state, symbol, book)
         _apply_observations(state, observations)
@@ -193,6 +224,15 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
         margin_error = margin_status(state) if state.get("margin_model") == MODEL else ""
         if liquidating or liquidation_breach or margin_error:
             state["_entry_blocked"] = margin_error or "Сокращение риска; новые входы и DCA приостановлены"
+        decision_now = market_now()
+        live_history_expired = _expire_live_history(tick, decision_now) or live_history_expired
+        # The scanner must revisit a candidate after genuine market evidence
+        # recovers; never retain its old signal or executable book. Manual
+        # stops, liquidation and insufficient capital alone do not request retries.
+        data_blocked = bool(symbol in cfg['symbols'] and
+                            (live_history_expired or
+                             (tick.bars and not tick.history_error and
+                              (stale or margin_error or book.get('margin_error')))))
         if not tick.bars or tick.history_error:
             for key, position in list(state["positions"].items()):
                 if position["symbol"] != symbol or position.get("exit_pending") or is_liquidating(position):
@@ -201,7 +241,7 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
                     record_completed_exit(cfg, state, key, position, int(now * 1000))
             state["diagnostics"][symbol] = [{"section": "Свечи", "reason": tick.history_error or "Нет пригодной истории закрытых свечей"}]
         else:
-            engine.process(cfg, state, events, symbol, tick.bars, bid, ask, int(now * 1000))
+            engine.process(cfg, state, events, symbol, tick.bars, bid, ask, int(decision_now * 1000))
         if not liquidating:
             liquidations(state, events)
         for position in state["positions"].values():
@@ -216,6 +256,7 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
             state.setdefault("charts", {})[symbol] = tick.bars[-120:]
         update_equity_metrics(state)
     log_events(events)
+    return data_blocked
 
 
 
@@ -387,7 +428,11 @@ def run_loop(
                                 perf['deferred_refreshes'] += 1
                                 continue
                             raise DataUnavailable('Стакан устарел после фонового обновления')
-                        process_tick(cfg, store, engine, tick, observations=observations)
+                        data_blocked = process_tick(cfg, store, engine, tick, observations=observations)
+                        if data_blocked:
+                            retry_data_blocked = getattr(scheduler, 'retry_data_blocked', None)
+                            if callable(retry_data_blocked):
+                                retry_data_blocked(symbol)
                         if tick.risk_only:
                             perf['risk_metadata_ticks'] += 1
                             perf['risk_metadata_errors'] += bool(tick.risk_error)
@@ -416,6 +461,15 @@ def run_loop(
                         IndexError,
                         TypeError,
                     ) as exc:
+                        # A transport refresh can itself age out before the
+                        # owner receives it. Revisit scanner candidates via
+                        # the bounded fair lane, fetching a new book and a
+                        # new signal; never replay the expired transaction.
+                        # Exposed symbols keep their independent priority lane.
+                        if isinstance(exc, DataUnavailable) and not (tick and tick.risk_only):
+                            retry_data_blocked = getattr(scheduler, 'retry_data_blocked', None)
+                            if callable(retry_data_blocked):
+                                retry_data_blocked(symbol)
                         seen.add(symbol)
                         perf["data_errors"] += 1
                         market_health["market_errors"] += 1

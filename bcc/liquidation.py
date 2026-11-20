@@ -155,6 +155,35 @@ def _cross_metrics(state):
     return collateral, need, infos
 
 
+def refresh_margin_data_diagnostics(state):
+    """Revalidate previously reported data failures without trading side effects.
+
+    A fresh independent mark or tier can arrive on the observation lane after
+    the last liquidation calculation. Keep failures until the *same* full
+    calculation used by liquidation accepts current portfolio inputs. This
+    never clears liquidation state, changes orders, or grants entry admission.
+    """
+    positions = [p for p in state.get('positions', {}).values()
+                 if p.get('kind') != 'POLYMARKET']
+    if not any(p.get('margin_data_error') for p in positions):
+        return
+    for p in positions:
+        if p.get('margin_data_error') and p['settings']['margin_mode'] == 'ISOLATED':
+            try:
+                requirements(state, p)
+            except (MarginUnavailable, KeyError, TypeError, ValueError, IndexError, ArithmeticError):
+                continue
+            p.pop('margin_data_error', None)
+    cross = [p for p in positions if p['settings']['margin_mode'] == 'CROSS']
+    if any(p.get('margin_data_error') for p in cross):
+        try:
+            _cross_metrics(state)
+        except (MarginUnavailable, KeyError, TypeError, ValueError, IndexError, ArithmeticError):
+            return
+        for p in cross:
+            p.pop('margin_data_error', None)
+
+
 def _healthy(state, key, p):
     if p["settings"]["margin_mode"] == "CROSS":
         collateral, need, _ = _cross_metrics(state)

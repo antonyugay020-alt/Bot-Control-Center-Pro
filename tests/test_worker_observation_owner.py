@@ -134,3 +134,64 @@ def test_provider_denial_at_owner_blocks_an_already_completed_fresh_tick(tmp_pat
     state=store.read(False)
     assert 'BTCUSDT' not in state['marks'] and 'quote' not in state['margin_data']['BTCUSDT']
     assert len(store.history())==1;store.audit()
+
+
+def test_worker_schedules_reconsideration_when_data_blocks_candidate(tmp_path,monkeypatch):
+    from types import SimpleNamespace
+    from bcc import runtime
+    from bcc.strategies import Veles
+    cfg,store,folder=account(tmp_path,['BTCUSDT'])
+    candidate='CANDIDATEUSDT';cfg['symbols'].append(candidate)
+    with store.transaction(include_charts=False) as (state,_):
+        use_mark(state,symbol=candidate)
+        state['margin_data']['BTCUSDT']['risk_at']=time.time()-301
+        state['margin_data']['BTCUSDT']['quote']=observed_quote({'bid':100,'ask':100,'at':time.time()})
+        state['marks']['BTCUSDT']=observed_quote({'bid':99.99,'ask':100.01,'at':time.time()})
+    retried=[]
+    class Scheduler:
+        def __init__(self,*args):pass
+        def collect(self,*args):
+            bar={'t':(int(time.time())//60-1)*60000,'open':100,'high':101,
+                 'low':99,'close':100,'volume':1}
+            return [(candidate,MarketTick(candidate,[bar],book(),[],{}),None)]
+        def retry_data_blocked(self,symbol):retried.append(symbol)
+        def close(self):pass
+    monkeypatch.setattr(runtime,'MarketScheduler',Scheduler)
+    monkeypatch.setattr('bcc.strategies.signal',lambda *a:SimpleNamespace(
+        matched=True,available=True,observations=[]))
+    deadline=time.monotonic()+3
+    run_loop(folder,cfg,store,object(),Veles(),{},
+             lambda:bool(retried) or time.monotonic()>=deadline,lambda *a:100,None)
+    assert retried==[candidate]
+    state=store.read(False)
+    assert len(state['positions'])==1 and len(store.history())==1
+    assert any('ступени риска' in item['reason'] for item in state['diagnostics'][candidate])
+    store.audit()
+
+
+def test_worker_reconsiders_scanner_after_background_book_also_expires(tmp_path, monkeypatch):
+    from bcc import runtime
+    cfg, store, folder = account(tmp_path, ['BTCUSDT'])
+    candidate = 'CANDIDATEUSDT'
+    cfg['symbols'].append(candidate)
+    retried = []
+    class Scheduler:
+        def __init__(self, *args): self.delivered = False
+        def collect(self, *args):
+            if self.delivered: return []
+            self.delivered = True
+            depth = book()
+            depth['at'] = time.time() - 30
+            return [(candidate, MarketTick(candidate, [{}], depth, [], {},
+                                           refresh_attempted=True), None)]
+        def retry_data_blocked(self, symbol): retried.append(symbol)
+        def close(self): pass
+    monkeypatch.setattr(runtime, 'MarketScheduler', Scheduler)
+    deadline = time.monotonic() + 3
+    run_loop(folder, cfg, store, object(), NeverTrades(), {},
+             lambda: bool(store.read(False)['diagnostics'].get(candidate)) or time.monotonic() >= deadline,
+             lambda *a: 100, None)
+    assert retried == [candidate]
+    assert 'устарел' in store.read(False)['diagnostics'][candidate][0]['reason']
+    assert len(store.history()) == 1
+    store.audit()
