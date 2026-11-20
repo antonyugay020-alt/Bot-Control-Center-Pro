@@ -6,7 +6,7 @@ import traceback
 from pathlib import Path
 
 from bcc.config import condition, defaults, group, range_section, validate
-from bcc.storage import Store, atomic_json
+from bcc.storage import Store, atomic_json, paper_account_present
 from bcc.support import execution_freshness, export_current_report
 from tools.acceptance_session import AcceptanceSession
 
@@ -37,41 +37,58 @@ def run(output, *, duration=120):
     receipts = output / 'session'
     report = {'status': 'NOT_CONFIRMED', 'scope': 'public Bybit / VELES PAPER',
               'real_orders': False, 'release_ready': False, 'entry': False,
-              'exit': False, 'ledger': 'NOT_CONFIRMED'}
+              'exit': False, 'ledger': 'NOT_CONFIRMED', 'account_ready': False}
     try:
         with AcceptanceSession(workspace, receipts, timeout=30) as session:
-            folder = session.owner.create_bot(config())
-            session.owner.request_start(folder)
-            store = Store(folder)
-            deadline = time.monotonic() + duration
-            draining = False
-            closing = False
-            while time.monotonic() < deadline:
-                state = store.read(include_charts=False)
-                events = store.history(limit=500)
-                report['entry'] = any(event.get('action') == 'OPEN' for event in events)
-                report['exit'] = any(event.get('action') == 'CLOSE' for event in events)
-                if report['entry'] and not draining:
-                    session.owner.submit_drain(folder, draining=True)
-                    draining = True
-                if draining and state.get('strategy', {}).get('draining') and not closing:
-                    session.owner.submit_manual_close(folder)
-                    closing = True
-                if closing and report['exit'] and not state.get('positions'):
-                    store.audit()
-                    freshness = execution_freshness(events)
-                    report['ledger'] = 'PASS'
-                    report['execution_freshness'] = freshness
-                    report['status'] = ('PAPER_CYCLE_PASS' if freshness.get('status') == 'PASS'
-                                        else 'NOT_CONFIRMED')
-                    break
-                time.sleep(.5)
             try:
-                export_current_report(workspace, output / 'paper_snapshot.zip', allow_empty=True,
-                                      session_info={'automatic_qa': True, 'read_only': True})
-            except Exception as exc:
-                report['snapshot_error'] = f'{type(exc).__name__}: {exc}'
-                report['status'] = 'NOT_CONFIRMED'
+                folder = session.owner.create_bot(config())
+                session.owner.request_start(folder)
+                store = Store(folder)
+                deadline = time.monotonic() + duration
+                draining = False
+                closing = False
+                while time.monotonic() < deadline:
+                    # request_start queues a command; it does not synchronously
+                    # launch the worker or create its PAPER ledger. Only the
+                    # worker creates that account, under its startup lease. Never
+                    # turn missing/corrupt previously initialized state into an
+                    # empty account, and never read an in-progress initialisation.
+                    if not paper_account_present(folder) or not store.marker.is_file():
+                        time.sleep(.5)
+                        continue
+                    report['account_ready'] = True
+                    state = store.read(include_charts=False)
+                    events = store.history(limit=500)
+                    report['entry'] = any(event.get('action') == 'OPEN' for event in events)
+                    report['exit'] = any(event.get('action') == 'CLOSE' for event in events)
+                    if report['entry'] and not draining:
+                        session.owner.submit_drain(folder, draining=True)
+                        draining = True
+                    if draining and state.get('strategy', {}).get('draining') and not closing:
+                        session.owner.submit_manual_close(folder)
+                        closing = True
+                    if closing and report['exit'] and not state.get('positions'):
+                        store.audit()
+                        freshness = execution_freshness(events)
+                        report['ledger'] = 'PASS'
+                        report['execution_freshness'] = freshness
+                        report['status'] = ('PAPER_CYCLE_PASS' if freshness.get('status') == 'PASS'
+                                            else 'NOT_CONFIRMED')
+                        break
+                    time.sleep(.5)
+                if not report['account_ready']:
+                    report['reason'] = 'Worker PAPER account was not ready before the deadline'
+                elif not report['entry']:
+                    report['reason'] = 'No PAPER entry before the deadline'
+                elif not report['exit']:
+                    report['reason'] = 'No completed PAPER exit before the deadline'
+            finally:
+                try:
+                    export_current_report(workspace, output / 'paper_snapshot.zip', allow_empty=True,
+                                          session_info={'automatic_qa': True, 'read_only': True})
+                except Exception as exc:
+                    report['snapshot_error'] = f'{type(exc).__name__}: {exc}'
+                    report['status'] = 'NOT_CONFIRMED'
         cleanup = json.loads((receipts / 'session.json').read_text(encoding='utf-8'))
         report['cleanup'] = {'status': cleanup.get('status'),
                              'services_retired': cleanup.get('services_retired')}
