@@ -81,13 +81,48 @@ def test_open_position_retains_long_urgent_lease(client, route, params):
     assert registry.calls[-1] == (route, params, 60, True)
 
 
-def test_historical_rest_not_shortened_and_ws_never_falls_back(client):
+@pytest.mark.parametrize('ws_enabled', [True, False])
+@pytest.mark.parametrize('limit', [10, 100, 150, 1000])
+def test_historical_rest_demand_is_short_and_renewable(client, monkeypatch, ws_enabled, limit):
     source, registry = client
-    params = {"category": "linear", "symbol": "COLDUSDT", "limit": 100, "interval": "1"}
+    monkeypatch.setenv('BCC_BYBIT_WS_KLINES', '1' if ws_enabled else '0')
+    params = {"category": "linear", "symbol": "COLDUSDT", "limit": limit, "interval": "1"}
     assert source.get(KLINE, params)["retCode"] == 0
-    assert registry.calls[-1] == (KLINE, params, 60, False)
+    assert registry.calls[-1] == (KLINE, params, 12, False)
+    key = HubRegistry.identity(KLINE, params)[0]
+    source._hub_renew_at[key] = 0
+    assert source.get(KLINE, params)["retCode"] == 0
+    assert registry.calls[-1] == (KLINE, params, 12, False)
+
+
+def test_risk_rest_demand_remains_long(client):
+    source, registry = client
     assert source.get(RISK, {"category": "linear", "symbol": "COLDUSDT"})["retCode"] == 0
     assert registry.calls[-1][2:] == (60, False)
+
+
+def test_824_completed_backfills_stop_polling_and_live_demand_renews(client, tmp_path, monkeypatch):
+    import time
+    source, _ = client
+    registry = HubRegistry(tmp_path / 'leases.sqlite')
+    source._hub_registry = registry
+    monkeypatch.setenv('BCC_BYBIT_WS_KLINES', '0')
+    wall = [1_795_000_000.]
+    mono = [1000.]
+    monkeypatch.setattr(time, 'time', lambda: wall[0])
+    monkeypatch.setattr(time, 'monotonic', lambda: mono[0])
+    def params(index):
+        return {'category': 'linear', 'symbol': f'COIN{index}USDT', 'interval': '1', 'limit': 150}
+    for index in range(824):
+        assert source.get(KLINE, params(index))['retCode'] == 0
+    with registry._connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM hub_subscriptions WHERE active_until>?', (wall[0],)).fetchone()[0] == 824
+    wall[0] += 13
+    mono[0] += 13
+    assert registry.due(limit=32) == []
+    assert source.get(KLINE, params(7))['retCode'] == 0
+    due = registry.due(limit=32)
+    assert len(due) == 1 and due[0][2]['symbol'] == 'COIN7USDT'
 
 
 def test_missing_and_old_risk_evidence_renew_before_recent():

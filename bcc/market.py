@@ -685,7 +685,7 @@ class PublicData:
             # On large portfolios those idle subscriptions generated a
             # continuous resubscription storm and crowded real position marks.
             urgent = self._position_critical_request(url, params)
-            transient_ws = (not urgent and type(params) is dict and (
+            transient_demand = (not urgent and type(params) is dict and (
                 (url == "https://api.bybit.com/v5/market/tickers"
                  and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"
                  and set(params) == {"category", "symbol"}
@@ -696,14 +696,18 @@ class PublicData:
                     and params.get("category") == "linear"
                     and params.get("limit") == 50)
                 or (url == "https://api.bybit.com/v5/market/kline"
-                    and os.environ.get("BCC_BYBIT_WS_KLINES") == "1"
-                    and set(params) == {"category", "symbol", "interval", "limit"}
+                    and set(params).issubset({"category", "symbol", "interval", "limit", "start", "end"})
+                    and {"category", "symbol", "interval", "limit"}.issubset(params)
                     and params.get("category") == "linear"
-                    and params.get("interval") == "1"
-                    and params.get("limit") == 10)
+                    and params.get("interval") == "1")
             ))
-            lifetime = 12 if transient_ws else 60
-            renewal = 4 if transient_ws else 20
+            # History scans are demand-driven too. Keeping each one-shot REST
+            # backfill alive for a minute made the Hub repeatedly refetch it
+            # every second after the scanner had already moved on, amplifying
+            # exchange rate limits. Twelve seconds exceeds the eight-second
+            # client wait; continuing demand renews the lease every four.
+            lifetime = 12 if transient_demand else 60
+            renewal = 4 if transient_demand else 20
             with self._lock:
                 if self._hub_registry is None:
                     self._hub_registry = HubRegistry(self.shared.path)
