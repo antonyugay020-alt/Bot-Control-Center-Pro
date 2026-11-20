@@ -24,6 +24,9 @@ class MarketTick:
     refresh_attempted: bool = False
     risk_only: bool = False
     risk_error: str = ''
+    # Runtime must recheck the original exchange candle timestamp after an
+    # asynchronous handoff, including each reuse alongside a fresh quote.
+    live_history: bool = False
 
 
 class MarketScheduler:
@@ -175,7 +178,7 @@ class MarketScheduler:
                 book = None
                 quote_error = str(exc)
         return MarketTick(symbol, bars, book, rates, marks, history_error, quote_error,
-                          margin_data)
+                          margin_data, live_history=True)
 
     def _quote(self, symbol):
         try:
@@ -302,7 +305,8 @@ class MarketScheduler:
                         # for the same position alongside the quote lane.
                         self._history_results[symbol] = MarketTick(
                             symbol, tick.bars, None, tick.rates, tick.funding_marks,
-                            tick.history_error, '', tick.margin_data)
+                            tick.history_error, '', tick.margin_data,
+                            live_history=tick.live_history)
                     else:
                         completed.append((symbol, tick, None))
                 except Exception as exc:
@@ -358,7 +362,8 @@ class MarketScheduler:
                                       history.rates if history else [],
                                       history.funding_marks if history else {},
                                       history.history_error if history else '', error,
-                                      history.margin_data if history else None)
+                                      history.margin_data if history else None,
+                                      live_history=bool(history and history.live_history))
                     if history is not None:
                         # A refreshed margin snapshot is delivered once;
                         # replaying it on each quote would regress newer

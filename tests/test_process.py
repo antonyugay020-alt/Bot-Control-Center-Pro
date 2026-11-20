@@ -22,14 +22,19 @@ from pathlib import Path
 import os
 print('REPLAY_START pid=%s parent=%s' % (os.getpid(), os.getppid()), flush=True)
 import bcc.worker as worker
-from bcc.market_clock import market_now, observed_quote
+from bcc.market_clock import clock, market_now, observed_quote
 class Session:
  def close(self):pass
 class ReplayPublicData:
  def __init__(self): self.session=Session()
  def candles(self,symbol,required):
   path=Path(__import__('sys').argv[__import__('sys').argv.index('--folder')+1])
-  self.frame=json.loads((path/'feed.json').read_text(encoding='utf-8'));return self.frame['bars']
+  self.frame=json.loads((path/'feed.json').read_text(encoding='utf-8'))
+  if 'market_origin' in self.frame:
+   wall=time.time(); mono=time.monotonic()
+   market=self.frame['market_origin']+(wall-self.frame['wall_origin'])+self.frame.get('clock_advance',0)
+   clock._reference=(market,market,wall,mono)
+  return self.frame['bars']
  def orderbook(self,symbol):
   p=self.frame['price'];stamp=market_now();return dict(at=stamp,bids=[[p-.01,10000]],asks=[[p+.01,10000]],qty_step=.0001,min_qty=.0001,min_notional=.01,tick_size=.01,
    margin_data=dict(symbol=symbol,quote=observed_quote(dict(at=stamp,bid=p,ask=p)),risk_at=stamp,
@@ -108,12 +113,16 @@ def setup_bot(repo, runner, name="Process"):
     cfg["sections"][0]["exit"] = group(condition("PRICE", 110, "cross_up", 1))
     cfg["settings"]["orders"]["count"] = 1
     folder = repo.create(cfg)
-    base = int(time.time()) // 60 * 60000 - 180000
+    wall_origin = time.time()
+    market_origin = int(wall_origin) // 60 * 60 + 10
+    base = int(market_origin) // 60 * 60000 - 120000
     frame = {
         "price": 101,
+        "market_origin": market_origin,
+        "wall_origin": wall_origin,
         "bars": [
             dict(t=base + i * 60000, open=x, high=x + 1, low=x - 1, close=x, volume=10)
-            for i, x in enumerate([99, 101])
+            for i, x in enumerate([99, 101, 101])
         ],
     }
     atomic_json(folder / "feed.json", frame)
@@ -242,6 +251,7 @@ def test_process_stop_restart_force_and_recovery(tmp_path):
             dict(t=last["t"] + 60000, open=111, high=112, low=110, close=111, volume=10)
         )
         frame["price"] = 111
+        frame["clock_advance"] = 120
         atomic_json(folder / "feed.json", frame)
         proc = launch(life, folder, runner)
         # A restarted worker may be scheduled behind real OS/PAPER processes
@@ -358,6 +368,7 @@ def test_worker_stops_automatically_after_deal_when_configured(tmp_path):
             dict(t=last["t"] + 60000, open=111, high=112, low=110, close=111, volume=10)
         )
         frame["price"] = 111
+        frame["clock_advance"] = 120
         atomic_json(folder / "feed.json", frame)
         child.wait(timeout=7)
         assert child.returncode == 0

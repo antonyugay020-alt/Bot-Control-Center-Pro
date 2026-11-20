@@ -200,7 +200,7 @@ def main():
       with store.transaction() as (state,events):state['margin_data'][held[0]]['risk_at']=time.time()-301
       bars,depth,observations=capture_probe_inputs(reader,target,held)
       enabled[0]=True
-      if process_tick(cfg,store,Veles(),MarketTick(target,bars,depth,[],{}),observations=observations):
+      if process_tick(cfg,store,Veles(),MarketTick(target,bars,depth,[],{},live_history=True),observations=observations):
        scheduler.retry_data_blocked(target)
       snapshot=store.read();assert len(snapshot['positions'])==len(held)
       assert any('Устарели публичные ступени риска' in row.get('reason','') for row in snapshot['diagnostics'][target]), repr(snapshot['diagnostics'].get(target))

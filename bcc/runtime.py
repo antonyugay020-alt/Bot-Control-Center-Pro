@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import sqlite3
 import time
 
@@ -61,6 +62,22 @@ def _apply_observations(state, observations):
         refresh_margin_data_diagnostics(state)
 
 
+def _expire_live_history(tick, now):
+    if not tick.live_history or not tick.bars or tick.history_error:
+        return False
+    last = tick.bars[-1]
+    stamp = last.get('t') if isinstance(last, dict) else None
+    try:
+        age = now - stamp / 1000 if type(stamp) is int else math.inf
+    except (OverflowError, TypeError):
+        age = math.inf
+    if math.isfinite(age) and 0 <= age < 120:
+        return False
+    tick.bars = []
+    tick.history_error = 'Устаревшие свечи'
+    return True
+
+
 def process_tick(cfg, store, engine, tick, *, observations=None):
     now = market_now()
     symbol = tick.symbol
@@ -85,6 +102,10 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
                 refresh_margin_data_diagnostics(state)
                 update_equity_metrics(state)
         return
+    # A scheduler handoff and the account transaction can each outlive a
+    # source candle. Recheck both before entering and at the strategy boundary.
+    # A fresh book remains usable for independent protective exits below.
+    live_history_expired = _expire_live_history(tick, now)
     if book is None:
         # Published funding is still valid accounting evidence when the book is
         # unavailable, or the coin was removed after its last trade was closed.
@@ -203,11 +224,15 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
         margin_error = margin_status(state) if state.get("margin_model") == MODEL else ""
         if liquidating or liquidation_breach or margin_error:
             state["_entry_blocked"] = margin_error or "Сокращение риска; новые входы и DCA приостановлены"
+        decision_now = market_now()
+        live_history_expired = _expire_live_history(tick, decision_now) or live_history_expired
         # The scanner must revisit a candidate after genuine market evidence
         # recovers; never retain its old signal or executable book. Manual
         # stops, liquidation and insufficient capital alone do not request retries.
-        data_blocked = bool(symbol in cfg['symbols'] and tick.bars and not tick.history_error
-                            and (stale or margin_error or book.get('margin_error')))
+        data_blocked = bool(symbol in cfg['symbols'] and
+                            (live_history_expired or
+                             (tick.bars and not tick.history_error and
+                              (stale or margin_error or book.get('margin_error')))))
         if not tick.bars or tick.history_error:
             for key, position in list(state["positions"].items()):
                 if position["symbol"] != symbol or position.get("exit_pending") or is_liquidating(position):
@@ -216,7 +241,7 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
                     record_completed_exit(cfg, state, key, position, int(now * 1000))
             state["diagnostics"][symbol] = [{"section": "Свечи", "reason": tick.history_error or "Нет пригодной истории закрытых свечей"}]
         else:
-            engine.process(cfg, state, events, symbol, tick.bars, bid, ask, int(now * 1000))
+            engine.process(cfg, state, events, symbol, tick.bars, bid, ask, int(decision_now * 1000))
         if not liquidating:
             liquidations(state, events)
         for position in state["positions"].values():
