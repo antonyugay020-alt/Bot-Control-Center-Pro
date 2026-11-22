@@ -1,13 +1,24 @@
 {
   "name": "BCC cloud controller (offline first)",
-  "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
-  "hostRequirements": {"cpus": 2, "memory": "4gb"},
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb"
+  },
   "updateContentCommand": "python --version",
-  "customizations": {"vscode": {"settings": {"python.defaultInterpreterPath": "/usr/local/bin/python"}}},
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  },
   "remoteEnv": {
     "BCC_PAID_APIS_ENABLED": "0",
     "BCC_LIVE_TRADING_ENABLED": "0",
     "GRAPHIFY_BACKEND": "none"
   },
-  "forwardPorts": []
+  "forwardPorts": [],
+  "build": {
+    "dockerfile": "Dockerfile"
+  }
 }
