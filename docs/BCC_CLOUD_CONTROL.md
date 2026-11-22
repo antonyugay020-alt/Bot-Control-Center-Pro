@@ -180,3 +180,26 @@ python -m tools.bcc_candidate_stage \\
 ```
 
 No such candidate diff has yet been produced. Do not fabricate one just to exercise the staging action. `/tmp` worktrees are ephemeral: save reviewed output according to the release workflow before destroying a Codespace. GitHub publication and any subsequent execution remain separately blocked. An independently reviewed test runner in a container with no credentials/network will be needed before executing model-written Python, even when the patch has passed this structural gate.
+
+## Next candidate boundary: Linux Docker QA, no network or host fallback
+
+At the 2026-11-22 checkpoint the user verified **10/10 PASS** for local staging, completing **52/52 PASS** across the five controller test groups (10 control + 10 GPT bundle + 12 budget + 10 patch gate + 10 local staging). The **4,018/4,018** passing core tests were on the untouched PR #12 base and are not a test of any future AI-generated patch.
+
+`tools/bcc_candidate_qa.py` is a separate **deny-by-default** test execution boundary. It accepts an already-inspected patch and previously staged temporary branch. Before any execution, it validates the exact source commit and prompt digest, patch hash, allowed file list, candidate branch name, local Git common dir, unmodified source, and candidate status.
+
+The default command only emits `OFFLINE_DOCKER_QA_PLAN`. Only the explicit `--execute-offline` flag may run full Linux tests in a locally cached Docker image pinned to its **exact image ID** (`sha256:...`). It will not pull an image or silently execute on the host if Docker is unavailable. The container has `--network=none`, no Linux capabilities, `no-new-privileges`, read-only source and root filesystem, fixed temporary scratch, unprivileged user, 2 CPUs, 3 GB memory, 256 PID limit, and 15-minute maximum; test output is size-limited and stored in a new private temporary log. There is no model, GitHub writer or Windows/trading integration.
+
+A *separate* QA image recipe is available at `tools/qa/BCC_QA_Dockerfile`. Building this image is a manual, networked package installation and can consume Codespaces quota. The built image must be reviewed and its exact local ID checked. The runtime itself never builds/pulls the image and has no network.
+
+New offline tests `tests/test_bcc_candidate_qa.py` check the Docker argv and scope/identity preflight through mocks; **these have not yet run in Codespaces**, and no actual candidate patch exists. Verify the new safety gate first:
+
+```bash
+cd /workspaces/Bot-Control-Center-Pro
+git pull --ff-only origin agent/bcc-cloud-control-20261122
+python -m unittest discover -s tests -p 'test_bcc_candidate_stage.py' -v
+python -m unittest discover -s tests -p 'test_bcc_candidate_qa.py' -v
+```
+
+Do **not** build a Docker image or run candidate QA yet: there is no accepted candidate patch, and a passing synthetic test cannot substitute for patch review. When an actual patch is proposed, its diff and source identity must first pass `bcc_patch_gate.py`, be manually reviewed, and be staged using `bcc_candidate_stage.py`; only then should the operator consider `bcc_candidate_qa.py` execution.
+
+Linux Docker isolation is a defense-in-depth control, not a guarantee against container runtime escapes or malicious code. The Docker image may need adjustments for project tests, and this approach **does not replace** Windows clean-unpack Modern Qt E2E or prove live Bybit market-data recovery. No paid provider calls, live trades, GitHub Action runs, automatic patch publication, branch merges, or release decisions are authorized.
