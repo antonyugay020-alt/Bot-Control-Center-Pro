@@ -66,7 +66,7 @@ class CloudGuardTests(unittest.TestCase):
                                "OLLAMA_BASE_URL": "http://x"}):
             report = run_graph(Path.cwd(), graphify="graphify")
         args, kwargs = run.call_args
-        self.assertEqual(args[0], ["graphify", "extract", ".", "--code-only", "--backend", "none"])
+        self.assertEqual(args[0], ["graphify", "extract", ".", "--code-only"])
         self.assertEqual(kwargs["env"]["GRAPHIFY_BACKEND"], "none")
         for name in ("OPENAI_API_KEY", "KIE_API_KEY", "OLLAMA_BASE_URL"):
             self.assertNotIn(name, kwargs["env"])
