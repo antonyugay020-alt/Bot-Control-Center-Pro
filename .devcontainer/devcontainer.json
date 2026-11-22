@@ -1,0 +1,24 @@
+{
+  "name": "BCC cloud controller (offline first)",
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb"
+  },
+  "updateContentCommand": "python --version",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  },
+  "remoteEnv": {
+    "BCC_PAID_APIS_ENABLED": "0",
+    "BCC_LIVE_TRADING_ENABLED": "0",
+    "GRAPHIFY_BACKEND": "none"
+  },
+  "forwardPorts": [],
+  "build": {
+    "dockerfile": "Dockerfile"
+  }
+}

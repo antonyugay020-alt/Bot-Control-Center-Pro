@@ -1,3 +1,9 @@
+# BCC cloud controller override — 2026-11-22
+
+This branch is exclusively for an offline-first GitHub Codespaces control-plane pilot. GPT Work and local LLMs (Ollama/Qwen) are prohibited. The target for initial review is the existing Bybit market-data recovery PR #12, inspected in a separate detached checkout; do not merge this diverged gateway branch with PR #12. Use tools/bcc_cloud_control.py and docs/BCC_CLOUD_CONTROL.md. No paid OpenAI/Kie.ai calls, background agents, GitHub Actions, live-trading operations, local PC access, merges or releases. All provider transport and autonomous GitHub writes remain disabled until separate implementation, independent review and explicit approval. The user-approved Kie.ai monthly limit is not API spending authorization. Historical guidance below referring to ChatGPT Work, Claude or PR #11 does not authorize those tools or supersede this pilot boundary.
+
+---
+
 # Instructions for long-running Codex / ChatGPT Work development
 
 ## Objective
