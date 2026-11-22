@@ -34,7 +34,14 @@ def _git(root: Path, *args: str, input_data: bytes | None = None,
                          "GEMINI_API_KEY", "GOOGLE_API_KEY"}}
     env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1",
                 "GIT_CONFIG_GLOBAL": os.devnull, "GIT_LFS_SKIP_SMUDGE": "1"})
-    argv = ["git", "-c", "core.hooksPath=" + os.devnull, "-C", str(root), *args]
+    argv = [
+        "git",
+        "-c", "core.hooksPath=" + os.devnull,
+        "-c", "core.fsmonitor=false",
+        "-c", "diff.external=",
+        "-c", "core.pager=cat",
+        "-C", str(root), *args,
+    ]
     try:
         completed = subprocess.run(argv, input=input_data, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, timeout=60, check=False,
