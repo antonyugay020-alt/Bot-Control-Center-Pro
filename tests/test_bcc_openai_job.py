@@ -89,6 +89,12 @@ class PinnedJobTests(unittest.TestCase):
                 write_bundle(target, b"overwrite")
             self.assertEqual(target.read_bytes(), b"safe")
 
+    def test_packet_cannot_be_written_into_public_checkout(self):
+        # A source file in the controller's GitHub checkout must never hold
+        # private review context, even for a public-repository workflow.
+        with self.assertRaises(JobBlocked):
+            write_bundle(Path.cwd() / "review-prompt.txt", b"source context")
+
     def test_secret_pattern(self):
         self.assertIsNotNone(TOKEN_PATTERN.search("sk-12345678901234567890"))
         self.assertIsNone(TOKEN_PATTERN.search("dummy-key-placeholder"))
