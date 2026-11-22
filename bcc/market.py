@@ -20,6 +20,14 @@ class DataUnavailable(RuntimeError):
     pass
 
 
+class WebSocketKlineUnavailable(DataUnavailable):
+    """Only a missing/unverified Hub WS tail; independent REST history may recover.
+
+    A provider policy refusal, host cooldown, or malformed response is NOT
+    this exception and must never silently turn into a fresh source.
+    """
+
+
 class SourceAccessDenied(DataUnavailable):
     """An upstream provider denied access; not a missing candle or stale quote.
 
@@ -647,6 +655,16 @@ class PublicData:
             raise DataUnavailable("Binance WebSocket поток импульса не подключён")
         # A refusal is a fleet-wide admission fence, not a retryable cache miss.
         self._assert_provider_allowed(host)
+        ws_kline_tail = (
+            os.environ.get("BCC_MARKET_HUB_MODE") == "client"
+            and os.environ.get("BCC_BYBIT_WS_KLINES") == "1"
+            and url == "https://api.bybit.com/v5/market/kline"
+            and type(params) is dict
+            and set(params) == {"category", "symbol", "interval", "limit"}
+            and params.get("category") == "linear"
+            and params.get("interval") == "1"
+            and params.get("limit") == 10
+        )
         # Explicit producer-side WebSocket transport for symbol-specific Bybit
         # quotes. Workers never receive the stream or exchange connections.
         if (self._quote_stream is not None
@@ -767,18 +785,15 @@ class PublicData:
                             and type(params) is dict and set(params) == {"token_id"}
                             and cached.get("_bcc_ws_polybook") is not True):
                         raise DataUnavailable("Market Data Hub: Polymarket WS стакан не подтверждён")
-                    if (url == "https://api.bybit.com/v5/market/kline"
-                            and os.environ.get("BCC_BYBIT_WS_KLINES") == "1"
-                            and type(params) is dict and
-                            set(params) == {"category", "symbol", "interval", "limit"}
-                            and params.get("category") == "linear"
-                            and params.get("interval") == "1"
-                            and params.get("limit") == 10
-                            and cached.get("_bcc_ws_kline") is not True):
-                        raise DataUnavailable("Market Data Hub: WebSocket свеча не подтверждена")
+                    if ws_kline_tail and cached.get("_bcc_ws_kline") is not True:
+                        raise WebSocketKlineUnavailable(
+                            "Market Data Hub: WebSocket свеча не подтверждена")
                     return received(cached, "market_hub")
                 if time.monotonic() >= deadline:
-                    raise DataUnavailable("Market Data Hub: нет свежего снимка (очередь или источник недоступен)")
+                    error = "Market Data Hub: нет свежего снимка (очередь или источник недоступен)"
+                    if ws_kline_tail:
+                        raise WebSocketKlineUnavailable(error)
+                    raise DataUnavailable(error)
                 self.stop_event.wait(0.05)
             raise DataUnavailable("Получение данных остановлено")
         now = time.time()
@@ -1041,34 +1056,62 @@ class PublicData:
         required = max(100, int(required))
         with self._lock:
             previous = self.cache.get(("bars", symbol), (0, []))[1]
-        # Re-fetch the unfinished tail; its OHLCV must replace the older sample.
-        recent_tail = previous and market_now() * 1000 - previous[-1]["t"] <= 9 * 60000
-        count = 10 if len(previous) >= required and recent_tail else required
+        # One missing WS delta must not trap a warm scanner behind a
+        # 10-row stream-only Hub subscription. REST is authorised for
+        # historical candles (never for missing WS mark collateral).
+        age_ms = market_now() * 1000 - previous[-1]["t"] if previous else None
+        recent_tail = (age_ms is not None and 0 <= age_ms <= 9 * 60000)
+        warm_tail = len(previous) >= required and recent_tail
+        ws_tail = bool(warm_tail and age_ms < 120000)
+        count = 10 if ws_tail else 100 if warm_tail else required
         found = {b["t"]: b for b in previous}
+
+        def absorb(rows):
+            for row in rows:
+                found[int(row[0])] = dict(
+                    t=int(row[0]), open=float(row[1]), high=float(row[2]),
+                    low=float(row[3]), close=float(row[4]), volume=float(row[5]),
+                )
+
         end = None
         for _ in range((count + 999) // 1000):
             args = {"symbol": symbol, "interval": "1", "limit": min(1000, count)}
             if end is not None:
                 args["end"] = end
-            data = self.bybit("kline", args)
+            try:
+                data = self.bybit("kline", args)
+            except WebSocketKlineUnavailable:
+                if not ws_tail or end is not None:
+                    raise
+                # Typed WS-tail miss only: a separate, bounded REST backfill
+                # through the ordinary Hub and its provider budget/cooldown.
+                # This cannot refresh a missing mark-price or risk tier.
+                args["limit"] = 100
+                data = self.bybit("kline", args)
+                ws_tail = False
             rows = data["result"]["list"]
             if not rows:
                 break
-            for row in rows:
-                found[int(row[0])] = dict(
-                    t=int(row[0]),
-                    open=float(row[1]),
-                    high=float(row[2]),
-                    low=float(row[3]),
-                    close=float(row[4]),
-                    volume=float(row[5]),
-                )
+            absorb(rows)
             end = min(int(row[0]) for row in rows) - 1
             count -= len(rows)
             if count <= 0:
                 break
+
         bars = [found[t] for t in sorted(found)][-required:]
-        if not bars or any(b["t"] - a["t"] != 60000 for a, b in zip(bars, bars[1:])):
+        contiguous = (bars and all(b["t"] - a["t"] == 60000
+                                  for a, b in zip(bars, bars[1:])))
+        if not contiguous and ws_tail:
+            # WS can resume with the latest minute while the prior minute
+            # was lost. Repair the missing minute through independently
+            # budgeted public REST; never fill a gap synthetically.
+            repair = self.bybit("kline",
+                                {"symbol": symbol, "interval": "1", "limit": 100})
+            absorb(repair["result"]["list"])
+            bars = [found[t] for t in sorted(found)][-required:]
+            contiguous = (bars and all(b["t"] - a["t"] == 60000
+                                      for a, b in zip(bars, bars[1:])))
+        if not contiguous:
             raise DataUnavailable("Разрывы в истории свечей")
         if not 0 <= market_now() - bars[-1]["t"] / 1000 < 120:
             raise DataUnavailable("Устаревшие свечи")
