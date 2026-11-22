@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
+import tempfile
 
 from tools.bcc_cloud_control import REPOSITORY, TARGET_BRANCH, SHA, validate_origin
 
@@ -144,8 +145,16 @@ def prepare(root: Path, sha: str) -> tuple[dict[str, object], bytes]:
 
 def write_bundle(destination: Path, payload: bytes) -> Path:
     destination = destination.expanduser().absolute()
+    # Bundle content is private review context even if the source repository
+    # is public. Refuse paths outside the host's temporary workspace so an
+    # operator cannot accidentally write it into the controller checkout.
+    temporary_root = Path(tempfile.gettempdir()).resolve()
+    if not destination.is_relative_to(temporary_root):
+        raise JobBlocked("Review packet must remain in the temporary workspace")
+    if destination.parent.is_symlink():
+        raise JobBlocked("Linked output directory refused")
     parent = destination.parent.resolve(strict=True)
-    if parent.is_symlink() or not parent.is_dir():
+    if not parent.is_relative_to(temporary_root) or not parent.is_dir():
         raise JobBlocked("Invalid output directory")
     if destination.exists() or destination.is_symlink():
         raise JobBlocked("Refusing to overwrite an existing review bundle")
