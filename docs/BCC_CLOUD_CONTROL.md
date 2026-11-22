@@ -52,3 +52,23 @@ This controller is based on existing BCC Kie.ai offline handoff and budget code.
 ## Further engineering required
 
 This is an **offline cloud control scaffold**, not an autonomous agent. Before enabling GPT/Kie.ai calls or branch writes: implement independently verifiable approval identity and persistent shared billing admission, reconcile old holds, enforce per-call budgets at transport, restrict GitHub scopes to a staging branch, implement safe tool execution sandbox and audit logs, and verify refusal behavior under faults. The Kie.ai gateway and PR #12 have diverged; do not merge blindly. The BCC release remains blocked until full-source regression, real worker/risk PAPER admission recovery and native Windows Qt E2E are proven.
+
+## Linux Qt system dependency for regression (2026-11-22)
+
+On an already-running Codespace created before the new Dockerfile, tests may fail during collection with `ImportError: libGL.so.1`. This is a **container system-library failure**, not a BCC test failure. Fix the existing container without a rebuild (which would remove `/tmp/bcc-pr12`):
+
+```bash
+sudo apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  libgl1 libegl1 libopengl0 libglib2.0-0 libdbus-1-3 libfontconfig1 \
+  libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 \
+  libxcb-image0 libxcb-keysyms1 libxcb-render-util0
+cd /tmp/bcc-pr12
+QT_QPA_PLATFORM=offscreen PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:tests \
+  /tmp/bcc-full-qa/bin/python -m pytest -q tests > /tmp/bcc-full-qa.log 2>&1
+result=$?
+tail -n 35 /tmp/bcc-full-qa.log
+printf 'EXIT_CODE=%s\\n' "$result"
+```
+
+The Codespaces Dockerfile now records these dependencies for subsequent rebuilds. A code diff and mock tests do not verify the Docker build; verify in the actual Codespace. The source under test must remain at the reviewed PR #12 SHA. Do not install desktop/VNC drivers or touch live Windows bots.
