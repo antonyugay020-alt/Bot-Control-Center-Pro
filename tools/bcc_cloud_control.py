@@ -125,7 +125,7 @@ def run_graph(root: Path, *, graphify: str | None = None) -> dict[str, str]:
     env["GRAPHIFY_BACKEND"] = "none"
     try:
         completed = subprocess.run(
-            [program, "extract", ".", "--code-only", "--backend", "none"],
+            [program, "extract", ".", "--code-only"],
             cwd=root, env=env, check=False, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, timeout=600,
         )
