@@ -152,3 +152,31 @@ python -m tools.bcc_patch_gate \\
 ```
 
 Do not invent or create a dummy patch solely to force this check. This module implements **no** model invocation, no automatic patch application, no GitHub writes and no merged release. Windows Qt E2E and financial protection checks still gate acceptance.
+
+## Local candidate branch staging (2026-11-22; no PR12 modification)
+
+`tools/bcc_candidate_stage.py` is a strictly local, review-only staging boundary. It takes an **already proposed** unified patch, re-verifies the exact PR12 commit and GPT task digest, runs `tools/bcc_patch_gate.py` again, and creates a **new local Git worktree and branch** named `agent/bcc-pr12-review-<diff-digest>` in a private temporary folder. It disables Git hooks and inherited Git provider/config environment and refuses local Git checkout filters. It performs a second `git apply --check`, applies the patch to the **new** worktree only, checks Git status, changed line counts, and baseline SHA, and verifies that the original detached source snapshot is unchanged. If staging fails, it attempts to remove only the newly created stage and candidate branch.
+
+It **does not** execute candidate code, run tests, commit, push, create GitHub PRs, merge, contact models or place orders. A passing stage is a **proposal for manual review**, not a security sandbox or proof that the patched source is safe. The working tree shares the local repository's Git object store; it is isolated for edits, not a hostile-code execution boundary.
+
+Local isolated Git fixture tests exercised 10 scenarios successfully; the true-source and patch-gate interfaces need confirmation in Codespaces. The user had already confirmed **42/42 PASS** for the previous cloud controller guards.
+
+Check the new staging integration without staging an actual unreviewed patch:
+
+```bash
+cd /workspaces/Bot-Control-Center-Pro
+git pull --ff-only origin agent/bcc-cloud-control-20261122
+python -m unittest discover -s tests -p 'test_bcc_candidate_stage.py' -v
+```
+
+If the final task eventually receives a reviewable `/tmp/bcc-reviewed-candidate.diff`, after inspecting the patch text, the explicit **local-only** staging command is:
+
+```bash
+python -m tools.bcc_candidate_stage \\
+  --root /tmp/bcc-pr12 \\
+  --sha 12816756c13f9e979db26c9ffa01b4be8374c9a8 \\
+  --prompt-sha256 962cb7375a37f877c5932277ae94a6fe83ed2ebfe00e7611609b1e4bab797092 \\
+  --diff /tmp/bcc-reviewed-candidate.diff
+```
+
+No such candidate diff has yet been produced. Do not fabricate one just to exercise the staging action. `/tmp` worktrees are ephemeral: save reviewed output according to the release workflow before destroying a Codespace. GitHub publication and any subsequent execution remain separately blocked. An independently reviewed test runner in a container with no credentials/network will be needed before executing model-written Python, even when the patch has passed this structural gate.
