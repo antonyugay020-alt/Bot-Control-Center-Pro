@@ -89,11 +89,18 @@ class PinnedJobTests(unittest.TestCase):
                 write_bundle(target, b"overwrite")
             self.assertEqual(target.read_bytes(), b"safe")
 
-    def test_packet_cannot_be_written_into_public_checkout(self):
-        # A source file in the controller's GitHub checkout must never hold
-        # private review context, even for a public-repository workflow.
-        with self.assertRaises(JobBlocked):
-            write_bundle(Path.cwd() / "review-prompt.txt", b"source context")
+    def test_packet_cannot_be_written_outside_private_temp(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            private = root / "private"
+            private.mkdir()
+            outside = root / "public" / "review-prompt.txt"
+            outside.parent.mkdir()
+            with patch("tools.bcc_openai_job.tempfile.gettempdir",
+                       return_value=str(private)):
+                with self.assertRaises(JobBlocked):
+                    write_bundle(outside, b"source context")
+            self.assertFalse(outside.exists())
 
     def test_secret_pattern(self):
         self.assertIsNotNone(TOKEN_PATTERN.search("sk-12345678901234567890"))
