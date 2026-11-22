@@ -72,3 +72,22 @@ printf 'EXIT_CODE=%s\\n' "$result"
 ```
 
 The Codespaces Dockerfile now records these dependencies for subsequent rebuilds. A code diff and mock tests do not verify the Docker build; verify in the actual Codespace. The source under test must remain at the reviewed PR #12 SHA. Do not install desktop/VNC drivers or touch live Windows bots.
+
+## PR #12 full Linux regression and offline GPT review packet
+
+The user's Codespaces full test suite on pinned source `12816756c13f9e979db26c9ffa01b4be8374c9a8` completed **4018 passed, EXIT_CODE=0** on CPython 3.12.16 and headless PySide6. Evidence and Windows limitations: `docs/BCC_PR12_LINUX_QA_20261122.md`.
+
+The next cloud controller phase is a **source-bound offline GPT review packet**. It does not send model requests, query tokens or modify branches. In the existing Codespace, switch to the controller branch before running it:
+
+```bash
+cd /workspaces/Bot-Control-Center-Pro
+git pull --ff-only origin agent/bcc-cloud-control-20261122
+python -m unittest discover -s tests -p 'test_bcc_openai_job.py' -v
+python -m tools.bcc_openai_job \
+  --root /tmp/bcc-pr12 \
+  --sha 12816756c13f9e979db26c9ffa01b4be8374c9a8
+```
+
+Expected report is `OFFLINE_REVIEW_BUNDLE`, `approval=NOT_GRANTED`, `network_calls=DISABLED`, `paid_calls=DISABLED`. The optional `--output /tmp/bcc-reviewed-task.txt` generates review text outside the public source repository with restrictive file permissions; this file is not a credential or a paid-call approval. Source excerpts are restricted to five reviewed market-data paths and original source hashes; an unreviewed/new SHA, modified tracked source, checkout on a branch, symlink, oversize text, or potential embedded token aborts generation.
+
+The source ranges were checked against the source-pinned GitHub files (approximately 54.8 KB of excerpts, below 90 KB total packet ceiling). This is a **static review bundle, not a full autonomous GPT agent**. Actual provider use still requires an approved model and maximum price, an auditable one-task authorization bound to the exact prompt hash, a persistent ledger distinct from the historical Kie.ai holds, credential isolation, and an independently enforced billable transport. The existing Kie.ai $20/month ceiling cannot be reused as OpenAI credits. PR #14 remains draft; no live trading, automatic writes, provider calls or release until separate review and explicit consent.
