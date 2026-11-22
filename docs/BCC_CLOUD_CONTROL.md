@@ -91,3 +91,35 @@ python -m tools.bcc_openai_job \
 Expected report is `OFFLINE_REVIEW_BUNDLE`, `approval=NOT_GRANTED`, `network_calls=DISABLED`, `paid_calls=DISABLED`. The optional `--output /tmp/bcc-reviewed-task.txt` generates review text outside the public source repository with restrictive file permissions; this file is not a credential or a paid-call approval. Source excerpts are restricted to five reviewed market-data paths and original source hashes; an unreviewed/new SHA, modified tracked source, checkout on a branch, symlink, oversize text, or potential embedded token aborts generation.
 
 The source ranges were checked against the source-pinned GitHub files (approximately 54.8 KB of excerpts, below 90 KB total packet ceiling). This is a **static review bundle, not a full autonomous GPT agent**. Actual provider use still requires an approved model and maximum price, an auditable one-task authorization bound to the exact prompt hash, a persistent ledger distinct from the historical Kie.ai holds, credential isolation, and an independently enforced billable transport. The existing Kie.ai $20/month ceiling cannot be reused as OpenAI credits. PR #14 remains draft; no live trading, automatic writes, provider calls or release until separate review and explicit consent.
+
+## OpenAI API cost controls — offline simulation only
+
+The connected Codespace has verified the SHA-bound review task (`input_sha256=962cb7375a37f877c5932277ae94a6fe83ed2ebfe00e7611609b1e4bab797092`; 55,515 bytes) with **9/9 source-bundle tests PASS**. This was **not** a provider request or model response. Source snapshot remains `12816756c13f9e979db26c9ffa01b4be8374c9a8`.
+
+A separate `tools/bcc_openai_budget.py` now implements an **offline spending simulation**:
+- no default OpenAI monthly budget: simulation initialization requires an explicit positive cap;
+- request ID, one-time test approval ID, selected model, target commit, prompt SHA-256 and maximum reservation amount are bound together;
+- SQLite transaction is atomic; repeated approval/request IDs fail closed; pending holds consume capacity across month boundaries;
+- a missing/unreadable/corrupt ledger blocks all operations;
+- verified invoice settlement and actual HTTP transport are **not implemented** (unresolved holds remain occupied);
+- Kie.ai's separate $20 limit is left unchanged; a new local Codespace ledger is not proof of available OpenAI funds.
+
+Run **new** offline tests in the current cloud controller checkout after pulling PR #14:
+
+```bash
+cd /workspaces/Bot-Control-Center-Pro
+git pull --ff-only origin agent/bcc-cloud-control-20261122
+python -m unittest discover -s tests -p 'test_bcc_openai_budget.py' -v
+python -m unittest discover -s tests -p 'test_bcc_openai_job.py' -v
+```
+
+To create an offline prompt file **in the temporary workspace only**, and not accidentally publish source excerpts to GitHub:
+
+```bash
+python -m tools.bcc_openai_job \\
+  --root /tmp/bcc-pr12 \\
+  --sha 12816756c13f9e979db26c9ffa01b4be8374c9a8 \\
+  --output /tmp/bcc-reviewed-task.txt
+```
+
+**This is not API integration.** Test verifier callbacks are synthetic and must never be treated as user authorization. Before any real OpenAI call: fix the actual model and verified price, explicitly approve a dollar cap for that exact task and prompt, persist and reconcile a trusted accounting ledger across Codespace lifecycles, build a network transport that independently enforces the approval and spending ceiling, and verify secrets/retries and GitHub write permissions. Neither project approval nor free trial/account credits are consent to spend. No Work, Qwen/Ollama, trading keys or bot restarts.
