@@ -32,7 +32,7 @@ This controller is based on existing BCC Kie.ai offline handoff and budget code.
 6. Optional Graphify code-only analysis *in the cloud*, without a local model. Install the official PyPI distribution **graphifyy** with `uv tool install graphifyy` as in Graphify documentation, after reviewing available quota. Then run:
 
    ```bash
-   GRAPHIFY_BACKEND=none graphify extract /tmp/bcc-pr12 --code-only --backend none
+   GRAPHIFY_BACKEND=none graphify extract /tmp/bcc-pr12 --code-only
    GRAPHIFY_BACKEND=none graphify query "how does market data reach risk and paper entry?"
    ```
 
@@ -123,3 +123,32 @@ python -m tools.bcc_openai_job \\
 ```
 
 **This is not API integration.** Test verifier callbacks are synthetic and must never be treated as user authorization. Before any real OpenAI call: fix the actual model and verified price, explicitly approve a dollar cap for that exact task and prompt, persist and reconcile a trusted accounting ledger across Codespace lifecycles, build a network transport that independently enforces the approval and spending ceiling, and verify secrets/retries and GitHub write permissions. Neither project approval nor free trial/account credits are consent to spend. No Work, Qwen/Ollama, trading keys or bot restarts.
+
+## Pre-application patch review gate (2026-11-22)
+
+The read-only patch checker `tools/bcc_patch_gate.py` examines a candidate unified Git diff before a human reviewer authorizes any source changes. It accepts *only* changed files in the explicitly reviewed Bybit market-data / regression-test allowlist, and requires the exact PR #12 commit and prompt hash. It refuses new, deleted, renamed, symlink and binary files; unknown paths; duplicate file patches; obvious secrets; structurally unusual patches; stale hunks; and changes above 1,000 lines. It runs **only** `git apply --check`, `--numstat` and `--summary` (never bare `git apply`). A passing report is NOT approval, not actual patch application, and not a test result.
+
+Locally constructed offline tests exercised the patch gate's Git checks in an isolated mock-source repository; **10/10 passed**, but the dependent source-validation function was stubbed for this local test. The actual PR14 integration with the pinned PR12 snapshot must be rechecked in Codespaces.
+
+When PR #14 is pulled, verify all its no-cost controls in Codespaces:
+
+```bash
+cd /workspaces/Bot-Control-Center-Pro
+git pull --ff-only origin agent/bcc-cloud-control-20261122
+python -m unittest discover -s tests -p 'test_bcc_cloud_control.py' -v
+python -m unittest discover -s tests -p 'test_bcc_openai_job.py' -v
+python -m unittest discover -s tests -p 'test_bcc_openai_budget.py' -v
+python -m unittest discover -s tests -p 'test_bcc_patch_gate.py' -v
+```
+
+A candidate patch generated and separately reviewed for the pinned task could be checked **without applying it**, but none has been generated or authorized yet:
+
+```bash
+python -m tools.bcc_patch_gate \\
+  --root /tmp/bcc-pr12 \\
+  --sha 12816756c13f9e979db26c9ffa01b4be8374c9a8 \\
+  --prompt-sha256 962cb7375a37f877c5932277ae94a6fe83ed2ebfe00e7611609b1e4bab797092 \\
+  --diff /tmp/reviewed-candidate.diff
+```
+
+Do not invent or create a dummy patch solely to force this check. This module implements **no** model invocation, no automatic patch application, no GitHub writes and no merged release. Windows Qt E2E and financial protection checks still gate acceptance.
