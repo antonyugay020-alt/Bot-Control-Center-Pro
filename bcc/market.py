@@ -755,8 +755,13 @@ class PublicData:
             # This is a bounded queue wait, NOT permission to use an expired
             # market snapshot. In an overloaded system the client fails closed.
             deadline = time.monotonic() + (
-                (4.0 if getattr(self._thread, "mark_subscription_warmup", False) else 0.8)
-                if getattr(self._thread, "mark_intent", False) else 8.0
+                # Bounded WS-tail wait for existing exposure. A genuine WS
+                # miss can then use a separately admitted REST history read.
+                # Do not extend the candle timestamp or bypass policy fences.
+                0.8 if ws_kline_tail and getattr(self._thread, "position_history", False)
+                else (4.0 if getattr(self._thread, "mark_subscription_warmup", False)
+                      else 0.8) if getattr(self._thread, "mark_intent", False)
+                else 8.0
             )
             while not self.stop_event.is_set():
                 try:
