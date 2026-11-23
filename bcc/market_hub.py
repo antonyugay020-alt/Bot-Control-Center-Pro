@@ -642,17 +642,22 @@ class HubRegistry:
                 clauses.append("NOT (url=? AND CASE WHEN json_valid(params) "
                                "THEN (" + shape + ") ELSE 0 END)")
             skip_sql += ' AND ' + ' AND '.join(clauses)
-        # Financial exposure evidence must outrank lower-criticality
-        # indicator history even when an older candle subscription is due.
-        # This affects scheduling only, never provider admission, freshness
-        # checks, lease ownership, or the real rate budget.
+        # Rank actual financial-risk metadata before executable price/book,
+        # then held-position candles. Grouping book with risk as equal-priority
+        # lets an already-backlogged quote queue consume the one reserved
+        # physical lane when a NEW tier request arrives. That silently
+        # defeats the financial reserve. This is ordering only: provider
+        # quotas, leases and freshness checks remain authoritative.
         urgent_order = (
-            " ORDER BY CASE WHEN url IN ("
+            " ORDER BY CASE "
+            "WHEN url IN ("
             "'https://api.bybit.com/v5/market/risk-limit',"
-            "'https://api.bybit.com/v5/market/instruments-info',"
+            "'https://api.bybit.com/v5/market/instruments-info'"
+            ") THEN 0 "
+            "WHEN url IN ("
             "'https://api.bybit.com/v5/market/tickers',"
             "'https://api.bybit.com/v5/market/orderbook'"
-            ") THEN 0 ELSE 1 END, next_due,k LIMIT ?"
+            ") THEN 1 ELSE 2 END, next_due,k LIMIT ?"
         )
         with self._connect() as db:
             now = time.time()
