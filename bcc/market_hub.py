@@ -356,10 +356,19 @@ class HubRegistry:
             # A subscription may expire while waiting on a fleet-wide writer.
             # Refresh its incarnation and TTL from transaction admission.
             now = time.time()
+            # A new request after a parked (completed) snapshot must have a
+            # fresh subscription fencing token. Otherwise the older in-flight
+            # completion can overwrite this new demand with a 3600s deadline.
+            # Do NOT rotate for every concurrent caller when next_due=0:
+            # they already share one outstanding fetch and token churn could
+            # starve acknowledgements indefinitely. The whole decision is
+            # transactional with the next_due rearm.
             db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until,subscription_token)
               VALUES(?,?,?,?,0,?,?) ON CONFLICT(k) DO UPDATE SET
               active_until=max(hub_subscriptions.active_until,excluded.active_until),
-              subscription_token=CASE WHEN hub_subscriptions.active_until<=?
+              subscription_token=CASE
+                             WHEN (?=1 AND hub_subscriptions.next_due>?)
+                             OR hub_subscriptions.active_until<=?
                              OR hub_subscriptions.params<>excluded.params
                              OR hub_subscriptions.url<>excluded.url
                              THEN excluded.subscription_token
@@ -379,7 +388,8 @@ class HubRegistry:
                               THEN '' ELSE hub_subscriptions.last_error END''',
               (key, url, encoded, now + lifetime,
                now + min(lifetime * 0.75, 90) if priority else 0,
-               generation, now, now, int(force_due), now, now))
+               generation, int(force_due), now, now, now,
+               int(force_due), now, now))
         return key
 
     def request_once(self, url, params, *, lifetime=12, priority=False):
