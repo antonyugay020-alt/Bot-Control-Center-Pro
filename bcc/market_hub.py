@@ -1049,8 +1049,15 @@ class MarketDataHub:
         """
         context = getattr(self.source, '_thread', None)
         previous = getattr(context, 'position_mark', False) if context is not None else False
+        # The Hub queue has two urgent classes, not one HTTP privilege.
+        # Held-position kline history may outrank cold scans in scheduling,
+        # but it MUST NOT consume PublicCache's reserved Bybit financial
+        # mark/risk request budget. A history request is never a mark.
+        financial_priority = bool(
+            urgent and url != 'https://api.bybit.com/v5/market/kline'
+        )
         if context is not None:
-            context.position_mark = bool(urgent)
+            context.position_mark = financial_priority
         try:
             return self.source.get(url, params=params)
         finally:
