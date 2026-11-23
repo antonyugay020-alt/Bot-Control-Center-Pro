@@ -186,3 +186,81 @@ def test_old_privileged_mark_requests_remain_untouched(hub_client):
     # The ticker result here is fake; only Hub intent and lease are asserted.
     src.get("https://api.bybit.com/v5/market/tickers", args)
     assert rec.subscriptions[-1][-2:] == (60, True)
+
+
+def test_historical_snapshot_stops_polling_after_success_until_new_demand(tmp_path):
+    """One actual GET must not cause twelve seconds of redundant refetches."""
+    registry = HubRegistry(tmp_path / "oneshot.sqlite")
+    params = req("HELDUSDT", 150)
+    key = registry.request_once(KLINE, params, lifetime=12, priority=True)
+    assert len(registry.due(limit=5)) == 1
+    assert registry.claim_leader("synthetic-owner", lifetime=30)
+    token = registry.leader_token("synthetic-owner")
+    with registry._connect() as db:
+        incarnation = db.execute(
+            "SELECT subscription_token FROM hub_subscriptions WHERE k=?", (key,)
+        ).fetchone()[0]
+    assert registry.finish_owned(key, 3600, "synthetic-owner",
+                                 token=token, subscription_token=incarnation)
+    assert registry.due(limit=5) == []
+    # A passive lease renewal must not rearm a previously delivered history.
+    registry.subscribe(KLINE, params, lifetime=12, priority=True)
+    assert registry.due(limit=5) == []
+    # A real subsequent source request explicitly resumes without waiting
+    # for 12s lease expiry or the prior 3600s parked deadline.
+    registry.request_once(KLINE, params, lifetime=12, priority=True)
+    assert registry.due(limit=5)[0][0] == key
+
+
+def test_only_historical_kline_can_force_due(tmp_path):
+    registry = HubRegistry(tmp_path / "only-history.sqlite")
+    with pytest.raises(ValueError, match="Only validated Bybit historical"):
+        registry.request_once(RISK,
+                              {"category": "linear", "symbol": "HELDUSDT"},
+                              lifetime=12, priority=True)
+    with pytest.raises(ValueError, match="Only validated Bybit historical"):
+        registry.subscribe(BOOK, {"category": "linear", "symbol": "HELDUSDT",
+                                  "limit": 50},
+                           lifetime=12, priority=True, force_due=True)
+
+
+def test_hub_rest_history_parks_on_success_and_retries_on_failure(tmp_path):
+    from bcc.market_hub import MarketDataHub
+    class FakeSource:
+        shared = object()
+        def close(self): pass
+    producer = MarketDataHub(tmp_path / "delay.sqlite", FakeSource(), max_workers=1)
+    try:
+        assert producer._refresh_delay(KLINE, req("HELDUSDT", 100)) == 3600
+        assert producer._refresh_delay(KLINE, req("HELDUSDT", 150), failed=True) == 2
+        assert producer._refresh_delay(RISK, {"category": "linear",
+                                              "symbol": "HELDUSDT"}) != 3600
+    finally:
+        producer.close()
+
+
+def test_client_rearms_rest_only_but_keeps_ws_tail_subscribed(hub_client):
+    src, rec = hub_client
+    events = []
+    def request_once(url, params, *, lifetime, priority):
+        events.append((url, dict(params), lifetime, priority))
+    rec.request_once = request_once
+    src.get(KLINE, req("COLDUSDT", 150))
+    assert events == [(KLINE, req("COLDUSDT", 150), 12, False)]
+    src.get(KLINE, req("WSUSDT", 10))
+    assert len(events) == 1
+    assert rec.subscriptions[-1] == (KLINE, req("WSUSDT", 10), 12, False)
+
+
+def test_expired_rest_lease_rearms_only_on_live_client_demand(hub_client):
+    src, rec = hub_client
+    events = []
+    def request_once(url, params, *, lifetime, priority):
+        events.append((url, dict(params), lifetime, priority))
+    rec.request_once = request_once
+    for _ in range(3):
+        src.get(KLINE, req("COLDUSDT", 100))
+    # Every NEW worker read is an explicit request, unlike the old
+    # background re-poll after the first GET completed.
+    assert len(events) == 3
+    assert all(v[2:] == (12, False) for v in events)
