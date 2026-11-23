@@ -452,10 +452,14 @@ class MarketScheduler:
             # its own independent executable book is fresh: signal-based
             # protection and recovery still need current candles. The owner
             # retains its portfolio-wide entry/DCA risk checks.
-            # Historical indicators are non-executable inputs. Their
-            # refresh must not depend on a simultaneous <=2s book snapshot;
-            # the dedicated position quote/risk lane and process_tick retain
-            # strict live-book/mark/tier admission at execution time.
+            # A native position_candles adapter has an independently
+            # prioritized history lane; it may refresh non-executable candles
+            # while the quote is stale. Legacy adapters only have candles()
+            # and require a fresh independently verified quote before starting
+            # history, preserving their original safety/ordering contract.
+            if (history_only and not callable(getattr(self.source, 'position_candles', None))
+                    and not book_is_fresh(self._quote_ready.get(symbol, 0))):
+                return False
             opened = [
                 p["opened"]
                 for p in list(state["positions"].values())
