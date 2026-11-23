@@ -136,7 +136,15 @@ class MarketScheduler:
         bars = []
         if manage:
             try:
-                bars = self.source.candles(symbol, required)
+                # A held position's indicator history has priority over cold
+                # scanner discovery; it is *not* executable risk evidence.
+                # Third-party adapters without this explicit capability keep
+                # their original candles(symbol, required) contract.
+                position_history = getattr(self.source, 'position_candles', None)
+                if urgent and callable(position_history):
+                    bars = position_history(symbol, required)
+                else:
+                    bars = self.source.candles(symbol, required)
             except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
                 history_error = str(exc)
         rates = []
