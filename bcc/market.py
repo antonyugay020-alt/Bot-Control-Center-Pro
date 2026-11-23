@@ -714,12 +714,12 @@ class PublicData:
             # On large portfolios those idle subscriptions generated a
             # continuous resubscription storm and crowded real position marks.
             urgent = self._position_critical_request(url, params)
-            transient_demand = (not urgent and type(params) is dict and (
-                (url == "https://api.bybit.com/v5/market/tickers"
+            transient_demand = (type(params) is dict and (
+                (not urgent and url == "https://api.bybit.com/v5/market/tickers"
                  and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"
                  and set(params) == {"category", "symbol"}
                  and params.get("category") == "linear")
-                or (url == "https://api.bybit.com/v5/market/orderbook"
+                or (not urgent and url == "https://api.bybit.com/v5/market/orderbook"
                     and os.environ.get("BCC_BYBIT_WS_BOOKS") == "1"
                     and set(params) == {"category", "symbol", "limit"}
                     and params.get("category") == "linear"
@@ -730,11 +730,10 @@ class PublicData:
                     and params.get("category") == "linear"
                     and params.get("interval") == "1")
             ))
-            # History scans are demand-driven too. Keeping each one-shot REST
-            # backfill alive for a minute made the Hub repeatedly refetch it
-            # every second after the scanner had already moved on, amplifying
-            # exchange rate limits. Twelve seconds exceeds the eight-second
-            # client wait; continuing demand renews the lease every four.
+            # All one-shot history requests, including a held position, keep
+            # short renewable leases. A minute-long priority lease would
+            # repeatedly refetch absent consumers and exhaust Bybit quota.
+            # Twelve seconds exceeds the bounded client wait.
             lifetime = 12 if transient_demand else 60
             renewal = 4 if transient_demand else 20
             with self._lock:
