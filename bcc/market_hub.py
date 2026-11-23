@@ -1077,6 +1077,14 @@ class MarketDataHub:
         return "lost_leader"
 
     def _refresh_delay(self, url, params, *, failed=False):
+        # A complete historical GET is a one-shot response to a real caller,
+        # not a perpetual one-second poll. Re-arm only from a NEW client
+        # request_once(). Failed requests retain the ordinary bounded retry
+        # while the client is still waiting and the lease is active.
+        if (not failed and url == 'https://api.bybit.com/v5/market/kline'
+                and type(params) is dict and params.get('category') == 'linear'
+                and params.get('interval') == '1'):
+            return 3600.
         delay = 2. if failed else 120. if '/risk-limit' in url else .25 if 'orderbook' in url or '/book' in url else 1.
         remaining = getattr(getattr(self.source,'shared',None),'remaining_ttl',None)
         if failed or not callable(remaining):
