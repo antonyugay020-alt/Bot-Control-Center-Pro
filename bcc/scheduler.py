@@ -228,6 +228,14 @@ class MarketScheduler:
         if self._separate_quotes and callable(set_positions):
             set_positions(priority)
         priority_set = set(priority)
+        # Bound scheduler CPU to the size of the input inventory. These
+        # indexes are derived anew from the immutable owner state snapshot;
+        # no stale opened-at evidence can survive a change of positions.
+        priority_index = {symbol: i for i, symbol in enumerate(priority)}
+        opened_by_symbol = {}
+        for exposure in (*state["positions"].values(),
+                         *state.get("funding_archive", {}).values()):
+            opened_by_symbol.setdefault(exposure["symbol"], []).append(exposure["opened"])
         self._quoted_once.intersection_update(priority_set)
         scan = [s for s in symbols if s not in priority_set]
         scan_set = set(scan)
@@ -432,7 +440,7 @@ class MarketScheduler:
                         or self.quote_due.get(symbol, 0) > time.monotonic()):
                     continue
                 self.quote_jobs[symbol] = self.quote_pool.submit(symbol, self._quote, symbol)
-                self.quote_cursor = (priority.index(symbol)+1) % len(priority)
+                self.quote_cursor = (priority_index[symbol]+1) % len(priority)
         # A zero-period batch must hand its final results to the worker before
         # beginning another round. Otherwise very fast symbols reoccupy slots
         # before the owner has processed the completed ticks.
@@ -468,12 +476,7 @@ class MarketScheduler:
             if (history_only and not callable(getattr(self.source, 'position_candles', None))
                     and not book_is_fresh(self._quote_ready.get(symbol, 0))):
                 return False
-            opened = [
-                p["opened"]
-                for p in list(state["positions"].values())
-                + list(state.get("funding_archive", {}).values())
-                if p["symbol"] == symbol
-            ]
+            opened = opened_by_symbol.get(symbol, [])
             self.jobs[symbol] = self.pool.submit(
                 symbol, self._fetch,
                 symbol,

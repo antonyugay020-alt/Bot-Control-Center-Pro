@@ -65,7 +65,7 @@ def test_inventory_preserves_single_letter_and_unicode_perpetuals_and_skips_deli
         (["BTCUSDT-25DEC26"], "Неверный формат торговых пар"),
         (["../BTCUSDT"], "Неверный формат торговых пар"),
         ([12], "Торговые пары должны быть строками"),
-        ([], "Выберите от 1 до 5000"),
+        ([], "Выберите хотя бы одну торговую пару"),
     ],
 )
 def test_symbol_validation_reports_the_actual_failure(symbols, message):
@@ -102,3 +102,20 @@ def test_inventory_rejects_partial_pages_after_pagination_safety_cap(monkeypatch
         assert count == 30
     finally:
         source.close()
+
+
+def test_configured_symbol_inventory_has_no_artificial_5000_ceiling():
+    # Data schemas must not reject assets solely because the operator manages
+    # a very large portfolio. A provider may still reject unavailable symbols
+    # at the transport boundary; admission never promises unlimited feeds.
+    cfg = config()
+    symbols = [f"COIN{i}USDT" for i in range(12000)]
+    cfg["symbols"] = symbols
+    assert validate(cfg)["symbols"] == symbols
+
+
+def test_large_duplicate_inventory_reports_first_few_without_quadratic_scan():
+    cfg = config()
+    cfg["symbols"] = ["BTCUSDT"] + [f"COIN{i}USDT" for i in range(7000)] + ["BTCUSDT"]
+    with pytest.raises(ValueError, match="Повторяющиеся торговые пары: BTCUSDT"):
+        validate(cfg)
