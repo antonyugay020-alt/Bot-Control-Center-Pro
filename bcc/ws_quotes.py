@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import uuid
 import threading
 import time
 from dataclasses import dataclass
@@ -54,6 +55,9 @@ class BybitQuoteStream:
         self.on_update = on_update
         self._lock = threading.RLock()
         self._generation = 0
+        # Unforgeable-in-process incarnation fence: monotonic integers restart
+        # at zero on every producer process and cannot fence cache reuse alone.
+        self._connection_fence = None
         self._connected = False
         self._subscriptions = set()
         self._priority_symbols = frozenset()
@@ -125,6 +129,7 @@ class BybitQuoteStream:
                 return False
             self._generation += 1
             self._connected = False
+            self._connection_fence = None
             self._socket = None
             self._quotes.clear()
             self._marks.clear()
@@ -136,6 +141,7 @@ class BybitQuoteStream:
                 raise StreamUnavailable("Bybit WebSocket stopped")
             self._generation += 1
             self._connected = True
+            self._connection_fence = uuid.uuid4().hex
             self._socket = socket
             self._quotes.clear()
             self._marks.clear()
@@ -318,6 +324,26 @@ class BybitQuoteStream:
                 finally:
                     raise StreamUnavailable("Bybit mark refresh subscription failed") from exc
             return len(stale)
+
+    def snapshot_for_hub(self, symbol):
+        """Return quote/mark from ONE websocket incarnation, without REST.
+
+        Missing mark/quote is reported independently. A reconnect while the
+        Hub prepares a publication can never combine two generations.
+        """
+        with self._lock:
+            if not self._connected:
+                return None, None, None
+            fence = self._connection_fence
+            try:
+                mark = self.mark(symbol)
+            except StreamUnavailable:
+                mark = None
+            try:
+                quote = self.quote(symbol)
+            except StreamUnavailable:
+                quote = None
+            return mark, quote, fence
 
     def mark(self, symbol):
         """Independent real Bybit WS mark-price with its original event time.

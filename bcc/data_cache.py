@@ -584,6 +584,42 @@ class PublicCache:
                 allowed = subscribed is not None and self._denied(db, host) is None
                 outcomes.append(allowed)
                 if allowed:
+                    # A fresh bid/ask-only WS event must not destroy a still
+                    # valid genuine mark previously published on the SAME
+                    # socket incarnation. Both observations retain their
+                    # independent ORIGINAL exchange timestamps; no synthetic
+                    # value or cache freshness extension grants authority.
+                    if url == "https://api.bybit.com/v5/market/tickers":
+                        candidate = json.loads(value)
+                        fence = candidate.get("_bcc_ws_connection_fence")
+                        if (candidate.get("_bcc_ws_quote") is True
+                                and candidate.get("_bcc_ws_mark") is False
+                                and type(fence) is str and len(fence) == 32):
+                            old = db.execute(
+                                "SELECT value FROM cache WHERE k=? AND host=? AND until>?",
+                                (key, host, now),
+                            ).fetchone()
+                            if old is not None:
+                                prior = json.loads(old[0])
+                                from .market_clock import book_is_fresh
+                                stamp = prior.get("_bcc_ws_mark_at")
+                                rows = prior.get("result", {}).get("list", [])
+                                if (prior.get("_bcc_ws_mark") is True
+                                        and prior.get("_bcc_ws_connection_fence") == fence
+                                        and type(stamp) is int and stamp > 0
+                                        and book_is_fresh(stamp / 1000)
+                                        and isinstance(rows, list) and len(rows) == 1
+                                        and isinstance(rows[0], dict)
+                                        and rows[0].get("symbol") == json.loads(params)["symbol"]):
+                                    try:
+                                        old_mark = float(rows[0]["markPrice"])
+                                    except (KeyError, TypeError, ValueError, OverflowError):
+                                        old_mark = float("nan")
+                                    if math.isfinite(old_mark) and old_mark > 0:
+                                        candidate["_bcc_ws_mark"] = True
+                                        candidate["_bcc_ws_mark_at"] = stamp
+                                        candidate["result"]["list"][0]["markPrice"] = str(old_mark)
+                                        value = json.dumps(candidate, allow_nan=False)
                     db.execute(
                         "INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
                         (key, value, now + ttl, host),

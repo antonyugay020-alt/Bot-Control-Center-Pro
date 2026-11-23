@@ -815,18 +815,29 @@ class MarketDataHub:
                 # Independently transport the exchange's real markPrice.
                 # Partial ticker deltas may refresh mark without changing
                 # bid/ask. Never synthesize a mark from an executable spread.
-                mark = None
-                mark_at = None
-                if hasattr(stream, "mark"):
+                mark = mark_at = bid = ask = at = None
+                connection_fence = None
+                atomic = getattr(stream, "snapshot_for_hub", None)
+                if callable(atomic):
+                    # Both independent exchange observations belong to one
+                    # bounded WS generation, including across reconnects.
+                    observed_mark, observed_quote, connection_fence = atomic(symbol)
+                    if observed_mark is not None:
+                        mark, mark_at = observed_mark
+                    if observed_quote is not None:
+                        bid, ask, at = observed_quote
+                else:
+                    # Compatible third-party adapters cannot carry marks
+                    # across publication without a generation fence.
+                    if hasattr(stream, "mark"):
+                        try:
+                            mark, mark_at = stream.mark(symbol)
+                        except StreamUnavailable:
+                            pass
                     try:
-                        mark, mark_at = stream.mark(symbol)
+                        bid, ask, at = stream.quote(symbol)
                     except StreamUnavailable:
                         pass
-                bid = ask = at = None
-                try:
-                    bid, ask, at = stream.quote(symbol)
-                except StreamUnavailable:
-                    pass
                 if mark is None and bid is None:
                     return False
                 if (mark is not None and
@@ -850,6 +861,7 @@ class MarketDataHub:
                     "retCode": 0, "retMsg": "OK",
                     "_bcc_ws_quote": bid is not None,
                     "_bcc_ws_mark": mark is not None,
+                    "_bcc_ws_connection_fence": connection_fence,
                     "_bcc_ws_mark_at": int(mark_at * 1000) if mark is not None else None,
                     "time": int((at if bid is not None else mark_at) * 1000),
                     "result": {"list": [row]},
