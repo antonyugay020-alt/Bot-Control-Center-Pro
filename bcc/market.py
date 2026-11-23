@@ -388,6 +388,17 @@ class PublicData:
                 time.sleep(.05)
 
     def _position_critical_request(self, url, params):
+        # A held position's history may outrank cold scans in the Hub only.
+        # A distinct thread-local flag keeps it separate from financial
+        # mark/tier protection and its reserved HTTP admission budget.
+        if (getattr(self._thread, 'position_history', False)
+                and url == 'https://api.bybit.com/v5/market/kline'
+                and type(params) is dict
+                and params.get('category') == 'linear'
+                and bool(params.get('symbol'))
+                and params.get('interval') == '1'
+                and type(params.get('limit')) is int):
+            return True
         # An existing position requires BOTH instrument metadata and the
         # executable book. Reserving only the book request is not sufficient:
         # orderbook() fetches metadata first and may be unable to reach the
