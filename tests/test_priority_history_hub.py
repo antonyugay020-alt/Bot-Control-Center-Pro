@@ -359,3 +359,60 @@ def test_slow_held_candles_keep_one_producer_slot_for_later_risk(tmp_path):
     finally:
         release.set()
         hub.close()
+
+
+def test_parked_history_rearm_fences_old_completion(tmp_path):
+    """A 3600s old completion cannot erase a fresh history request."""
+    reg = HubRegistry(tmp_path / "new-demand-fencing.sqlite")
+    params = req("HELDUSDT", 150)
+    key = reg.request_once(KLINE, params, priority=True)
+    assert reg.claim_leader("owner", lifetime=30)
+    token = reg.leader_token("owner")
+    with reg._connect() as db:
+        old_gen = db.execute(
+            "SELECT subscription_token FROM hub_subscriptions WHERE k=?",
+            (key,),
+        ).fetchone()[0]
+    assert reg.finish_owned(key, 3600, "owner",
+                            token=token, subscription_token=old_gen)
+    assert reg.due(limit=5) == []
+    # New real demand after a completed history is a new generation.
+    reg.request_once(KLINE, params, priority=True)
+    with reg._connect() as db:
+        new_gen, next_due = db.execute(
+            "SELECT subscription_token,next_due FROM hub_subscriptions WHERE k=?",
+            (key,),
+        ).fetchone()
+    assert new_gen != old_gen and next_due == 0
+    # A delayed stale ack from the former generation cannot park this
+    # still-unsatisfied request back into the future.
+    assert not reg.finish_owned(key, 3600, "owner",
+                                token=token, subscription_token=old_gen)
+    assert reg.due(limit=5)[0][0] == key
+    assert reg.finish_owned(key, 3600, "owner",
+                            token=token, subscription_token=new_gen)
+    assert reg.due(limit=5) == []
+
+
+def test_parallel_demand_does_not_rotate_active_generation(tmp_path):
+    """Same-key readers share one outstanding fetch without starving its ack."""
+    reg = HubRegistry(tmp_path / "coalesced-demand.sqlite")
+    params = req("COINUSDT", 100)
+    key = reg.request_once(KLINE, params, priority=True)
+    with reg._connect() as db:
+        original = db.execute(
+            "SELECT subscription_token FROM hub_subscriptions WHERE k=?", (key,)
+        ).fetchone()[0]
+    for _ in range(40):
+        reg.request_once(KLINE, params, priority=True)
+    with reg._connect() as db:
+        current, due = db.execute(
+            "SELECT subscription_token,next_due FROM hub_subscriptions WHERE k=?",
+            (key,),
+        ).fetchone()
+    assert due == 0 and current == original
+    assert reg.claim_leader("owner", lifetime=30)
+    assert reg.finish_owned(key, 3600, "owner",
+                            token=reg.leader_token("owner"),
+                            subscription_token=original)
+    assert reg.due(limit=5) == []
