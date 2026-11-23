@@ -1316,9 +1316,16 @@ class MarketDataHub:
             if (not is_urgent and regular_inflight >= regular_reserve
                     and urgent_available):
                 continue
-            # Even with no urgent work right now, reserve one physical slot
-            # for the NEXT position mark. A SQL reservation alone cannot
-            # pre-empt an already executing 8-second public HTTP request.
+            # The queue may mark held-position candle history urgent, but
+            # that is NOT financial mark/tier authority. Slow candle HTTP
+            # must not fill the last producer slot before an independent
+            # risk-tier or executable-market request arrives. Preserve one
+            # physical slot for those requests when a parallel pool exists.
+            # This does not stop single-worker Hub progress.
+            financial_urgent = (is_urgent and
+                url != 'https://api.bybit.com/v5/market/kline')
+            if self.max_workers > 1 and free == 1 and not financial_urgent:
+                continue
             if not is_urgent and regular_inflight >= self.max_workers - 1:
                 continue
             def fetch(request_url=url, request_params=params, urgent=is_urgent):
