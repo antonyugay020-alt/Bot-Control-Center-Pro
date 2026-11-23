@@ -363,7 +363,7 @@
     "tests/test_portfolio_recovery_qt.py": "8ac1dd417347b311a1d47696daa2efd834e236432aa84f64f49586b03fe261b8",
     "tests/test_position_journal_recovery.py": "f315e2d2f283dd30816e9d533ac8ae2f51dd7ceaf98ea3ee6938308bced5196c",
     "tests/test_position_report.py": "fda3000d2f1f796238335b555c4b274f15ad409f0306d13290c0415274e55d99",
-    "tests/test_pr12_824_worker_scan.py": "dbd2d17e8eacc8f1a6a9f7b51b807d3bebd2cfca23b6a06b2a1546b4a7521c89",
+    "tests/test_pr12_824_worker_scan.py": "74994d7f19e3ceecc6bae82d33b17f8ee23d6ae8b30cbe9cfa12049cd8db773b",
     "tests/test_pr12_hub_queue_824.py": "4390c99cddcbf98a299d035b03b5780545e7318a2e2814ad672a2ee0b4de5e57",
     "tests/test_pr12_load_universe.py": "4c80e5ac8ba3007afee76032ddf3cdc59b1cf76ffc0d713bb51d5a739ebb6b1b",
     "tests/test_pr16_independent_position_history.py": "135281160fd89d2ccba6523008438abf47b128d51b7d310f1af674c62a1cd641",
