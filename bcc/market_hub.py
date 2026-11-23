@@ -1316,12 +1316,24 @@ class MarketDataHub:
         urgent_inflight = len(self._inflight) - regular_inflight
         urgent_available = any(item[3] for item in available)
         regular_available = any(not item[3] for item in available)
+        # Three independent obligations must coexist under mixed load:
+        # (1) financial mark/risk work, (2) two background candle lanes on
+        # a six-worker Hub, (3) a free slot for the NEXT financial request.
+        # The original cap of four urgent + two regular filled all six;
+        # adding a physical reserve later left only ONE regular lane.
+        # Hold urgent admissions at 6-2-1=3 while regular work is waiting.
+        # With a two-worker pool no spare slot is mathematically possible:
+        # share one financial + one regular instead.
+        urgent_mix_limit = max(
+            1, self.max_workers - regular_reserve
+            - int(self.max_workers > 2)
+        )
         for key, url, params, is_urgent, generation in available:
             if free <= 0:
                 break
             if (is_urgent and regular_available
                     and regular_inflight < regular_reserve
-                    and urgent_inflight >= self.max_workers - regular_reserve):
+                    and urgent_inflight >= urgent_mix_limit):
                 continue
             if (not is_urgent and regular_inflight >= regular_reserve
                     and urgent_available):
@@ -1334,7 +1346,7 @@ class MarketDataHub:
             # This does not stop single-worker Hub progress.
             financial_urgent = (is_urgent and
                 url != 'https://api.bybit.com/v5/market/kline')
-            if self.max_workers > 1 and free == 1 and not financial_urgent:
+            if self.max_workers > 2 and free == 1 and not financial_urgent:
                 continue
             if not is_urgent and regular_inflight >= self.max_workers - 1:
                 continue
