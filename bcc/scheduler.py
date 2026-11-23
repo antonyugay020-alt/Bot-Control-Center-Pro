@@ -60,6 +60,10 @@ class MarketScheduler:
         self.quote_jobs = {}
         self.quote_due = {}
         self.quote_cursor = 0
+        # Per-exposure first successful executable book: no arbitrary cap.
+        # Prevent an endlessly recycled quote backlog from starving a late
+        # position's initial independent quote/history handoff.
+        self._quoted_once = set()
         self.quote_period = min(period, .5)
         self._history_only = set()
         self._history_results = {}
@@ -221,6 +225,7 @@ class MarketScheduler:
         if self._separate_quotes and callable(set_positions):
             set_positions(priority)
         priority_set = set(priority)
+        self._quoted_once.intersection_update(priority_set)
         scan = [s for s in symbols if s not in priority_set]
         scan_set = set(scan)
         configured_set = set(self.cfg['symbols'])
@@ -363,6 +368,7 @@ class MarketScheduler:
                     book, error = job.result()
                     if book is not None and book_is_fresh(book['at']):
                         self._quote_ready[symbol] = book['at']
+                        self._quoted_once.add(symbol)
                     else:
                         self._quote_ready.pop(symbol, None)
                     history = self._history_results.get(symbol)
@@ -404,15 +410,21 @@ class MarketScheduler:
             if self.quote_pool is None:
                 self.quote_pool = StrategyDispatcher(workers=self.quote_capacity,
                     maximum_pending=self.quote_capacity, thread_name_prefix='position-quotes')
-            for _ in range(len(priority)):
+            # First quote of every exposed symbol must be admitted before
+            # spending every fast-lane slot repeatedly refreshing symbols
+            # already serviced. No pre-existing position gets a free pass to
+            # EXECUTION: process_tick still revalidates book, mark and tiers.
+            missing_initial = [s for s in priority if s not in self._quoted_once]
+            next_due_regular = [priority[(self.quote_cursor+i) % len(priority)]
+                                for i in range(len(priority))]
+            for symbol in (*missing_initial, *next_due_regular):
                 if len(self.quote_jobs) + sum(lane for _, lane in self._retry_jobs.values()) >= self.quote_capacity:
                     break
-                symbol = priority[self.quote_cursor % len(priority)]
-                self.quote_cursor = (self.quote_cursor + 1) % len(priority)
                 if (symbol in self.quote_jobs or symbol in quote_delivered or symbol in self._retry_ticks
                         or self.quote_due.get(symbol, 0) > time.monotonic()):
                     continue
                 self.quote_jobs[symbol] = self.quote_pool.submit(symbol, self._quote, symbol)
+                self.quote_cursor = (priority.index(symbol)+1) % len(priority)
         # A zero-period batch must hand its final results to the worker before
         # beginning another round. Otherwise very fast symbols reoccupy slots
         # before the owner has processed the completed ticks.
@@ -440,8 +452,10 @@ class MarketScheduler:
             # its own independent executable book is fresh: signal-based
             # protection and recovery still need current candles. The owner
             # retains its portfolio-wide entry/DCA risk checks.
-            if history_only and not book_is_fresh(self._quote_ready.get(symbol, 0)):
-                return False
+            # Historical indicators are non-executable inputs. Their
+            # refresh must not depend on a simultaneous <=2s book snapshot;
+            # the dedicated position quote/risk lane and process_tick retain
+            # strict live-book/mark/tier admission at execution time.
             opened = [
                 p["opened"]
                 for p in list(state["positions"].values())
