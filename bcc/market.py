@@ -676,6 +676,18 @@ class PublicData:
             and params.get("interval") == "1"
             and params.get("limit") == 10
         )
+        # WS-only 10-row tails are continuously delivered by the subscribed
+        # socket. All OTHER 1m kline requests are finite REST history jobs:
+        # one successful snapshot should not be polled until a new worker
+        # explicitly asks again. These still use the normal Hub and quotas.
+        rest_history_demand = (
+            url == "https://api.bybit.com/v5/market/kline"
+            and type(params) is dict
+            and params.get("category") == "linear"
+            and params.get("interval") == "1"
+            and type(params.get("limit")) is int
+            and not ws_kline_tail
+        )
         # Explicit producer-side WebSocket transport for symbol-specific Bybit
         # quotes. Workers never receive the stream or exchange connections.
         if (self._quote_stream is not None
@@ -740,12 +752,19 @@ class PublicData:
                 if self._hub_registry is None:
                     self._hub_registry = HubRegistry(self.shared.path)
                 now_mono = time.monotonic()
-                if (now_mono >= self._hub_renew_at.get(subscription_key, 0)
+                if (rest_history_demand
+                    or now_mono >= self._hub_renew_at.get(subscription_key, 0)
                     or (urgent and now_mono >= self._hub_priority_until.get(subscription_key, 0))):
                     try:
-                        self._hub_registry.subscribe(
-                            url, params, lifetime=lifetime, priority=urgent
-                        )
+                        demand_once = getattr(self._hub_registry, 'request_once', None)
+                        if rest_history_demand and callable(demand_once):
+                            demand_once(url, params, lifetime=lifetime, priority=urgent)
+                        else:
+                            # Legacy fixture/custom registry compatibility:
+                            # ordinary subscribe retains the previous API.
+                            self._hub_registry.subscribe(
+                                url, params, lifetime=lifetime, priority=urgent
+                            )
                     except (OSError, CacheBusy) as exc:
                         raise DataUnavailable("Market Data Hub subscription unavailable: " + str(exc)) from exc
                     self._hub_renew_at[subscription_key] = now_mono + renewal
