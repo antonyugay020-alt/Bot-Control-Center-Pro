@@ -29,9 +29,19 @@ class ImmediateCache:
     def __init__(self, path):
         self.path = Path(path)
         self.replies = []
+        self.read_counts = {}
 
     def read_fresh(self, url, params, host):
         self.replies.append((url, params))
+        # REST history: initial cache miss activates a real demand; the
+        # following bounded Hub read returns the newly published snapshot.
+        # Subsequent get() calls use a new synthetic miss/response pair.
+        key = (url, repr(sorted(params.items())) if params else None)
+        reads = self.read_counts.get(key, 0) + 1
+        self.read_counts[key] = reads
+        if (url == KLINE and type(params) is dict
+                and params.get("limit") != 10 and reads % 2 == 1):
+            return None
         return {"retCode": 0, "_bcc_ws_kline": True, "result": {"list": []}}
 
     def close(self):
@@ -264,3 +274,18 @@ def test_expired_rest_lease_rearms_only_on_live_client_demand(hub_client):
     # background re-poll after the first GET completed.
     assert len(events) == 3
     assert all(v[2:] == (12, False) for v in events)
+
+
+def test_fresh_shared_rest_snapshot_avoids_duplicate_hub_requests(hub_client):
+    src, rec = hub_client
+    # Exact cached REST result can be used without even opening a Hub
+    # subscription transaction: hundreds of concurrent client reads should
+    # not multiply provider traffic after a completed response.
+    src.shared.read_fresh = lambda *_: {
+        "retCode": 0, "result": {"list": []},
+    }
+    used = []
+    rec.request_once = lambda *args, **kwargs: used.append((args, kwargs))
+    assert src.get(KLINE, req("HELDUSDT", 150))["retCode"] == 0
+    assert used == []
+    assert rec.subscriptions == []
