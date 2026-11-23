@@ -82,6 +82,9 @@ class MarketScheduler:
         # source's 300s risk timestamp expires, even with eight history jobs
         # blocked behind cold scanner candles. This lane cannot mutate trades.
         self.risk_capacity = max(1, workers // 2)
+        # This capability is resolved before each collect admission; a standalone
+        # _fetch adapter retains its historical metadata contract.
+        self._risk_refresh_independent = False
 
     @staticmethod
     def _oldest_tier_first(priority, state):
@@ -157,7 +160,7 @@ class MarketScheduler:
         # Refresh slow risk tiers on the independent history/funding lane.
         # This result is committed by the single financial worker together
         # with the next fresh executable WS book, never from this pool.
-        if history_only:
+        if history_only and not getattr(self, "_risk_refresh_independent", False):
             refresh_risk = getattr(self.source, "refresh_position_risk", None)
             if callable(refresh_risk):
                 try:
@@ -271,7 +274,12 @@ class MarketScheduler:
         if self.risk_pool is not None:
             self.risk_pool.collect()
         enabled = getattr(self.source,'risk_maintenance_enabled',lambda:True)
-        if callable(getattr(self.source,'refresh_position_risk',None)) and enabled():
+        # Never send the same held-position metadata refresh through the
+        # history pool when its dedicated position-risk pool is active.
+        self._risk_refresh_independent = (
+            callable(getattr(self.source,'refresh_position_risk',None)) and enabled()
+        )
+        if self._risk_refresh_independent:
             try:
                 utc = market_now()
             except ValueError:

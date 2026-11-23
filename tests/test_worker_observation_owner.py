@@ -51,14 +51,17 @@ def test_actual_worker_keeps_twenty_sqlite_and_display_marks_fresh_while_all_tra
     market_clock.clock._reference=(wall,wall+.001,wall,mono)
     original=reader.position_orderbook
     calls={};threads=[];lock=threading.Lock()
-    retry_entered=threading.Event();history_entered=threading.Event();release=threading.Event()
+    quote_blocked=threading.Event();history_entered=threading.Event();release=threading.Event()
     publish_stop=threading.Event();failures=[]
     def quote(symbol):
         with lock:
             calls[symbol]=calls.get(symbol,0)+1;attempt=calls[symbol]
             threads.append(threading.current_thread().name)
-        if attempt>1:
-            retry_entered.set();assert release.wait(timeout=7)
+        # PR16 prioritizes first quote for all 20 held symbols before
+        # repeated attempts. Block an initial transport instead of assuming
+        # a second attempt of one symbol within a 3.3-second sampling window.
+        if attempt==1:
+            quote_blocked.set();assert release.wait(timeout=7)
         result=original(symbol)
         if attempt==1:result['at']-=4
         return result
@@ -95,7 +98,7 @@ def test_actual_worker_keeps_twenty_sqlite_and_display_marks_fresh_while_all_tra
         assert all(quote_is_recent(state['marks'][symbol],maximum=3) for symbol in symbols)
         assert all(state['marks'][symbol]['at']>started-mono+wall+.5 for symbol in symbols)
         assert all(position_mark_pnl(state,p) is not None for p in state['positions'].values())
-        assert retry_entered.is_set() and history_entered.is_set()
+        assert quote_blocked.is_set() and history_entered.is_set()
         assert threading.current_thread().name not in threads
         assert len(store.history())==20;store.audit()
     finally:
