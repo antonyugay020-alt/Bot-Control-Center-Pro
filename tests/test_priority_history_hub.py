@@ -318,3 +318,44 @@ def test_urgent_history_uses_queue_priority_not_financial_http_reserve(tmp_path)
         assert getattr(source._thread, "position_mark", False) is False
     finally:
         producer.close()
+
+
+def test_slow_held_candles_keep_one_producer_slot_for_later_risk(tmp_path):
+    """A position's risk can start even when prior urgent history blocks."""
+    from threading import Event
+    from bcc.market_hub import MarketDataHub
+
+    release = Event()
+    seen = []
+    class Source:
+        shared = object()
+
+        def get(self, url, params=None):
+            seen.append(url)
+            if url == KLINE:
+                release.wait(5)
+            return {"retCode": 0}
+
+        def close(self):
+            pass
+
+    path = tmp_path / "physical-reservation.sqlite"
+    hub = MarketDataHub(path, Source(), max_workers=6)
+    try:
+        for i in range(10):
+            hub.registry.subscribe(KLINE, req(f"HELD{i}USDT"),
+                                   lifetime=12, priority=True)
+        hub.poll_nonblocking()
+        # Both the query priority and the actual executor must reserve room:
+        # all six slots filled by slow candles would block a late risk tier.
+        assert len(hub._inflight) == 5
+        assert all(row[1] == KLINE for row in hub._inflight.values())
+        hub.registry.subscribe(RISK,
+                               {"category": "linear", "symbol": "HELDUSDT"},
+                               lifetime=60, priority=True)
+        hub.poll_nonblocking()
+        assert len(hub._inflight) == 6
+        assert any(row[1] == RISK for row in hub._inflight.values())
+    finally:
+        release.set()
+        hub.close()
