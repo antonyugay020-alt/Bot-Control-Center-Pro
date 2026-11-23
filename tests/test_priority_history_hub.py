@@ -416,3 +416,55 @@ def test_parallel_demand_does_not_rotate_active_generation(tmp_path):
                             token=reg.leader_token("owner"),
                             subscription_token=original)
     assert reg.due(limit=5) == []
+
+
+def test_three_financial_two_scanner_and_one_spare_under_6_workers(tmp_path):
+    """Cold 831-coin discovery and live financial risk cannot starve each other.
+
+    With six workers, admit 3 financial books + 2 scanner histories while
+    keeping a slot available for a newly requested risk tier. This regression
+    complements the continuous-mark two-lane test and uses no real network.
+    """
+    from threading import Event
+    from bcc.market_hub import MarketDataHub
+
+    gate = Event()
+
+    class Source:
+        shared = object()
+
+        def get(self, url, params=None):
+            assert gate.wait(5), "Synthetic request was never released"
+
+        def close(self):
+            pass
+
+    path = tmp_path / "admission-balance.sqlite"
+    hub = MarketDataHub(path, Source(), max_workers=6)
+    try:
+        for i in range(12):
+            hub.registry.subscribe(
+                BOOK, {"category": "linear",
+                       "symbol": f"OPEN{i}USDT", "limit": 50},
+                priority=True,
+            )
+        for i in range(2):
+            hub.registry.subscribe(KLINE, req(f"COLD{i}USDT", 100))
+        hub.poll_nonblocking()
+        inflight = [row[1] for row in hub._inflight.values()]
+        assert inflight.count(BOOK) == 3
+        assert inflight.count(KLINE) == 2
+        assert len(inflight) == 5  # One reserved slot, not four+one.
+
+        hub.registry.subscribe(
+            RISK, {"category": "linear", "symbol": "LATERUSDT"},
+            priority=True,
+        )
+        hub.poll_nonblocking()
+        inflight = [row[1] for row in hub._inflight.values()]
+        assert len(inflight) == 6
+        assert RISK in inflight
+        assert inflight.count(KLINE) == 2
+    finally:
+        gate.set()
+        hub.close()
