@@ -84,21 +84,33 @@ def _record_book(row, symbol, value):
 
 def probe(source, symbol, *, require_mark=False, initial=False):
     started = time.monotonic()
-    row = {"symbol": symbol, "status": "FAIL"}
+    row = {"symbol": symbol, "status": "FAIL", "stage_seconds": {}}
+    # Measure each stage even on a successful but over-budget sample.
+    # Monotonic timings only: never collect prices, auth, or private caches.
+    def measure(name, operation):
+        before = time.monotonic()
+        try:
+            return operation()
+        finally:
+            durations = row["stage_seconds"]
+            durations[name] = round(
+                durations.get(name, 0) + time.monotonic() - before, 4
+            )
+
     stage = 'initial_book_get'
     try:
         # Every process consuming raw cache observations needs its own vetted
         # UTC reference. The producer's clock is not inherited across a spawn.
-        clock.ensure()
+        measure('clock_ensure', clock.ensure)
         params = {"category": "linear", "symbol": symbol, "limit": 50}
-        value = source.get(URL, params)
+        value = measure('book_get', lambda: source.get(URL, params))
         stage = 'independent_mark_get'
         if require_mark:
             deadline = (time.monotonic() + 4.0 if initial
                         else started + STEADY_READ_BUDGET)
             while True:
                 try:
-                    source._ws_position_mark(symbol)
+                    measure('mark_get', lambda: source._ws_position_mark(symbol))
                     break
                 except SourceAccessDenied:
                     raise
@@ -113,7 +125,7 @@ def probe(source, symbol, *, require_mark=False, initial=False):
                 candidate = {}
                 attempts += 1
                 try:
-                    _sample_pair(source, symbol, candidate)
+                    measure('coherent_pair_read', lambda: _sample_pair(source, symbol, candidate))
                     row.update(candidate)
                     row.pop('last_mark_failure', None)
                     break
@@ -137,6 +149,9 @@ def probe(source, symbol, *, require_mark=False, initial=False):
         row["failed_stage"] = stage
         row["error"] = f"{type(exc).__name__}: {exc}"[:400]
     row["received_in_seconds"] = round(time.monotonic() - started, 3)
+    # Includes retry waits and thread preemption not spent in measured calls.
+    row['unattributed_seconds'] = round(max(0.,
+        row['received_in_seconds'] - sum(row['stage_seconds'].values())), 4)
     return row
 
 
