@@ -289,3 +289,32 @@ def test_fresh_shared_rest_snapshot_avoids_duplicate_hub_requests(hub_client):
     assert src.get(KLINE, req("HELDUSDT", 150))["retCode"] == 0
     assert used == []
     assert rec.subscriptions == []
+
+
+def test_urgent_history_uses_queue_priority_not_financial_http_reserve(tmp_path):
+    from threading import local
+    from bcc.market_hub import MarketDataHub
+    checks = []
+    class FakeSource:
+        shared = object()
+        _thread = local()
+        def get(self, url, params=None):
+            checks.append((url, getattr(self._thread, "position_mark", False)))
+        def close(self):
+            pass
+    source = FakeSource()
+    producer = MarketDataHub(tmp_path / "fenced-budget.sqlite",
+                             source, max_workers=1)
+    try:
+        producer._fetch_public(KLINE, req("HELDUSDT"), urgent=True)
+        producer._fetch_public(RISK,
+                               {"category": "linear", "symbol": "HELDUSDT"},
+                               urgent=True)
+        producer._fetch_public(BOOK,
+                               {"category": "linear", "symbol": "HELDUSDT",
+                                "limit": 50},
+                               urgent=True)
+        assert checks == [(KLINE, False), (RISK, True), (BOOK, True)]
+        assert getattr(source._thread, "position_mark", False) is False
+    finally:
+        producer.close()
