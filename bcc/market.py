@@ -1137,6 +1137,20 @@ class PublicData:
             self.cache[("bars", symbol)] = (time.time(), bars)
         return bars
 
+    def position_candles(self, symbol, required=500):
+        """Prioritize authentic history for an already held PAPER position.
+
+        This scopes a Hub queue hint to the caller's thread and candle
+        requests only. HTTP quotas, provider denials, risk-tier timestamps,
+        executable mark-price fences and history continuity are unchanged.
+        """
+        previous = getattr(self._thread, 'position_history', False)
+        self._thread.position_history = True
+        try:
+            return self.candles(symbol, required)
+        finally:
+            self._thread.position_history = previous
+
     def position_orderbook(self, symbol):
         """Mark an existing PAPER position before slower strategy discovery.
 
