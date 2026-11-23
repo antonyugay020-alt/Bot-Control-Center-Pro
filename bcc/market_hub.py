@@ -632,7 +632,7 @@ class HubRegistry:
             now = time.time()
             urgent = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
-              ' + urgent_order, (now, now, now, *exclude, *skip_ws_routes, limit-reserve_regular)).fetchall()
+              urgent_order, (now, now, now, *exclude, *skip_ws_routes, limit-reserve_regular)).fetchall()
             regular = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until<=?''' + skip_sql +
               ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, *skip_ws_routes, limit-len(urgent))).fetchall()
@@ -640,7 +640,7 @@ class HubRegistry:
             if len(rows) < limit and len(urgent) == limit-reserve_regular:
                 more = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
                   WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
-                  ' + urgent_order + ' OFFSET ?',
+                  urgent_order + ' OFFSET ?',
                   (now,now,now,*exclude,*skip_ws_routes,limit-len(rows),len(urgent))).fetchall()
                 rows.extend((row, True) for row in more)
         # Older Hub databases can contain subscriptions admitted before the
