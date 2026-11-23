@@ -335,14 +335,20 @@ class HubRegistry:
         key = hashlib.sha256(identity_text.encode()).hexdigest()
         return key, params_text
 
-    def subscribe(self, url, params, *, lifetime=60, priority=False):
+    def subscribe(self, url, params, *, lifetime=60, priority=False, force_due=False):
         if (type(lifetime) not in (int, float) or not math.isfinite(lifetime)
                 or not 0 < lifetime <= 3600):
             raise ValueError('Hub subscription lifetime must be finite and positive')
-        if type(priority) is not bool:
-            raise ValueError('Hub priority flag must be boolean')
+        if type(priority) is not bool or type(force_due) is not bool:
+            raise ValueError('Hub priority/request flag must be boolean')
         from .market import PublicData
         PublicData.validated_public_request(url, params)
+        if force_due and not (
+                url == 'https://api.bybit.com/v5/market/kline'
+                and type(params) is dict and params.get('category') == 'linear'
+                and params.get('interval') == '1'
+                and type(params.get('limit')) is int):
+            raise ValueError('Only validated Bybit historical candles may rearm on demand')
         key, encoded = self.identity(url, params)
         generation = uuid.uuid4().hex
         with self._connect() as db:
@@ -363,7 +369,7 @@ class HubRegistry:
                              ELSE max(hub_subscriptions.priority_until,excluded.priority_until) END,
               params=excluded.params,
               url=excluded.url,
-              next_due=CASE WHEN hub_subscriptions.active_until<=?
+              next_due=CASE WHEN ?=1 OR hub_subscriptions.active_until<=?
                             OR hub_subscriptions.params<>excluded.params
                             OR hub_subscriptions.url<>excluded.url
                             THEN 0 ELSE hub_subscriptions.next_due END,
@@ -373,8 +379,18 @@ class HubRegistry:
                               THEN '' ELSE hub_subscriptions.last_error END''',
               (key, url, encoded, now + lifetime,
                now + min(lifetime * 0.75, 90) if priority else 0,
-               generation, now, now, now, now))
+               generation, now, now, int(force_due), now, now))
         return key
+
+    def request_once(self, url, params, *, lifetime=12, priority=False):
+        """Rearm a historical REST fetch only when a consumer asks again.
+
+        The producer parks the subscription after one successful snapshot.
+        This explicit demand uses the same lease and validated public route;
+        it cannot reopen an exhausted HTTP budget or a 403/451 policy fence.
+        """
+        return self.subscribe(url, params, lifetime=lifetime,
+                              priority=priority, force_due=True)
 
     def prune_expired(self, *, retention=3600, batch=256):
         """Bounded garbage collection of abandoned market subscriptions.
