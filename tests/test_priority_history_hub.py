@@ -51,6 +51,8 @@ class RegistryRecorder:
 def hub_client(monkeypatch, tmp_path):
     monkeypatch.setenv("BCC_MARKET_HUB_MODE", "client")
     monkeypatch.setenv("BCC_BYBIT_WS_KLINES", "1")
+    monkeypatch.setenv("BCC_BYBIT_WS_QUOTES", "0")
+    monkeypatch.setenv("BCC_BYBIT_WS_BOOKS", "0")
     src = PublicData()
     src.shared = ImmediateCache(tmp_path / "synthetic-cache.sqlite")
     rec = RegistryRecorder()
@@ -68,7 +70,7 @@ def test_held_history_is_short_lived_and_priority_but_scan_is_not(hub_client, li
     result = src.get(KLINE, req("HELDUSDT", limit))
     assert result["retCode"] == 0
     assert rec.subscriptions[-1] == (KLINE, req("HELDUSDT", limit), 12, True)
-    assert src._thread.position_mark is not True if hasattr(src._thread, "position_mark") else True
+    assert getattr(src._thread, "position_mark", False) is False
     src._thread.position_history = False
     src.get(KLINE, req("SCANUSDT", limit))
     assert rec.subscriptions[-1] == (KLINE, req("SCANUSDT", limit), 12, False)
