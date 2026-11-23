@@ -616,11 +616,23 @@ class HubRegistry:
                 clauses.append("NOT (url=? AND CASE WHEN json_valid(params) "
                                "THEN (" + shape + ") ELSE 0 END)")
             skip_sql += ' AND ' + ' AND '.join(clauses)
+        # Financial exposure evidence must outrank lower-criticality
+        # indicator history even when an older candle subscription is due.
+        # This affects scheduling only, never provider admission, freshness
+        # checks, lease ownership, or the real rate budget.
+        urgent_order = (
+            " ORDER BY CASE WHEN url IN ("
+            "'https://api.bybit.com/v5/market/risk-limit',"
+            "'https://api.bybit.com/v5/market/instruments-info',"
+            "'https://api.bybit.com/v5/market/tickers',"
+            "'https://api.bybit.com/v5/market/orderbook'"
+            ") THEN 0 ELSE 1 END, next_due,k LIMIT ?"
+        )
         with self._connect() as db:
             now = time.time()
             urgent = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
-              ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, *skip_ws_routes, limit-reserve_regular)).fetchall()
+              ' + urgent_order, (now, now, now, *exclude, *skip_ws_routes, limit-reserve_regular)).fetchall()
             regular = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until<=?''' + skip_sql +
               ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, *skip_ws_routes, limit-len(urgent))).fetchall()
@@ -628,7 +640,7 @@ class HubRegistry:
             if len(rows) < limit and len(urgent) == limit-reserve_regular:
                 more = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
                   WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
-                  ' ORDER BY next_due,k LIMIT ? OFFSET ?',
+                  ' + urgent_order + ' OFFSET ?',
                   (now,now,now,*exclude,*skip_ws_routes,limit-len(rows),len(urgent))).fetchall()
                 rows.extend((row, True) for row in more)
         # Older Hub databases can contain subscriptions admitted before the
