@@ -718,6 +718,21 @@ class PublicData:
         if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
             if self.shared is None:
                 raise DataUnavailable("Market Data Hub requires BCC_PUBLIC_CACHE")
+            if rest_history_demand:
+                # A completed REST history snapshot may still be fresh in the
+                # shared cache. Read it BEFORE re-arming the one-shot Hub
+                # subscription: every repeated caller must not create a
+                # fresh provider HTTP request just to reuse the same data.
+                # Only true cache misses register new demand. Existing
+                # denial/cooldown and source-time checks remain authoritative.
+                try:
+                    already_fresh = self.shared.read_fresh(url, params, host)
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
+                except CacheBusy:
+                    already_fresh = None  # The usual bounded read below retries.
+                if already_fresh is not None:
+                    return received(already_fresh, "market_hub")
             from .market_hub import HubRegistry
             subscription_key = HubRegistry.identity(url, params)[0]
             # Existing exposure keeps an independent long-lived urgent
