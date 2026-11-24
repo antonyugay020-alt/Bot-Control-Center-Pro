@@ -736,6 +736,16 @@ class MarketDataHub:
         self._ws_quote_symbols = ()
         self._ws_book_symbols = ()
         self._ws_dispatcher = None
+        # WS -> SQLite publication evidence. Aggregate only: no symbols,
+        # prices, account details, or exchange timestamp modifications.
+        self._ws_publication_lock = threading.Lock()
+        self._ws_publication_stats = dict(
+            batches=0, events_seen=0, prepared=0, published=0,
+            rejected_source=0, rejected_leader=0, rejected_store=0,
+            sqlite_busy=0, unexpected_errors=0,
+            max_prepare_seconds=0.0, max_commit_seconds=0.0,
+            max_batch_seconds=0.0,
+        )
         self.lease_renew_interval = 5.0
         self.source = source or PublicData()
         if self.source.shared is None:
@@ -914,26 +924,69 @@ class MarketDataHub:
     def publish_ws_event(self, kind, symbol):
         return self.publish_ws_events([(kind, symbol)])[0]
 
+    def ws_publication_stats(self):
+        """Aggregate WS admission and SQLite persistence; no market payloads."""
+        with self._ws_publication_lock:
+            return dict(self._ws_publication_stats)
+
     def publish_ws_events(self, events):
-        """Read latest stream states, then publish one bounded SQLite cohort."""
+        """Publish genuine independent WS snapshots and classify failures.
+
+        Instrumentation cannot extend cache TTL, alter original exchange
+        timestamps, change subscription admission or bypass the leader lease.
+        """
         if type(events) not in (list, tuple) or len(events) > 64:
             raise ValueError("Invalid WS event batch")
-        # Bind preparation and commit to the same producer incarnation.
-        token = self._leader_token
-        prepared = [self._prepare_ws_event(kind, symbol) for kind, symbol in events]
-        valid = [(index, row) for index, row in enumerate(prepared) if row]
-        result = [False] * len(events)
-        if not valid or not token or token != self._leader_token:
-            return result
-        from .data_cache import CacheBusy
+        start = time.monotonic()
+        valid = []
+        results = [False] * len(events)
+        prepare_seconds = commit_seconds = 0.0
+        busy = unexpected = rejected_leader = 0
         try:
-            outcomes = self.source.shared.publish_websockets(
-                [row for _, row in valid], leader_owner=self.owner, leader_token=token)
-        except CacheBusy:
-            return result
-        for (index, _), outcome in zip(valid, outcomes):
-            result[index] = outcome
-        return result
+            token = self._leader_token
+            prepared = [self._prepare_ws_event(kind, symbol) for kind, symbol in events]
+            valid = [(index, row) for index, row in enumerate(prepared) if row]
+            prepare_seconds = time.monotonic() - start
+            if valid and (not token or token != self._leader_token):
+                rejected_leader = len(valid)
+            elif valid:
+                from .data_cache import CacheBusy
+                commit_start = time.monotonic()
+                try:
+                    outcomes = self.source.shared.publish_websockets(
+                        [row for _, row in valid], leader_owner=self.owner,
+                        leader_token=token)
+                except CacheBusy:
+                    busy = len(valid)
+                else:
+                    for (index, _), outcome in zip(valid, outcomes):
+                        results[index] = outcome
+                finally:
+                    commit_seconds = time.monotonic() - commit_start
+            return results
+        except BaseException:
+            unexpected = 1
+            raise
+        finally:
+            successes = sum(outcome is True for outcome in results)
+            with self._ws_publication_lock:
+                s = self._ws_publication_stats
+                s['batches'] += 1
+                s['events_seen'] += len(events)
+                s['prepared'] += len(valid)
+                s['published'] += successes
+                if not unexpected:
+                    s['rejected_source'] += len(events) - len(valid)
+                s['rejected_leader'] += rejected_leader
+                s['rejected_store'] += len(valid) - successes - rejected_leader
+                s['sqlite_busy'] += busy
+                s['unexpected_errors'] += unexpected
+                s['max_prepare_seconds'] = round(max(
+                    s['max_prepare_seconds'], prepare_seconds), 6)
+                s['max_commit_seconds'] = round(max(
+                    s['max_commit_seconds'], commit_seconds), 6)
+                s['max_batch_seconds'] = round(max(
+                    s['max_batch_seconds'], time.monotonic() - start), 6)
 
     def _websocket_queue_exclusions(self):
         routes = []

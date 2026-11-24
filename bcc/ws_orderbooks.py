@@ -52,6 +52,12 @@ class BybitOrderbookWS:
         self._refresh_due = {}
         self._priority_symbols = frozenset()
         self._refresh_backlog = 0
+        self._verified_book_events = 0
+        self._verified_book_snapshots = 0
+        self._refresh_topics_sent = 0
+        self._refresh_batches_sent = 0
+        self._refresh_send_failures = 0
+        self._connections_opened = 0
 
     def sync_symbols(self, symbols):
         from .ws_dispatch import synchronize_bybit_symbols
@@ -126,6 +132,7 @@ class BybitOrderbookWS:
             if self._stop.is_set():
                 raise StreamUnavailable("orderbook transport stopped")
             self._invalidate()
+            self._connections_opened += 1
             self._connected = True
             self._socket = socket
             self._refresh_due = {symbol: self._mono() + 3.0 for symbol in self._symbols}
@@ -216,6 +223,9 @@ class BybitOrderbookWS:
                     new.received_mono + 1.0,
                 )
             self._books[symbol] = new
+            self._verified_book_events += 1
+            if kind == "snapshot":
+                self._verified_book_snapshots += 1
         if self.on_update is not None:
             try:
                 self.on_update("depth50", symbol)
@@ -258,7 +268,10 @@ class BybitOrderbookWS:
             try:
                 request_snapshots(socket, "orderbook.50", stale,
                                   batch_size=self.MAX_SUB_PER_MSG)
+                self._refresh_topics_sent += len(stale)
+                self._refresh_batches_sent += (len(stale) + self.MAX_SUB_PER_MSG - 1) // self.MAX_SUB_PER_MSG
             except Exception as exc:
+                self._refresh_send_failures += 1
                 self._invalidate()
                 try:
                     socket.close()
@@ -269,7 +282,13 @@ class BybitOrderbookWS:
     def refresh_pressure(self):
         with self._lock:
             return dict(deferred_symbols=self._refresh_backlog,
-                        per_scan_budget=MAX_REFRESH_TOPICS_PER_SCAN)
+                        per_scan_budget=MAX_REFRESH_TOPICS_PER_SCAN,
+                        genuine_book_events=self._verified_book_events,
+                        genuine_book_snapshots=self._verified_book_snapshots,
+                        snapshot_topics_requested=self._refresh_topics_sent,
+                        snapshot_batches_requested=self._refresh_batches_sent,
+                        snapshot_send_failures=self._refresh_send_failures,
+                        connections_opened=self._connections_opened)
 
     def get_orderbook(self, symbol):
         with self._lock:

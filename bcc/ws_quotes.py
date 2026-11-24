@@ -68,6 +68,14 @@ class BybitQuoteStream:
         self._mark_refresh_due = {}
         # Expose WS recovery debt; never pretend an unrefreshed mark is fresh.
         self._refresh_backlog = 0
+        # Aggregate event provenance only, no prices/symbols/account identifiers.
+        # Counters stay monotonic across reconnects for operational diagnosis.
+        self._verified_mark_events = 0
+        self._verified_quote_events = 0
+        self._refresh_topics_sent = 0
+        self._refresh_batches_sent = 0
+        self._refresh_send_failures = 0
+        self._connections_opened = 0
         self._socket = None
         self._stop = threading.Event()
 
@@ -143,6 +151,7 @@ class BybitQuoteStream:
             if self._stop.is_set():
                 raise StreamUnavailable("Bybit WebSocket stopped")
             self._generation += 1
+            self._connections_opened += 1
             self._connected = True
             self._connection_fence = uuid.uuid4().hex
             self._socket = socket
@@ -208,6 +217,7 @@ class BybitQuoteStream:
                 if old_mark is None or ts > old_mark[1]:
                     received = self._mono()
                     self._marks[symbol] = (mark, ts, received, generation)
+                    self._verified_mark_events += 1
                     if old_mark is None:
                         # Handshake grace ends once the first genuine mark
                         # arrives. Keeping the initial three-second deadline
@@ -243,6 +253,7 @@ class BybitQuoteStream:
                             symbol, bid, ask, ts, now, generation,
                             bid_ms, ask_ms, bid_mono, ask_mono,
                         )
+                        self._verified_quote_events += 1
                         changed = changed or (
                             0 <= now - bid_mono <= self._max_age
                             and 0 <= now - ask_mono <= self._max_age
@@ -323,7 +334,10 @@ class BybitQuoteStream:
             try:
                 request_snapshots(self._socket, "tickers", stale,
                                   batch_size=self.MAX_SUB_PER_MSG)
+                self._refresh_topics_sent += len(stale)
+                self._refresh_batches_sent += (len(stale) + self.MAX_SUB_PER_MSG - 1) // self.MAX_SUB_PER_MSG
             except Exception as exc:
+                self._refresh_send_failures += 1
                 socket = self._socket
                 self.disconnect()
                 try:
@@ -336,7 +350,13 @@ class BybitQuoteStream:
         """Observable WS command debt, independent of verified data age."""
         with self._lock:
             return dict(deferred_symbols=self._refresh_backlog,
-                        per_scan_budget=MAX_REFRESH_TOPICS_PER_SCAN)
+                        per_scan_budget=MAX_REFRESH_TOPICS_PER_SCAN,
+                        genuine_mark_events=self._verified_mark_events,
+                        genuine_quote_events=self._verified_quote_events,
+                        snapshot_topics_requested=self._refresh_topics_sent,
+                        snapshot_batches_requested=self._refresh_batches_sent,
+                        snapshot_send_failures=self._refresh_send_failures,
+                        connections_opened=self._connections_opened)
 
     def snapshot_for_hub(self, symbol):
         """Return quote/mark from ONE websocket incarnation, without REST.

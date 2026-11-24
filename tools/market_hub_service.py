@@ -206,6 +206,7 @@ def main():
                           json.dumps({
                               "streams": states,
                               "queue": queue_stats,
+                              "publication": hub.ws_publication_stats(),
                           }, sort_keys=True), flush=True)
                     last_ws_health = time.monotonic()
                 if ws_threads and not hub._leader_held:
