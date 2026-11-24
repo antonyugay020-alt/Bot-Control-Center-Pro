@@ -1234,8 +1234,11 @@ class PublicData:
         params = dict(category="linear", symbol=symbol, interval="1", limit=10)
         subscription_key = HubRegistry.identity(url, params)[0]
         with self._lock:
-            if self._hub_registry is None:
-                self._hub_registry = HubRegistry(self.shared.path)
+            try:
+                if self._hub_registry is None:
+                    self._hub_registry = HubRegistry(self.shared.path)
+            except (sqlite3.Error, OSError, CacheBusy) as exc:
+                raise DataUnavailable("Реестр закрытых свечей недоступен: " + str(exc)) from exc
             now = time.monotonic()
             if (now >= self._hub_renew_at.get(subscription_key, 0)
                     or (priority and now >= self._hub_priority_until.get(subscription_key, 0))):
@@ -1305,15 +1308,25 @@ class PublicData:
                 starts = list(range(max(boundary-180000, previous[-1]["t"]+60000),
                                     boundary, 60000))
                 if starts:
-                    try:
-                        for row in self.shared.read_closed_minutes(symbol, starts):
-                            found[row["t"]] = {k:row[k] for k in
-                                ("t","open","high","low","close","volume")}
-                    except ProviderDenied as exc:
-                        raise SourceAccessDenied(exc.host, exc.http_status) from exc
-                    except CacheContention:
-                        pass  # bounded REST repair remains policy-admitted
-                    bars = complete()
+                    # Give the centralized confirmation a short chance to
+                    # arrive right at the boundary, rather than flooding REST
+                    # immediately. No extra wait later in the minute.
+                    grace = min(.8, max(0., 2. - (market_now() - boundary/1000)))
+                    deadline = time.monotonic() + (grace if len(starts) == 1 else 0.)
+                    while True:
+                        try:
+                            for row in self.shared.read_closed_minutes(symbol, starts):
+                                found[row["t"]] = {k:row[k] for k in
+                                    ("t","open","high","low","close","volume")}
+                        except ProviderDenied as exc:
+                            raise SourceAccessDenied(exc.host, exc.http_status) from exc
+                        except CacheContention:
+                            pass  # bounded REST repair remains policy-admitted
+                        except CacheBusy as exc:
+                            raise DataUnavailable("Кэш закрытых свечей недоступен: " + str(exc)) from exc
+                        bars = complete()
+                        if bars is not None or time.monotonic() >= deadline or self.stop_event.wait(.05):
+                            break
             elif bars is None and previous:
                 try:
                     absorb(self.bybit("kline", {"symbol":symbol,"interval":"1","limit":10}), ws=True)

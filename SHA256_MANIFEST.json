@@ -81,7 +81,7 @@
     "bcc/lifecycle.py": "ad60ddfac8c4bf30ad186d92c8e6a5b6f53ab11bea64a8c32be4a215e271c2c6",
     "bcc/liquidation.py": "736574079c32b441bde3a6c8f204e906131bbe8c0943c86cbdf8a74b01c9eb6f",
     "bcc/margin.py": "8177172cf760c2c333140fbc34daecace379196ed9bf4ff42fd9d11338a33c17",
-    "bcc/market.py": "2cc663341a11c9b53c2c4bb10d0f0bf81c3becfd24e753b3f0570462d6724127",
+    "bcc/market.py": "bc39a0b3f029337cf241aefcf3a1fb6f5b34bd165ce16ee1464a109a461b85e0",
     "bcc/market_clock.py": "5d2d47e0a2617c008feb05052813716b92e66c39c7e918968370e8269354fcac",
     "bcc/market_health.py": "4872159d8b0a6531909e7d55b7c54fb22b11630ba2e5a4d0a8b236a91fc7a961",
     "bcc/market_hub.py": "d1994d52de066bfe1aca7fc2d3f9d6c82bede80a3f41e932addf0c832b7aac0c",
@@ -590,6 +590,7 @@
     "tests/test_closed_history_reuse.py": "a8ea90afc8eae8cd1d69ba7ad333e89376104fd4659ac0fecbfb6d950bc30273",
     "bcc/hub_rest_lanes.py": "5127787fb45de3e889c9c82c738fb0f74228fa8ecd200c98bf21ee705fb89293",
     "tests/test_split_history_lane.py": "9bd77834d7a5e99289c32054fad856e5f9190b7496e947bc19507f3c917e1129",
-    "bcc/closed_minutes.py": "6f865f0d6e8a3f458c2c0979ac025f7cd84d389dfdefbb2b0f65583bd4218fe0"
+    "bcc/closed_minutes.py": "6f865f0d6e8a3f458c2c0979ac025f7cd84d389dfdefbb2b0f65583bd4218fe0",
+    "tests/test_central_closed_minutes.py": "e569b47e8cd6ca7319015c14a3effbde7d18d3d283b3cbd4a944d2eefd65ab56"
   }
 }
