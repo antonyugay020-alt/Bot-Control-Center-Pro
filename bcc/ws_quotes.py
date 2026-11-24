@@ -522,3 +522,62 @@ class BybitQuoteStream:
         self.disconnect()
         if socket is not None:
             socket.close()
+
+
+class MaintainedQuoteStream(BybitQuoteStream):
+    """Opt-in stable primary only; the reserve retains explicit-mark rules."""
+
+    def __init__(self, *, on_update=None, **kwargs):
+        from .market_clock import book_age_bounds, latest_now
+        from .ws_maintained_marks import MaintainedMarks
+        super().__init__(on_update=None, **kwargs)
+        self._notify = on_update
+        self._maintained = MaintainedMarks(age_bounds=book_age_bounds,
+            monotonic=self._mono, utc_upper=latest_now)
+
+    def _notify_symbols(self, symbols):
+        if self._notify is not None:
+            for symbol in symbols:
+                try:
+                    self._notify("tickers", symbol)
+                except Exception:
+                    pass
+
+    def connect(self, socket=None):
+        with self._lock:
+            generation = super().connect(socket)
+            self._maintained.reset(self._connection_fence, self._subscriptions)
+            return generation
+
+    def disconnect(self, *, generation=None):
+        with self._lock:
+            if generation is not None and generation != self._generation:
+                return False
+            affected = tuple(self._subscriptions) if self._connected else ()
+            self._maintained.reset(None)
+            result = super().disconnect(generation=generation)
+        self._notify_symbols(affected)
+        return result
+
+    def subscribe_many(self, symbols):
+        with self._lock:
+            super().subscribe_many(symbols)
+            self._maintained.sync(self._subscriptions)
+
+    def ingest(self, payload, *, generation):
+        with self._lock:
+            if not self._connected or generation != self._generation:
+                return False
+            changed = self._maintained.ingest(payload, self._connection_fence)
+            raw = super().ingest(payload, generation=generation)
+        if changed or raw:
+            self._notify_symbols((payload["topic"][8:],))
+        return changed or raw
+
+    def maintained_mark(self, symbol):
+        with self._lock:
+            return self._maintained.mark(symbol)
+
+    def maintained_health(self):
+        with self._lock:
+            return self._maintained.stats()

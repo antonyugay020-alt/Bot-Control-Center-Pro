@@ -1381,7 +1381,16 @@ class PublicData:
             raise DataUnavailable("Bybit WebSocket markPrice invalid") from exc
         if not math.isfinite(mark) or mark <= 0 or not book_is_fresh(at):
             raise DataUnavailable("Bybit WebSocket markPrice stale")
-        return observed_quote({"bid": mark, "ask": mark, "at": at})
+        from .ws_maintained_marks import maintained_metadata
+        try:
+            meta = maintained_metadata(value)
+        except ValueError as exc:
+            raise DataUnavailable("Invalid maintained WS mark provenance") from exc
+        quote = {"bid": mark, "ask": mark, "at": at}
+        if meta is not None:
+            quote.update(mark_basis="snapshot_delta", mark_explicit_at=meta[0]/1000,
+                         mark_cs=meta[1], mark_chain=meta[2])
+        return observed_quote(quote)
 
     def set_position_symbols(self, symbols):
         """Account-owned exposure inventory, supplied by the serial scheduler."""

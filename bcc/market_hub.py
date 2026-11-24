@@ -827,7 +827,9 @@ class MarketDataHub:
                 mark, quote = stream.independent_observations_for_hub(symbol)
                 value, _ = project_ticker(make_split_ticker(symbol, mark, quote), symbol=symbol)
                 if value is None:
-                    return False
+                    if not getattr(stream, 'maintained_enabled', False):
+                        return False
+                    value = make_split_ticker(symbol)  # revoke, never publish a price
                 ttl = 1.5
             elif kind == "tickers":
                 # Independently transport the exchange's real markPrice.

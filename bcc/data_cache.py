@@ -536,8 +536,11 @@ class PublicCache:
                   "_bcc_ws_book" if url.endswith("/orderbook") else
                   "_bcc_ws_kline" if url.endswith("/kline") else
                   "_bcc_ws_quote")
+        from .ws_split_ticker import empty_split_ticker
+        revoke = (bybit and url.endswith("/tickers")
+                  and empty_split_ticker(value, params["symbol"]))
         if (type(value) is not dict or
-                (value.get(marker) is not True and not (
+                (not revoke and value.get(marker) is not True and not (
                     bybit and url.endswith("/tickers") and
                     value.get("_bcc_ws_mark") is True))):
             raise ValueError("Unverified WS payload provenance")
@@ -617,8 +620,13 @@ class PublicCache:
                     split_ticker = (self.bybit_ws_source_deadlines and host == "api.bybit.com"
                                     and url == "https://api.bybit.com/v5/market/tickers")
                     if split_ticker:
-                        from .ws_split_ticker import project_ticker
-                        candidate, ttl = project_ticker(json.loads(value), symbol=json.loads(params)["symbol"])
+                        from .ws_split_ticker import project_ticker, empty_split_ticker
+                        raw = json.loads(value)
+                        symbol = json.loads(params)["symbol"]
+                        if empty_split_ticker(raw, symbol):
+                            db.execute("DELETE FROM cache WHERE k=? AND host=?", (key, host))
+                            continue
+                        candidate, ttl = project_ticker(raw, symbol=symbol)
                         if candidate is None:
                             outcomes[-1] = False
                             continue

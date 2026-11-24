@@ -95,7 +95,8 @@ def main():
             # Explicit diagnostic opt-in only; no default transport change.
             if os.environ.get('BCC_BYBIT_DUAL_WS_CANDIDATE') == '1':
                 from bcc.ws_dual_quotes import DualBybitQuoteStream
-                quote_stream = DualBybitQuoteStream(wall=market_now, on_update=on_update)
+                quote_stream = DualBybitQuoteStream(wall=market_now, on_update=on_update,
+                    maintained=os.environ.get('BCC_BYBIT_MAINTAINED_MARK_CANDIDATE') == '1')
             else:
                 from bcc.ws_quotes import BybitQuoteStream
                 quote_stream = BybitQuoteStream(wall=market_now, on_update=on_update)

@@ -9,6 +9,7 @@ import math
 
 from .market_clock import book_age_bounds
 from .ws_symbols import USDT_SYMBOL
+from .ws_maintained_marks import maintained_metadata
 
 
 def valid_fence(value):
@@ -39,14 +40,14 @@ def make_split_ticker(symbol, mark=None, quote=None):
     row = {'symbol': symbol}
     mark_at = quote_at = mark_fence = quote_fence = None
     if mark is not None:
-        price, at, mark_fence = mark
+        price, at, mark_fence = mark[:3]
         row['markPrice'] = str(price)
         mark_at = round(at * 1000)
     if quote is not None:
         bid, ask, at, quote_fence = quote
         row.update(bid1Price=str(bid), ask1Price=str(ask))
         quote_at = round(at * 1000)
-    return dict(retCode=0, retMsg='OK', _bcc_ws_split_ticker=True,
+    value = dict(retCode=0, retMsg='OK', _bcc_ws_split_ticker=True,
                 _bcc_ws_source_deadline=True, _bcc_ws_mark=mark is not None,
                 _bcc_ws_quote=quote is not None, _bcc_ws_mark_at=mark_at,
                 _bcc_ws_mark_fence=mark_fence, _bcc_ws_quote_fence=quote_fence,
@@ -54,6 +55,17 @@ def make_split_ticker(symbol, mark=None, quote=None):
                 if not (mark_fence and quote_fence and mark_fence != quote_fence) else None,
                 time=quote_at if quote_at is not None else mark_at,
                 result={'list': [row]})
+    if mark is not None and len(mark) == 6:
+        value.update(_bcc_ws_mark_basis='snapshot_delta',
+                     _bcc_ws_mark_explicit_at=mark[3], _bcc_ws_mark_cs=mark[4],
+                     _bcc_ws_mark_chain=mark[5])
+        maintained_metadata(value)
+    return value
+
+
+def empty_split_ticker(value, symbol):
+    """A leader-owned revocation envelope, never a readable price."""
+    return type(value) is dict and value == make_split_ticker(symbol)
 
 
 def project_ticker(value, *, symbol=None):
@@ -91,7 +103,10 @@ def project_ticker(value, *, symbol=None):
             if not isinstance(row['markPrice'], bool) and math.isfinite(price) and price > 0:
                 mark_ttl = remaining(stamp, 3.)
                 if mark_ttl:
+                    meta = maintained_metadata(value)
                     mark = (price, stamp / 1000, mark_fence)
+                    if meta is not None:
+                        mark += meta
         except (KeyError, TypeError, ValueError, OverflowError):
             pass
     if value.get('_bcc_ws_quote') is True and valid_fence(quote_fence):

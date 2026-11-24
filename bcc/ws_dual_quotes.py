@@ -8,7 +8,7 @@ from __future__ import annotations
 import threading
 import time
 from .ws_dispatch import MAX_REFRESH_TOPICS_PER_SCAN
-from .ws_quotes import BybitQuoteStream, StreamUnavailable
+from .ws_quotes import BybitQuoteStream, MaintainedQuoteStream, StreamUnavailable
 from .ws_recovery_quotes import RecoveryQuoteStream
 from .ws_symbols import USDT_SYMBOL
 
@@ -16,12 +16,16 @@ from .ws_symbols import USDT_SYMBOL
 class DualBybitQuoteStream:
     """Two persistent sockets; only the secondary may request refresh snapshots."""
 
-    def __init__(self, *, wall=time.time, monotonic=time.monotonic, on_update=None):
+    def __init__(self, *, wall=time.time, monotonic=time.monotonic, on_update=None, maintained=False):
         self._wall = wall
         self._mono = monotonic
         self._lock = threading.RLock()
         self._stop = threading.Event()
-        self._primary = BybitQuoteStream(wall=wall, monotonic=monotonic, on_update=on_update)
+        if type(maintained) is not bool:
+            raise ValueError('invalid maintained-mark candidate')
+        self.maintained_enabled = maintained
+        primary_type = MaintainedQuoteStream if maintained else BybitQuoteStream
+        self._primary = primary_type(wall=wall, monotonic=monotonic, on_update=on_update)
         self._recovery = RecoveryQuoteStream(wall=wall, monotonic=monotonic, on_update=on_update, mark_only_recovery=True)
         self._demand = set()
         self._primary_added = {}
@@ -105,6 +109,11 @@ class DualBybitQuoteStream:
                         continue
                     fence = child._connection_fence
                     row = child._marks.get(symbol)
+                    if self.maintained_enabled and child is self._primary:
+                        confirmed = child.maintained_mark(symbol)
+                        if confirmed is not None:
+                            marks.append(confirmed)
+                        row = None  # broken primary chain is not an explicit fallback
                     if (row is not None and row[3] == child._generation
                             and 0 <= child._mono() - row[2] < 3.
                             and remaining(row[1], 3.) > 0):
@@ -149,6 +158,8 @@ class DualBybitQuoteStream:
             # is not a reason to recover the independently timed collateral.
             for symbol in symbols & self._demand:
                 primary_mark, _, fence = self._primary.snapshot_for_hub(symbol)
+                if self.maintained_enabled:
+                    primary_mark = self._primary.maintained_mark(symbol)
                 marks = [primary_mark]
                 if symbol in self._recovery_demand:
                     marks.append(self._recovery.snapshot_for_hub(symbol)[0])
@@ -203,6 +214,7 @@ class DualBybitQuoteStream:
                                 explicit_mark_max_age_seconds=round(max(ages, default=0.), 6))
             return dict(mode='stable_primary_independent_recovery',
                         primary=lane(self._primary), recovery=lane(self._recovery),
+                        maintained=self._primary.maintained_health() if self.maintained_enabled else None,
                         refresh=self.refresh_pressure())
 
     def run(self, *, websocket_app_factory=None):
