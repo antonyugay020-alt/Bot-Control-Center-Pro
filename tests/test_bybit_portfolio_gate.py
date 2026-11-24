@@ -118,7 +118,7 @@ def test_isolated_runner_preserves_parent_env_and_retires_own_hub(monkeypatch,tm
     assert report['isolated_hub_retired'] and report['renewal_retired']
     assert source.instances[-1].closed is True
     assert __import__('os').environ['BCC_PUBLIC_CACHE']=='SENTINEL_PARENT_CACHE'
-    assert json.loads((tmp_path/'new'/'portfolio_report.json').read_text())['real_orders'] is False
+    assert json.loads((tmp_path/'new'/'portfolio_report.json').read_text(encoding='utf-8'))['real_orders'] is False
 
 
 def test_expired_tier_blocks_pass_and_retains_provenance(monkeypatch,tmp_path):
