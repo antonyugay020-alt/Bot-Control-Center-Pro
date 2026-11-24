@@ -16,6 +16,7 @@ import uuid
 
 from bcc.market_clock import clock, book_age_bounds
 from bcc.ws_ticker_state import TickerState
+from tools.ticker_proof_recovery import ProofRecovery
 
 ENDPOINT = 'wss://stream.bybit.com/v5/public/linear'
 
@@ -25,22 +26,24 @@ def utc():
 
 
 def sample(tracker, symbols, acked, age_bounds):
-    states = tracker.observations()
+    explicit, maintained = tracker.comparison_observations()
     rows = []
     for name in symbols:
-        state = states[name]
+        state, raw = maintained[name], explicit[name]
         row = dict(symbol=name, explicit_fresh=False, maintained_fresh=False)
-        if state is not None and name in acked:
-            try:
+        if name in acked:
+            if raw is not None:
+                lo, hi = age_bounds(raw.explicit_ms / 1000)
+                row.update(raw_explicit_ms=raw.explicit_ms, raw_sequence=raw.sequence,
+                           raw_explicit_age_upper=round(hi,6),
+                           explicit_fresh=-.5 <= lo <= hi <= 3.)
+            if state is not None:
                 lo, hi = age_bounds(state.confirmed_ms / 1000)
                 old_lo, old_hi = age_bounds(state.explicit_ms / 1000)
                 row.update(explicit_ms=state.explicit_ms, confirmed_ms=state.confirmed_ms,
-                           sequence=state.sequence, chain=state.chain, explicit_age_upper=round(old_hi,6),
-                           confirmed_age_upper=round(hi,6),
-                           explicit_fresh=-.5 <= old_lo <= old_hi <= 3.,
+                           sequence=state.sequence, chain=state.chain,
+                           explicit_age_upper=round(old_hi,6), confirmed_age_upper=round(hi,6),
                            maintained_fresh=-.5 <= lo <= hi <= 3.)
-            except (ValueError, TypeError, OverflowError):
-                pass
         rows.append(row)
     return dict(explicit_pass=sum(r['explicit_fresh'] for r in rows),
                 maintained_pass=sum(r['maintained_fresh'] for r in rows),
@@ -91,16 +94,20 @@ def rest_comparison(before, after, payload, symbols):
                 uncomparable=uncomparable)
 
 
-def run(symbols, output, *, rest_check=False):
+def run(symbols, output, *, rest_check=False, round_count=24,
+        interval=2., warmup_seconds=30.):
     import websocket
     import requests
     tracker = TickerState(symbols, age_bounds=book_age_bounds)
     report = dict(scope='RAW_TICKER_STATE_COMPARISON_ONLY', status='NOT_CONFIRMED',
                   real_orders=False, release_ready=False, risk_decoder_changed=False,
-                  started_utc=utc(), symbols=list(symbols), rounds=[], rest_checks=[], errors=[])
+                  started_utc=utc(), symbols=list(symbols), rounds=[], recovery_rounds=[],
+                  rest_checks=[], errors=[], independent_explicit_metric=True)
     stop = threading.Event()
     acked = set()
     ack_lock = threading.Lock()
+    recovery_enabled = threading.Event()
+    recovery = None
     worker = sock = generation = None
     try:
         clock.ensure()
@@ -115,10 +122,15 @@ def run(symbols, output, *, rest_check=False):
             pending[req] = names
             sock.send(json.dumps(dict(op='subscribe',req_id=req,args=['tickers.'+s for s in names])))
 
+        recovery = ProofRecovery(tracker,generation,lambda msg:sock.send(json.dumps(msg)),acked)
+
         def receive():
             last_ping = time.monotonic()
             try:
                 while not stop.is_set():
+                    if recovery_enabled.is_set():
+                        with ack_lock:
+                            recovery.poll()
                     if time.monotonic()-last_ping >= 20.:
                         sock.send(json.dumps(dict(op='ping')))
                         last_ping = time.monotonic()
@@ -131,16 +143,22 @@ def run(symbols, output, *, rest_check=False):
                     msg = json.loads(raw)
                     if type(msg) is not dict:
                         raise ValueError('invalid WS message')
-                    if msg.get('op') == 'subscribe':
-                        req = msg.get('req_id')
-                        if req not in pending or msg.get('success') is not True:
-                            raise RuntimeError('subscription ACK not confirmed')
+                    if msg.get('op') in ('subscribe','unsubscribe'):
                         with ack_lock:
+                            if recovery.acknowledge(msg):
+                                continue
+                            req = msg.get('req_id')
+                            if (msg.get('op') != 'subscribe' or req not in pending
+                                    or msg.get('success') is not True):
+                                raise RuntimeError('subscription ACK not confirmed')
                             acked.update(pending.pop(req))
                     elif msg.get('op') in ('ping','pong') or msg.get('ret_msg') == 'pong':
                         continue
                     elif type(msg.get('topic')) is str and msg['topic'].startswith('tickers.'):
-                        tracker.ingest(msg,generation)
+                        symbol=msg['topic'][len('tickers.'):]
+                        with ack_lock:
+                            if recovery.allows_frame(symbol):
+                                tracker.ingest(msg,generation)
                     else:
                         raise ValueError('unexpected WS message')
             except Exception as exc:
@@ -153,7 +171,7 @@ def run(symbols, output, *, rest_check=False):
         worker=threading.Thread(target=receive,name='owned-ticker-proof',daemon=True)
         worker.start()
         started=time.monotonic()
-        while time.monotonic()-started < 30. and not stop.is_set():
+        while time.monotonic()-started < warmup_seconds and not stop.is_set():
             with ack_lock:
                 accepted=acked.copy()
             if len(accepted)==len(symbols) and all(tracker.observations().values()):
@@ -163,14 +181,13 @@ def run(symbols, output, *, rest_check=False):
             report['acknowledged_symbols']=len(acked)
         if len(acked)!=len(symbols):
             raise RuntimeError('incomplete subscribed cohort')
-        for rnd in range(1,25):
+        for rnd in range(1,round_count+1):
             if stop.is_set():
                 break
             clock.ensure()
             clock.bounds()
             with ack_lock:
-                accepted=acked.copy()
-            one=sample(tracker,symbols,accepted,book_age_bounds)
+                one=sample(tracker,symbols,acked,book_age_bounds)
             one['round']=rnd
             report['rounds'].append(one)
             if rest_check and rnd in (4,12,20):
@@ -182,9 +199,42 @@ def run(symbols, output, *, rest_check=False):
                 payload=response.json()
                 stop.wait(.75)
                 report['rest_checks'].append(rest_comparison(before,tracker.observations(),payload,symbols))
-            if rnd < 24:
-                stop.wait(2.)
-        report['stats']=tracker.stats()
+            if rnd < round_count:
+                stop.wait(interval)
+        with ack_lock:
+            report['baseline_stats']=tracker.stats()
+        # A separate labelled phase, not silently mixed into the stable-stream
+        # baseline. Recover only broken/stale chains and retain strict gates.
+        recovery_enabled.set()
+        warmup_start = time.monotonic()
+        best = 0
+        while time.monotonic()-warmup_start < warmup_seconds and not stop.is_set():
+            with ack_lock:
+                states = tracker.observations()
+                count = sum(states[s] is not None for s in acked)
+            best = max(best,count)
+            if count == len(symbols):
+                break
+            stop.wait(min(.25,interval))
+        report['recovery_warmup'] = dict(best=best, seconds=round(time.monotonic()-warmup_start,6))
+        for rnd in range(1,round_count+1):
+            if stop.is_set():
+                break
+            clock.ensure()
+            clock.bounds()
+            with ack_lock:
+                one=sample(tracker,symbols,acked,book_age_bounds)
+            one['round']=rnd
+            report['recovery_rounds'].append(one)
+            if rnd < round_count:
+                stop.wait(interval)
+        recovery_enabled.clear()
+        with ack_lock:
+            report['stats']=tracker.stats()
+            report['recovery']=recovery.stats()
+        report['recovery_explicit_total']=sum(r['explicit_pass'] for r in report['recovery_rounds'])
+        report['recovery_maintained_total']=sum(r['maintained_pass'] for r in report['recovery_rounds'])
+        report['recovery_complete_rounds']=sum(r['maintained_pass']==len(symbols) for r in report['recovery_rounds'])
         report['explicit_total']=sum(r['explicit_pass'] for r in report['rounds'])
         report['maintained_total']=sum(r['maintained_pass'] for r in report['rounds'])
         report['maintained_complete_rounds']=sum(r['maintained_pass']==len(symbols) for r in report['rounds'])
@@ -194,9 +244,13 @@ def run(symbols, output, *, rest_check=False):
             'MISMATCH' if report['rest_mismatch_count'] else
             'CONSISTENT_WHERE_COMPARABLE' if report['rest_match_count'] and len(report['rest_checks'])==3
             else 'NOT_CONFIRMED')
-        # Even a complete comparison cannot authorize a trading release.
-        if (len(report['rounds'])==24 and not stop.is_set() and not report['errors']
-                and report['maintained_complete_rounds']==24 and report['rest_mismatch_count']==0
+        # A failed stable baseline is evidence, not a reason to hide a
+        # successful recovery phase. Neither constitutes trading acceptance.
+        report['baseline_complete'] = report['maintained_complete_rounds']==round_count
+        report['recovery_complete'] = report['recovery_complete_rounds']==round_count
+        if (len(report['rounds'])==round_count and len(report['recovery_rounds'])==round_count
+                and not stop.is_set() and not report['errors'] and report['recovery_complete']
+                and report['rest_mismatch_count']==0
                 and report['rest_consistency'] in ('NOT_REQUESTED','CONSISTENT_WHERE_COMPARABLE')):
             report['status']='MAINTAINED_STATE_OBSERVATION_COMPLETE'
         else:
