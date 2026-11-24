@@ -7,7 +7,7 @@ import pytest
 
 from bcc import market, market_clock, scheduler
 from bcc.data_cache import PublicCache, ProviderDenied
-from bcc.hub_minute_repair import URL,HOST,params_for
+from bcc.hub_minute_repair import URL,HOST,params_for,identity
 from bcc.closed_cohort import ClosedCohort,plan,extend,read_tails
 
 B=60060000
@@ -36,10 +36,16 @@ def test_shared_portfolio_cache_advances_all_warm_windows_without_http(tmp_path,
     source.shared=PublicCache(tmp_path/"cache.sqlite")
     symbols=[f"COIN{i}USDT" for i in range(50)]
     try:
+        # Seed synthetic fixture rows without exhausting the real 48/s
+        # ordinary HTTP budget. This test exercises only the reader.
+        source.shared._ensure_schema()
+        with source.shared.db() as db:
+            db.executemany("INSERT INTO cache(k,value,until,host) VALUES(?,?,?,?)",
+                [(identity(params_for(s,S)),json.dumps(response(s)),time.time()+180,HOST)
+                 for s in symbols])
+            db.commit()
         for symbol in symbols:
             source.cache[("closed_bars",symbol)]=(time.time(),prev())
-            key,owner,_=source.shared.begin(URL,params_for(symbol,S),HOST)
-            assert source.shared.finish(key,owner,HOST,response(symbol),ttl=180)
         monkeypatch.setattr(source,"bybit",lambda *a,**kw:pytest.fail("cohort initiated HTTP"))
         out=source.cached_closed_cohort({s:100 for s in symbols})
         assert set(out)==set(symbols)
@@ -121,3 +127,22 @@ def test_cohort_late_future_does_not_authorize_old_boundary():
 def test_missing_history_never_fabricates_gap():
     previous=prev(S-120000)
     assert extend(previous,100,B,{S:dict(t=S,open=100.,high=103.,low=99.,close=101.,volume=1.)}) is None
+
+
+
+def test_cohort_does_not_override_explicit_provider_denial(monkeypatch):
+    monkeypatch.setenv("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE","1")
+    monkeypatch.setattr(scheduler,"market_now",lambda:NOW/1000)
+    class Source:
+        pass
+    sched=scheduler.MarketScheduler(Source(),{"strategy":"VELES","symbols":["BTCUSDT"]},lambda *a:100)
+    sched._closed_cohort=ClosedCohort(lambda req:{})
+    sched._closed_cohort.boundary=B
+    sched._closed_cohort.ready={"BTCUSDT":prev(S)}
+    tick=scheduler.MarketTick("BTCUSDT",[],None,[],{},
+                            history_error="provider denied",history_denied=True)
+    try:
+        assert sched._apply_closed_cohort([("BTCUSDT",tick,None)],{"BTCUSDT"},{})==0
+        assert tick.history_denied and tick.history_error=="provider denied" and not tick.bars
+    finally:
+        sched.close()

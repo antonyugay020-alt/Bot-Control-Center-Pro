@@ -8,7 +8,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 
 from .strategy_dispatch import StrategyDispatcher
-from .market import DataUnavailable
+from .market import DataUnavailable, SourceAccessDenied
 from .market_clock import market_now, quote_is_recent, book_is_fresh
 
 
@@ -28,6 +28,7 @@ class MarketTick:
     # Runtime must recheck the original exchange candle timestamp after an
     # asynchronous handoff, including each reuse alongside a fresh quote.
     live_history: bool = False
+    history_denied: bool = False
 
 
 class MarketScheduler:
@@ -87,6 +88,8 @@ class MarketScheduler:
         # _fetch adapter retains its historical metadata contract.
         self._risk_refresh_independent = False
         self._closed_cohort = None
+        self._closed_sizes = {}
+        self._closed_handoffs = 0
 
     @staticmethod
     def _oldest_tier_first(priority, state):
@@ -127,6 +130,7 @@ class MarketScheduler:
 
     def _fetch(self, symbol, required, positions, manage=True, urgent=False, mark_only=False, history_only=False, closed_only=False):
         history_error = ''
+        history_denied = False
         quote_error = ''
         book = None
         # Existing positions need executable prices for protection and
@@ -159,6 +163,7 @@ class MarketScheduler:
                     bars = self.source.candles(symbol, required)
             except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
                 history_error = str(exc)
+                history_denied = isinstance(exc, SourceAccessDenied)
         rates = []
         marks = {}
         margin_data = None
@@ -198,7 +203,7 @@ class MarketScheduler:
                 book = None
                 quote_error = str(exc)
         return MarketTick(symbol, bars, book, rates, marks, history_error, quote_error,
-                          margin_data, live_history=True)
+                          margin_data, live_history=True, history_denied=history_denied)
 
     def _quote(self, symbol):
         try:
@@ -247,8 +252,13 @@ class MarketScheduler:
             boundary=int(market_now()//60)*60000
         except ClockUnavailable:
             boundary=None
-        req = ({s:max(100,int(self.history_size(self.cfg,s,state)))
-                for s in closed_symbols} if boundary is not None else {})
+        # Requirements already computed by the normal admission path.
+        # Never recalculate all effective VELES configurations at quote cadence.
+        for symbol in tuple(self._closed_sizes):
+            if symbol not in closed_symbols:
+                self._closed_sizes.pop(symbol,None)
+        req = ({s:n for s,n in self._closed_sizes.items() if s in closed_symbols}
+               if boundary is not None else {})
         fresh = self._closed_cohort.poll(req,boundary,time.monotonic())
         # Only the first ready handoff of a new closed minute accelerates
         # evaluation. Existing jobs stay single-flight and retain ownership.
@@ -260,9 +270,10 @@ class MarketScheduler:
                 if symbol in self._scan_retries:
                     self._scan_retries[symbol]=0.
 
-    def _apply_closed_cohort(self, completed, closed_symbols):
+    def _apply_closed_cohort(self, completed, closed_symbols, state):
         cohort=self._closed_cohort
-        if cohort is None:
+        if (cohort is None or
+                os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE")!="1"):
             return 0
         try:
             boundary=int(market_now()//60)*60000
@@ -272,19 +283,32 @@ class MarketScheduler:
             return 0
         applied=0
         for symbol,tick,error in completed:
-            if error is not None or tick is None or tick.risk_only or symbol not in closed_symbols:
+            if (error is not None or tick is None or tick.risk_only
+                    or tick.history_denied or symbol not in closed_symbols):
                 continue
             bars=cohort.ready.get(symbol)
             if bars is None:
                 continue
             if (not tick.bars or tick.history_error
                     or tick.bars[-1]["t"] < bars[-1]["t"]):
+                # Recheck this actual handoff against active persisted
+                # settings (which can differ from the last admitted job).
+                required=max(100,int(self.history_size(self.cfg,symbol,state)))
+                self._closed_sizes[symbol]=required
+                if len(bars)<max(required,len(tick.bars)):
+                    continue
                 # Only indicator history is replaced; retain the separately
-                # admitted book, funding, risk metadata, and original errors.
+                # admitted book, funding, risk metadata, and quote errors.
                 tick.bars=bars
                 tick.history_error=""
                 tick.live_history=True
+                history=self._history_results.get(symbol)
+                if history is not None and not history.history_denied:
+                    history.bars=bars
+                    history.history_error=""
+                    history.live_history=True
                 applied+=1
+        self._closed_handoffs+=applied
         return applied
 
     def collect(self, state, timeout=0.2):
@@ -416,7 +440,7 @@ class MarketScheduler:
                         self._history_results[symbol] = MarketTick(
                             symbol, tick.bars, None, tick.rates, tick.funding_marks,
                             tick.history_error, '', tick.margin_data,
-                            live_history=tick.live_history)
+                            live_history=tick.live_history, history_denied=tick.history_denied)
                     else:
                         completed.append((symbol, tick, None))
                 except Exception as exc:
@@ -474,7 +498,8 @@ class MarketScheduler:
                                       history.funding_marks if history else {},
                                       history.history_error if history else '', error,
                                       history.margin_data if history else None,
-                                      live_history=bool(history and history.live_history))
+                                      live_history=bool(history and history.live_history),
+                                      history_denied=bool(history and history.history_denied))
                     if history is not None:
                         # A refreshed margin snapshot is delivered once;
                         # replaying it on each quote would regress newer
@@ -559,10 +584,13 @@ class MarketScheduler:
                 return False
             opened = opened_by_symbol.get(symbol, [])
             closed_only = symbol in closed_symbols
+            required = self.history_size(self.cfg, symbol, state)
+            if closed_only:
+                self._closed_sizes[symbol]=max(100,int(required))
             self.jobs[symbol] = self.pool.submit(
                 symbol, self._fetch,
                 symbol,
-                self.history_size(self.cfg, symbol, state),
+                required,
                 opened,
                 symbol in self.cfg["symbols"] or symbol in priority_set,
                 symbol in priority_set,
@@ -657,7 +685,7 @@ class MarketScheduler:
         # admitted executable quote, even while the original history/funding
         # future is still occupied. No new order or duplicate trade tick.
         self._poll_closed_cohort(state, closed_symbols, priority_set)
-        applied = self._apply_closed_cohort(completed,closed_symbols)
+        self._apply_closed_cohort(completed,closed_symbols,state)
         if self._closed_cohort is not None:
             cohort=self._closed_cohort
             self.last_pressure.update(closed_cohort_ready=len(cohort.ready),
@@ -665,7 +693,7 @@ class MarketScheduler:
                 closed_cohort_reads=cohort.reads,
                 closed_cohort_delivered=cohort.delivered,
                 closed_cohort_errors=cohort.errors,
-                closed_cohort_handoffs=applied)
+                closed_cohort_handoffs=self._closed_handoffs)
         self.last_pressure.update(quote_jobs=len(self.quote_jobs), quote_capacity=self.quote_capacity,
                                   history_jobs=len(self.jobs), history_capacity=self.capacity,
                                   deferred_refreshes=len(self._retry_ticks),risk_jobs=len(self.risk_jobs))
