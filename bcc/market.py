@@ -823,6 +823,19 @@ class PublicData:
                                 "_bcc_ws_mark" if getattr(self._thread, "mark_intent", False)
                                 else "_bcc_ws_quote"
                             ) is not True):
+                        # A split ticker can contain an authentic executable
+                        # quote while its independently timed mark is missing.
+                        # This is a field-level cache miss, not a terminal
+                        # transport failure: keep the existing mark deadline
+                        # and wait for a real producer publication. Never
+                        # return the quote as collateral or fall back to REST.
+                        if (getattr(self._thread, "mark_intent", False)
+                                and cached.get("_bcc_ws_quote") is True
+                                and cached.get("_bcc_ws_mark") is not True):
+                            if time.monotonic() >= deadline:
+                                raise DataUnavailable("Market Data Hub: WebSocket markPrice не подтверждён")
+                            self.stop_event.wait(.05)
+                            continue
                         raise DataUnavailable("Market Data Hub: WebSocket тикер не подтверждён")
                     if (url == "https://api.binance.com/api/v3/ticker/price"
                             and os.environ.get("BCC_BINANCE_WS_PRICE") == "1"
