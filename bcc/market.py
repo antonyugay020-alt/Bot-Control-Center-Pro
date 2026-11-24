@@ -761,8 +761,11 @@ class PublicData:
             # short renewable leases. A minute-long priority lease would
             # repeatedly refetch absent consumers and exhaust Bybit quota.
             # Twelve seconds exceeds the bounded client wait.
-            lifetime = 12 if transient_demand else 60
-            renewal = 4 if transient_demand else 20
+            stable_closed_tail = ws_kline_tail and getattr(self._thread, 'closed_history', False)
+            # Keep a closed-bar consumer subscribed across the next minute.
+            # This is transport demand only, not a change of candle age.
+            lifetime = 90 if stable_closed_tail else 12 if transient_demand else 60
+            renewal = 30 if stable_closed_tail else 4 if transient_demand else 20
             with self._lock:
                 if self._hub_registry is None:
                     self._hub_registry = HubRegistry(self.shared.path)
@@ -792,7 +795,8 @@ class PublicData:
                 # Bounded WS-tail wait for existing exposure. A genuine WS
                 # miss can then use a separately admitted REST history read.
                 # Do not extend the candle timestamp or bypass policy fences.
-                0.8 if ws_kline_tail and getattr(self._thread, "position_history", False)
+                0.8 if ws_kline_tail and (getattr(self._thread, "position_history", False)
+                                         or getattr(self._thread, "closed_history", False))
                 else (4.0 if getattr(self._thread, "mark_subscription_warmup", False)
                       else 0.8) if getattr(self._thread, "mark_intent", False)
                 else 8.0
@@ -1013,6 +1017,24 @@ class PublicData:
                 )
             )
             )
+            # A minute-aligned historical range explicitly excludes the
+            # forming candle. Its immutable closed rows can be shared across
+            # workers for the minute, instead of repeating a REST backfill
+            # every second. Never extend live / unbounded history, quotes,
+            # mark-price or risk timestamps. Consumers still verify finality.
+            if (url == "https://api.bybit.com/v5/market/kline"
+                    and type(params) is dict and params.get("interval") == "1"
+                    and type(params.get("end")) is int
+                    and (params["end"] + 1) % 60000 == 0
+                    and isinstance(data, dict)
+                    and type(data.get("time")) is int
+                    and data["time"] >= params["end"] + 1
+                    and isinstance(data.get("result"), dict)
+                    and isinstance(data["result"].get("list"), list)
+                    and data["result"]["list"]):
+                # The cache key is the explicit end boundary, not a moving
+                # "latest" alias. Historical fetches remain quota fenced.
+                cache_ttl = max(cache_ttl, 60.)
             published = self._finish_shared(shared_key, owner, host, data, cache_ttl)
         # Another in-flight request can receive a 403/451 while this HTTP
         # request is completing. Its host-wide denial takes precedence over
@@ -1183,6 +1205,93 @@ class PublicData:
         with self._lock:
             self.cache[("bars", symbol)] = (time.time(), bars)
         return bars
+
+    def closed_candles(self, symbol, required=500, *, priority=False):
+        """Actual finalized minute rows, shared by all closed-only strategies.
+
+        Never promote a previously observed forming candle to a closed row.
+        A WS confirmation or a REST response after its actual closing boundary
+        is required. The same current closed history is reusable within that
+        minute; every provider denial and candle boundary is still checked.
+        """
+        from .indicators import aggregate
+        clock.ensure()
+        self._assert_provider_allowed("api.bybit.com")
+        required = max(100, int(required))
+        boundary = int(market_now() // 60) * 60000
+        key = ("closed_bars", symbol)
+        with self._lock:
+            previous = self.cache.get(key, (0, []))[1]
+        found = {b["t"]: b for b in previous if b["t"] < boundary}
+
+        def complete():
+            bars = [found[t] for t in sorted(found)][-required:]
+            if (len(bars) < required or bars[-1]["t"] != boundary - 60000
+                    or any(b["t"] - a["t"] != 60000 for a,b in zip(bars,bars[1:]))):
+                return None
+            aggregate(bars, 1, boundary, "bar_close")
+            return bars
+
+        def absorb(data, *, ws=False):
+            stamp = data.get("time")
+            if type(stamp) is not int or stamp < boundary:
+                return
+            if ws and (data.get("_bcc_ws_kline") is not True
+                       or data.get("_bcc_ws_kline_confirmed") is not True):
+                return
+            for row in data["result"]["list"]:
+                start = int(row[0])
+                if start < 0 or start % 60000 or start + 60000 > min(boundary, stamp):
+                    continue
+                found[start] = dict(t=start, open=float(row[1]), high=float(row[2]),
+                                    low=float(row[3]), close=float(row[4]), volume=float(row[5]))
+
+        prior_priority = getattr(self._thread, "position_history", False)
+        prior_closed = getattr(self._thread, "closed_history", False)
+        self._thread.position_history = priority
+        self._thread.closed_history = True
+        try:
+            bars = complete()
+            if bars is None and previous:
+                try:
+                    absorb(self.bybit("kline", {"symbol":symbol,"interval":"1","limit":10}), ws=True)
+                except WebSocketKlineUnavailable:
+                    pass
+                bars = complete()
+            if bars is None:
+                # Request the exact CLOSED range. Use a stable endpoint key
+                # so multiple accounts coalesce their immutable history.
+                # Warm history needs only the missing tail, cold history
+                # can page back through the same existing public quota.
+                remaining = required
+                if previous and boundary - previous[-1]["t"] <= 90 * 60000:
+                    remaining = min(required,100)
+                end = boundary - 1
+                for _ in range((remaining + 999)//1000):
+                    limit = min(1000,remaining)
+                    data = self.bybit("kline", {"symbol":symbol,"interval":"1","limit":limit,"end":end})
+                    rows = data["result"]["list"]
+                    if not rows:
+                        break
+                    absorb(data)
+                    remaining -= len(rows)
+                    end = min(int(row[0]) for row in rows)-1
+                    if remaining <= 0:
+                        break
+                bars = complete()
+            if bars is None:
+                raise DataUnavailable("Не подтверждена полная история закрытых свечей")
+            # Do not return yesterday's current closed bar after crossing
+            # a minute boundary while waiting on an upstream backfill.
+            self._assert_provider_allowed("api.bybit.com")
+            if int(market_now() // 60) * 60000 != boundary:
+                raise DataUnavailable("Новая минута: требуется подтверждение закрытой свечи")
+            with self._lock:
+                self.cache[key] = (time.time(), bars)
+            return bars
+        finally:
+            self._thread.position_history = prior_priority
+            self._thread.closed_history = prior_closed
 
     def position_candles(self, symbol, required=500):
         """Prioritize authentic history for an already held PAPER position.

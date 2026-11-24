@@ -896,6 +896,7 @@ class MarketDataHub:
                     return False
                 value = {
                     "retCode": 0, "retMsg": "OK", "_bcc_ws_kline": True,
+                    "_bcc_ws_kline_confirmed": candle.confirmed,
                     "time": candle.message_ms,
                     "result": {"list": [[
                         str(candle.start_ms), str(candle.open), str(candle.high),

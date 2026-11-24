@@ -1,6 +1,7 @@
 """Bounded parallel public reads; accounting stays on the single worker thread."""
 
 import math
+import os
 import time
 from collections import OrderedDict
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -123,7 +124,7 @@ class MarketScheduler:
         except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
             return None, str(exc)
 
-    def _fetch(self, symbol, required, positions, manage=True, urgent=False, mark_only=False, history_only=False):
+    def _fetch(self, symbol, required, positions, manage=True, urgent=False, mark_only=False, history_only=False, closed_only=False):
         history_error = ''
         quote_error = ''
         book = None
@@ -148,7 +149,10 @@ class MarketScheduler:
                 # Third-party adapters without this explicit capability keep
                 # their original candles(symbol, required) contract.
                 position_history = getattr(self.source, 'position_candles', None)
-                if urgent and callable(position_history):
+                closed_reader = getattr(self.source, "closed_candles", None)
+                if closed_only and callable(closed_reader):
+                    bars = closed_reader(symbol, required, priority=urgent)
+                elif urgent and callable(position_history):
                     bars = position_history(symbol, required)
                 else:
                     bars = self.source.candles(symbol, required)
@@ -477,6 +481,20 @@ class MarketScheduler:
                     and not book_is_fresh(self._quote_ready.get(symbol, 0))):
                 return False
             opened = opened_by_symbol.get(symbol, [])
+            def has_intrabar(value):
+                if isinstance(value, dict):
+                    return (value.get("trigger") == "intrabar"
+                            or any(has_intrabar(v) for v in value.values()))
+                return isinstance(value, (list,tuple)) and any(has_intrabar(v) for v in value)
+            # Check both current configuration and persisted active settings;
+            # an old intrabar exit must retain the existing live-candle path.
+            closed_only = (os.environ.get("BCC_BYBIT_MAINTAINED_MARK_CANDIDATE") == "1"
+                           and self.cfg.get("strategy") == "VELES"
+                           and callable(getattr(self.source,"closed_candles",None))
+                           and not has_intrabar(self.cfg)
+                           and not any(has_intrabar(p) for p in
+                                       (*state["positions"].values(), *state.get("pending",{}).values())
+                                       if p.get("symbol") == symbol))
             self.jobs[symbol] = self.pool.submit(
                 symbol, self._fetch,
                 symbol,
@@ -486,6 +504,7 @@ class MarketScheduler:
                 symbol in priority_set,
                 risk_mode and symbol in priority_set and not history_only,
                 history_only,
+                *([True] if closed_only else []),
             )
             if history_only:
                 self._history_only.add(symbol)

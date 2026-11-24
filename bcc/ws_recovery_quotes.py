@@ -58,6 +58,20 @@ class RecoveryQuoteStream(BybitQuoteStream):
                 self._retire_uncertain_socket()
             return super().sync_symbols(symbols)
 
+    def sync_active_symbols(self, symbols):
+        """Finish in-flight wire pairs before physically removing old demand.
+
+        The dual parent revokes admission immediately. Only its secondary
+        subscription persists until the correlated ACK is processed; the next
+        registry scan then removes it. No delayed ACK can re-admit it.
+        """
+        with self._lock:
+            retained = self._wire_symbols - set(symbols)
+            for symbol in retained:
+                self._marks.pop(symbol, None)
+                self._quotes.pop(symbol, None)
+            return super().sync_symbols(sorted(set(symbols) | retained))
+
     def _wire_refresh_pending(self, symbol):
         return symbol in self._wire_symbols
 

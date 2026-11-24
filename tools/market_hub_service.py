@@ -70,6 +70,13 @@ def main():
     def publish_events():
         last_warning = 0.0
         while not stop.is_set():
+            # Coalesce very small bursts rather than taking a WAL writer
+            # transaction for each one to three live market notifications.
+            # A saturated queue drains immediately; the low-load wait is
+            # bounded to 20ms, far below the original source age fences.
+            if ws_updates.stats()["pending"] < 64:
+                if stop.wait(.020):
+                    break
             batch = ws_updates.take_batch(timeout=.1)
             if not batch:
                 continue

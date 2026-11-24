@@ -63,7 +63,10 @@ class DualBybitQuoteStream:
             # Remove inactive recovery demand even if the primary send fails.
             # Each child independently revokes its own failed socket.
             try:
-                self._recovery.sync_symbols(sorted(self._recovery_demand))
+                if self.maintained_enabled:
+                    self._recovery.sync_active_symbols(sorted(self._recovery_demand))
+                else:
+                    self._recovery.sync_symbols(sorted(self._recovery_demand))
             except StreamUnavailable:
                 pass
             self._primary.sync_symbols(sorted(selected))
@@ -81,7 +84,9 @@ class DualBybitQuoteStream:
         with self._lock:
             if symbol not in self._demand:
                 return None, None, None
-            candidates = [s.snapshot_for_hub(symbol) for s in (self._primary, self._recovery)]
+            candidates = [self._primary.snapshot_for_hub(symbol)]
+            if symbol in self._recovery_demand:
+                candidates.append(self._recovery.snapshot_for_hub(symbol))
             valid = [c for c in candidates if c[2] and (c[0] is not None or c[1] is not None)]
             if not valid:
                 return None, None, None
@@ -104,6 +109,8 @@ class DualBybitQuoteStream:
                 return None, None
             marks, quotes = [], []
             for child in (self._primary, self._recovery):
+                if child is self._recovery and symbol not in self._recovery_demand:
+                    continue
                 with child._lock:
                     if not child._connected or symbol not in child._subscriptions:
                         continue
@@ -137,7 +144,9 @@ class DualBybitQuoteStream:
         with self._lock:
             if symbol not in self._demand:
                 raise StreamUnavailable('Bybit dual WS quote not subscribed')
-            quotes = [child.snapshot_for_hub(symbol)[1] for child in (self._primary, self._recovery)]
+            quotes = [self._primary.snapshot_for_hub(symbol)[1]]
+            if symbol in self._recovery_demand:
+                quotes.append(self._recovery.snapshot_for_hub(symbol)[1])
             valid = [q for q in quotes if q is not None]
             if not valid:
                 raise StreamUnavailable('Bybit dual WS quote unavailable')
@@ -172,7 +181,11 @@ class DualBybitQuoteStream:
                     wanted.append((symbol, newest))
             wanted = [s for s, _ in sorted(wanted,
                 key=lambda item: (item[0] not in self._priority, item[1], item[0]))]
-            new = [s for s in wanted if s not in self._recovery_demand]
+            with self._recovery._lock:
+                physical = set(self._recovery._subscriptions)
+            # A retired pending topic is never re-admitted until its wire
+            # operation settles and a registry scan physically removes it.
+            new = [s for s in wanted if s not in self._recovery_demand and s not in physical]
             old = [s for s in wanted if s in self._recovery_demand]
             # Existing recovery must get a turn even under a burst of new demand.
             new_budget = MAX_REFRESH_TOPICS_PER_SCAN // 2 if old else MAX_REFRESH_TOPICS_PER_SCAN
