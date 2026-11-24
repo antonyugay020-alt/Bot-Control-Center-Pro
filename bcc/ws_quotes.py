@@ -13,7 +13,7 @@ import threading
 import time
 from dataclasses import dataclass
 from .ws_dispatch import ReconnectBackoff, request_snapshots, MAX_REFRESH_TOPICS_PER_SCAN
-from .ws_recovery import SnapshotRecovery
+from .ws_recovery import SnapshotRecovery, SNAPSHOT_RESPONSE_TIMEOUT
 
 
 class StreamUnavailable(RuntimeError):
@@ -48,9 +48,12 @@ class BybitQuoteStream:
     ENDPOINT = "wss://stream.bybit.com/v5/public/linear"
     MAX_SUB_PER_MSG = 10
 
-    def __init__(self, *, max_age=2.0, monotonic=time.monotonic, wall=time.time, on_update=None):
+    def __init__(self, *, max_age=2.0, monotonic=time.monotonic, wall=time.time, on_update=None, mark_only_recovery=False):
         if type(max_age) not in (int, float) or not math.isfinite(max_age) or not 0 < max_age <= 15:
             raise ValueError("invalid quote max_age")
+        if type(mark_only_recovery) is not bool:
+            raise ValueError("invalid recovery policy")
+        self._mark_only_recovery = mark_only_recovery
         self._max_age = max_age
         self._mono, self._wall = monotonic, wall
         self.on_update = on_update
@@ -117,7 +120,7 @@ class BybitQuoteStream:
             for symbol in fresh:
                 # Allow the initial exchange subscription snapshot to arrive
                 # before requesting a recovery snapshot.
-                self._mark_refresh_due[symbol] = self._mono() + 3.0
+                self._mark_refresh_due[symbol] = self._mono() + (SNAPSHOT_RESPONSE_TIMEOUT if self._mark_only_recovery else 3.0)
             socket = self._socket if self._connected else None
             if socket is None:
                 return
@@ -164,7 +167,7 @@ class BybitQuoteStream:
             self._snapshot_recovery.clear()
             self._refresh_backlog = 0
             for symbol in self._subscriptions:
-                self._mark_refresh_due[symbol] = self._mono() + 3.0
+                self._mark_refresh_due[symbol] = self._mono() + (SNAPSHOT_RESPONSE_TIMEOUT if self._mark_only_recovery else 3.0)
             return self._generation
 
     def ingest(self, payload, *, generation):
@@ -222,6 +225,9 @@ class BybitQuoteStream:
                     received = self._mono()
                     self._marks[symbol] = (mark, ts, received, generation)
                     self._verified_mark_events += 1
+                    if self._mark_only_recovery:
+                        # Only a newer explicit mark completes collateral recovery.
+                        self._snapshot_recovery.observe_snapshot(symbol, (ts,))
                     if old_mark is None:
                         # Handshake grace ends once the first genuine mark
                         # arrives. Keeping the initial three-second deadline
@@ -264,7 +270,8 @@ class BybitQuoteStream:
                             and -5 <= self._wall() - bid_ms / 1000 <= self._max_age
                             and -5 <= self._wall() - ask_ms / 1000 <= self._max_age
                         )
-            if kind == "snapshot" and mark is not None and set(incoming) == {"bid1Price", "ask1Price"}:
+            if (not self._mark_only_recovery and kind == "snapshot"
+                    and mark is not None and set(incoming) == {"bid1Price", "ask1Price"}):
                 actual_mark = self._marks.get(symbol)
                 actual_quote = self._quotes.get(symbol)
                 if (actual_mark is not None and actual_quote is not None
@@ -346,17 +353,17 @@ class BybitQuoteStream:
                 )
                 if self._wire_refresh_pending(symbol) or self._snapshot_recovery.waiting(symbol, now):
                     continue
-                if (fresh and quote_fresh) or now < self._mark_refresh_due.get(symbol, 0):
+                if (fresh and (self._mark_only_recovery or quote_fresh)) or now < self._mark_refresh_due.get(symbol, 0):
                     continue
                 if len(stale) >= max_topics or (not priority and background_selected >= 20):
                     deferred += 1
                     continue
                 stale.append(symbol)
-                self._snapshot_recovery.begin(symbol, now, (
-                    row[1] if row is not None else -1,
-                    quote.bid_exchange_ms if quote is not None else -1,
-                    quote.ask_exchange_ms if quote is not None else -1,
-                ))
+                stamps = (row[1] if row is not None else -1,)
+                if not self._mark_only_recovery:
+                    stamps += (quote.bid_exchange_ms if quote is not None else -1,
+                               quote.ask_exchange_ms if quote is not None else -1)
+                self._snapshot_recovery.begin(symbol, now, stamps)
                 background_selected += int(not priority)
                 self._mark_refresh_due[symbol] = now + (.5 if priority else 1.)
             self._refresh_backlog = deferred

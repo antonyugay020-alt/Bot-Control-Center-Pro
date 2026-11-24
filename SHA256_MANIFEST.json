@@ -124,7 +124,7 @@
     "bcc/ws_klines.py": "6727e98680f3cb46278c6cf66285b32944271b5c2d8ce8f90d2895352b5b35d0",
     "bcc/ws_orderbooks.py": "f4ef0a022b58b242ececfa8aec50822d232fdc5850f1e321c15512ac33fa05d5",
     "bcc/ws_polymarket.py": "02cb7000d4f89c1296e896775e7fcfaf0f06ba6fffd434691ff81075eb55bf19",
-    "bcc/ws_quotes.py": "67df34cc863dadbbc92cd1697e1bea2fe0cf525996dd7f8fe2ac37ffbf0a9994",
+    "bcc/ws_quotes.py": "3696c1b37b66ec82fadd8f6980e1a48198feef519af92187c62874fdaeb5aa4e",
     "bcc/ws_symbols.py": "b15a76d5f850ba964efa5470ef19cb572385bae91777fc9228a9d1b2a08baa79",
     "docs/ACCEPTANCE_REGRESSION_20261112.json": "78b48b4f4c43838b1ee310d451ac28362f314fde515d68d4e053a702b99ec061",
     "docs/AUTOMATIC_WINDOWS_ACCEPTANCE_RU.md": "5ff5861455e748d9f381e3ba0ffc8641018f7887ec742911b668907cb5c87d27",
@@ -570,12 +570,13 @@
     "tests/test_ws_publication_diagnostics.py": "89b2a8cdf9bc559aa8f7c0f4bf3f8873e968c385d6a0180d638f57a40ad75dd6",
     "bcc/ws_recovery.py": "94df9d12da4ac53754fc8589ffc98b3a4717d52093831d61ed9cd00143d03ccb",
     "tests/test_ws_snapshot_response_gate.py": "7f814061372555f2e9a317f9a15364bbb7f53c709acdd638df5c2b0a635de86c",
-    "bcc/ws_dual_quotes.py": "5a2d9817a2cb306c217cad62a84eaef1fb7b5736059b9059240b28e5a76b3b67",
+    "bcc/ws_dual_quotes.py": "dffc9c714938db955f20f172d4659f0080d5079f25a6c4cad21d1d5c54631939",
     "bcc/ws_recovery_quotes.py": "13faea5e04b6f86112a5715600a79e5981eae2e532e143ec102c2c956d4e6e7c",
     "bcc/ws_source_deadline.py": "64ead1787c44ddee0a8fa622c2c0ad16fd058192b2e849f77de0dc488a06829b",
-    "tests/test_ws_dual_quotes.py": "3c61f0e9a5c429f51826ea40976a0eedf7699f180b8e1ad15e2b5597d40b2f27",
+    "tests/test_ws_dual_quotes.py": "848de85efba4522c58b91e9dba7605c251919868e9990c18557314e068bda98a",
     "tests/test_ws_source_deadline.py": "e36920777207bc9ba491f688de7477ad5763f01f9d932ddf96a22743c482e82f",
     "bcc/ws_split_ticker.py": "050a0bdb8ae9bb54692f476ea3bf57c6eafc04f7ea8b380de10d43c7fe0b47a7",
-    "tests/test_ws_split_ticker.py": "cb103ece7f4ef8e6686edae4d280b35d4a443440d476735ca78a0039663b5484"
+    "tests/test_ws_split_ticker.py": "cb103ece7f4ef8e6686edae4d280b35d4a443440d476735ca78a0039663b5484",
+    "tests/test_ws_mark_only_recovery.py": "175e59d754fdbd7f59a3d4f8148d3a1351bcfbdc2fb5d7070527420184f9506b"
   }
 }

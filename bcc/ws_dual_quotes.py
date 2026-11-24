@@ -22,7 +22,7 @@ class DualBybitQuoteStream:
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._primary = BybitQuoteStream(wall=wall, monotonic=monotonic, on_update=on_update)
-        self._recovery = RecoveryQuoteStream(wall=wall, monotonic=monotonic, on_update=on_update)
+        self._recovery = RecoveryQuoteStream(wall=wall, monotonic=monotonic, on_update=on_update, mark_only_recovery=True)
         self._demand = set()
         self._primary_added = {}
         self._recovery_demand = set()
@@ -145,16 +145,22 @@ class DualBybitQuoteStream:
         with self._lock:
             wanted = []
             wall, now = self._wall(), self._mono()
-            for symbol in sorted(symbols & self._demand,
-                                 key=lambda s:(s not in self._priority, s)):
-                mark, quote, fence = self._primary.snapshot_for_hub(symbol)
-                # Give a new primary subscription its initial snapshot chance.
-                if fence and mark is None and quote is None and now-self._primary_added[symbol] < .75:
+            # Compare explicit marks from both lanes. Executable quote age
+            # is not a reason to recover the independently timed collateral.
+            for symbol in symbols & self._demand:
+                primary_mark, _, fence = self._primary.snapshot_for_hub(symbol)
+                marks = [primary_mark]
+                if symbol in self._recovery_demand:
+                    marks.append(self._recovery.snapshot_for_hub(symbol)[0])
+                stamps = [m[1] for m in marks if m is not None]
+                newest = max(stamps, default=-1.)
+                if fence and not stamps and now-self._primary_added[symbol] < .75:
                     continue
                 lead = 1.0 if symbol in self._priority else 1.5
-                if (mark is None or quote is None or wall-mark[1] >= lead
-                        or wall-quote[2] >= lead):
-                    wanted.append(symbol)
+                if not stamps or wall-newest >= lead:
+                    wanted.append((symbol, newest))
+            wanted = [s for s, _ in sorted(wanted,
+                key=lambda item: (item[0] not in self._priority, item[1], item[0]))]
             new = [s for s in wanted if s not in self._recovery_demand]
             old = [s for s in wanted if s in self._recovery_demand]
             # Existing recovery must get a turn even under a burst of new demand.
@@ -187,8 +193,14 @@ class DualBybitQuoteStream:
         with self._lock:
             def lane(child):
                 with child._lock:
+                    now = self._wall()
+                    ages = [now - row[1] / 1000 for row in child._marks.values()
+                            if child._connected and row[3] == child._generation]
                     return dict(connection='connected' if child._connected else 'reconnecting',
-                                subscribed=len(child._subscriptions), received_symbols=len(child._quotes))
+                                subscribed=len(child._subscriptions), received_symbols=len(child._quotes),
+                                explicit_mark_symbols=len(ages),
+                                explicit_mark_age_over_3s=sum(age > 3. for age in ages),
+                                explicit_mark_max_age_seconds=round(max(ages, default=0.), 6))
             return dict(mode='stable_primary_independent_recovery',
                         primary=lane(self._primary), recovery=lane(self._recovery),
                         refresh=self.refresh_pressure())

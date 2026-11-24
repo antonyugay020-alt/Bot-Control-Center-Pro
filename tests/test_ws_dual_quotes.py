@@ -166,6 +166,8 @@ def test_shadow_requires_matching_unsubscribe_ack_before_subscribe():
     stream.refresh_stale_marks(['BTCUSDT'])
     assert full(stream._recovery,now[0])
     now[0]+=.6
+    assert stream.refresh_stale_marks(['BTCUSDT'])==0  # fresh reserve mark suffices
+    now[0]+=.5
     assert stream.refresh_stale_marks(['BTCUSDT'])==1
     child=stream._recovery
     req=sock.messages[-1]
@@ -196,6 +198,8 @@ def test_missing_ack_retires_shadow_only_and_never_creates_data():
     stream.refresh_stale_marks(['BTCUSDT'])
     assert full(stream._recovery,now[0])
     now[0]+=.6
+    assert stream.refresh_stale_marks(['BTCUSDT'])==0  # fresh reserve mark suffices
+    now[0]+=.5
     assert stream.refresh_stale_marks(['BTCUSDT'])==1
     now[0]+=1.3
     with pytest.raises(StreamUnavailable,match='ACK timeout'):
@@ -216,6 +220,8 @@ def test_removed_symbol_cannot_be_resubscribed_by_delayed_ack():
     stream.refresh_stale_marks(['BTCUSDT'])
     assert full(stream._recovery,now[0])
     now[0]+=.6
+    assert stream.refresh_stale_marks(['BTCUSDT'])==0  # fresh reserve mark suffices
+    now[0]+=.5
     stream.refresh_stale_marks(['BTCUSDT'])
     child=stream._recovery
     gen=child._generation;req=sock.messages[-1];n=len(sock.messages)
