@@ -978,12 +978,16 @@ class MarketDataHub:
             return
         self._ws_subscription_scan_due = now + 1.0
         prioritize_marks = getattr(ticker, "set_priority_symbols", None)
-        if self._ws_dispatcher is not None or callable(prioritize_marks):
+        prioritize_books = getattr(orderbook, "set_priority_symbols", None)
+        if (self._ws_dispatcher is not None or callable(prioritize_marks)
+                or callable(prioritize_books)):
             active, priority = self.registry.stream_demand()
             if self._ws_dispatcher is not None:
                 self._ws_dispatcher.configure(active, priority)
             if callable(prioritize_marks):
                 prioritize_marks([symbol for kind, symbol in priority if kind == "tickers"])
+            if callable(prioritize_books):
+                prioritize_books([symbol for kind, symbol in priority if kind == "depth50"])
         ticker = getattr(self.source, "_quote_stream", None)
         orderbook = getattr(self.source, "_orderbook_stream", None)
         kline = getattr(self.source, "_kline_stream", None)

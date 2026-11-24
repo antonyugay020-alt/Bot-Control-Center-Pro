@@ -12,7 +12,7 @@ import uuid
 import threading
 import time
 from dataclasses import dataclass
-from .ws_dispatch import ReconnectBackoff, request_snapshots
+from .ws_dispatch import ReconnectBackoff, request_snapshots, MAX_REFRESH_TOPICS_PER_SCAN
 
 
 class StreamUnavailable(RuntimeError):
@@ -66,6 +66,8 @@ class BybitQuoteStream:
         # fabricated from best bid/ask or renewed by quote-only deltas.
         self._marks = {}
         self._mark_refresh_due = {}
+        # Expose WS recovery debt; never pretend an unrefreshed mark is fresh.
+        self._refresh_backlog = 0
         self._socket = None
         self._stop = threading.Event()
 
@@ -134,6 +136,7 @@ class BybitQuoteStream:
             self._quotes.clear()
             self._marks.clear()
             self._mark_refresh_due.clear()
+            self._refresh_backlog = 0
 
     def connect(self, socket=None):
         with self._lock:
@@ -146,6 +149,7 @@ class BybitQuoteStream:
             self._quotes.clear()
             self._marks.clear()
             self._mark_refresh_due.clear()
+            self._refresh_backlog = 0
             for symbol in self._subscriptions:
                 self._mark_refresh_due[symbol] = self._mono() + 3.0
             return self._generation
@@ -277,11 +281,12 @@ class BybitQuoteStream:
             now = self._mono()
             wall = self._wall()
             stale = []
-            # Never throttle a mark belonging to an open position. Bound only
-            # background refresh commands and serve the oldest due requests
-            # first, so thousands of discovered symbols cannot flood Bybit's
-            # WS control channel or starve held-position price evidence.
+            # Held positions remain first, oldest due first. The burst
+            # budget limits WS CONTROL traffic only, not portfolio size.
+            # Deferred positions keep their original deadline and are served
+            # on subsequent producer scans; collateral freshness is unchanged.
             background_selected = 0
+            deferred = 0
             for symbol in sorted(
                 set(symbols) & self._subscriptions,
                 key=lambda symbol: (
@@ -306,11 +311,13 @@ class BybitQuoteStream:
                 )
                 if (fresh and quote_fresh) or now < self._mark_refresh_due.get(symbol, 0):
                     continue
-                if not priority and background_selected >= 20:
+                if len(stale) >= MAX_REFRESH_TOPICS_PER_SCAN or (not priority and background_selected >= 20):
+                    deferred += 1
                     continue
                 stale.append(symbol)
                 background_selected += int(not priority)
                 self._mark_refresh_due[symbol] = now + (.5 if priority else 1.)
+            self._refresh_backlog = deferred
             if not stale:
                 return 0
             try:
@@ -324,6 +331,12 @@ class BybitQuoteStream:
                 finally:
                     raise StreamUnavailable("Bybit mark refresh subscription failed") from exc
             return len(stale)
+
+    def refresh_pressure(self):
+        """Observable WS command debt, independent of verified data age."""
+        with self._lock:
+            return dict(deferred_symbols=self._refresh_backlog,
+                        per_scan_budget=MAX_REFRESH_TOPICS_PER_SCAN)
 
     def snapshot_for_hub(self, symbol):
         """Return quote/mark from ONE websocket incarnation, without REST.

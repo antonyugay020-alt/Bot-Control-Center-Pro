@@ -15,6 +15,10 @@ import time
 URGENT = frozenset({"polybook", "depth50"})
 REGULAR = frozenset({"tickers", "binance_trade", "kline1"})
 
+# Per-scan control-message burst budget, NOT a coin or position limit.
+# Deferred symbols retain their due timestamps for the next scan.
+MAX_REFRESH_TOPICS_PER_SCAN = 128
+
 
 def request_snapshots(socket, topic, symbols, *, batch_size=10):
     """Ask the established public socket for new exchange snapshots in batches."""
