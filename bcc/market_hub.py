@@ -587,8 +587,10 @@ class HubRegistry:
             ).fetchone() is not None
 
     def due(self, limit=32, *, reserve_regular=0, exclude=(), include_priority=False,
-            include_generation=False, skip_ws_routes=()):
+            include_generation=False, skip_ws_routes=(), history_lane=None):
         # Urgent position marks first, reserve slots for scans.
+        if history_lane is not None and type(history_lane) is not bool:
+            raise ValueError("Invalid REST history lane selector")
 
         # Urgency belongs to a short renewable lease, not a permanent flag.
         if type(include_generation) is not bool:
@@ -642,6 +644,11 @@ class HubRegistry:
                 clauses.append("NOT (url=? AND CASE WHEN json_valid(params) "
                                "THEN (" + shape + ") ELSE 0 END)")
             skip_sql += ' AND ' + ' AND '.join(clauses)
+        if history_lane is not None:
+            # Filter BEFORE LIMIT, not after fetching the head of the
+            # combined queue. Only this fixed allowlisted route is separated.
+            op = "=" if history_lane else "<>"
+            skip_sql += " AND url" + op + "'https://api.bybit.com/v5/market/kline'"
         # Rank actual financial-risk metadata before executable price/book,
         # then held-position candles. Grouping book with risk as equal-priority
         # lets an already-backlogged quote queue consume the one reserved
@@ -722,6 +729,7 @@ class MarketDataHub:
         # A new pool per poll would constantly churn threads on large scans.
         self._pool = (ThreadPoolExecutor(max_workers=max_workers,
                           thread_name_prefix='hub-public-get') if max_workers > 1 else None)
+        self._history_pool = None
         self.registry = HubRegistry(cache_path)
         self.owner = f"{os.getpid()}:{uuid.uuid4().hex}"
         # Steady-state producer: never hold the entire batch hostage to the
@@ -750,6 +758,14 @@ class MarketDataHub:
         self.source = source or PublicData()
         if self.source.shared is None:
             self.source.shared = PublicCache(cache_path)
+
+    def enable_split_history(self):
+        """Activate dedicated REST executors before admitting producer work."""
+        if self._history_pool is not None or self._inflight or not 3 <= self.max_workers <= 64:
+            raise ValueError("Split REST lanes require a new Hub with 3..64 workers")
+        self._history_pool = ThreadPoolExecutor(
+            max_workers=self.max_workers // 2, thread_name_prefix="hub-history-get")
+        self.source.shared.split_history_lanes = True
 
     def acquire_leadership(self, *, lifetime=120):
         """Single admission path for service readiness and every producer mode.
@@ -1190,6 +1206,13 @@ class MarketDataHub:
                 and params.get('interval') == '1'):
             return 3600.
         delay = 2. if failed else 120. if '/risk-limit' in url else .25 if 'orderbook' in url or '/book' in url else 1.
+        if not failed and self._history_pool is not None:
+            # Schedule unchanged long-lived metadata at actual cache
+            # deadlines, not a perpetual one-second cache-hit/ACK cycle.
+            if '/instruments-info' in url:
+                delay = 3600.
+            elif '/funding/history' in url:
+                delay = 60.
         remaining = getattr(getattr(self.source,'shared',None),'remaining_ttl',None)
         if failed or not callable(remaining):
             return delay
@@ -1360,11 +1383,11 @@ class MarketDataHub:
         for key, (future, url, is_urgent, launched_token, generation, params) in list(self._inflight.items()):
             if not future.done():
                 continue
-            del self._inflight[key]
             # A task launched under an earlier lease must not acknowledge
             # subscriptions after the producer loses and regains leadership.
             # Keep it accounted for until completion to bound HTTP concurrency.
             if launched_token != self._leader_token:
+                del self._inflight[key]
                 continue
             try:
                 error = future.result()
@@ -1374,11 +1397,20 @@ class MarketDataHub:
                 key, self._refresh_delay(url,params,failed=error is not None), str(error) if error is not None else "",
                 token=launched_token, generation=generation,
             )
+            # A busy writer must not forget a finished HTTP request before
+            # acknowledging its original generation. Retain the future if
+            # _acknowledge raises; the next poll retries only the SQL ACK.
+            del self._inflight[key]
             if outcome == "lost_leader":
                 self._leader_held = False
                 return results
             if outcome == "acknowledged":
                 results.append((key, error is None))
+
+        if self._history_pool is not None:
+            from .hub_rest_lanes import admit_rest_lanes
+            admit_rest_lanes(self)
+            return results
 
         free = self.max_workers - len(self._inflight)
         if free <= 0:
@@ -1451,6 +1483,8 @@ class MarketDataHub:
         return results
 
     def close(self):
+        if self._history_pool is not None:
+            self._history_pool.shutdown(wait=True, cancel_futures=True)
         if self._pool is not None:
             self._pool.shutdown(wait=True, cancel_futures=True)
         if self._leader_token:

@@ -41,6 +41,7 @@ class PublicCache:
         self._next_cleanup = 0
         # Explicit isolated candidate only; legacy publishers keep their TTL.
         self.bybit_ws_source_deadlines = False
+        self.split_history_lanes = False
         with self._guards_lock:
             self._guard = self._guards.setdefault(
                 str(self.path.resolve()), threading.RLock()
@@ -708,12 +709,20 @@ class PublicCache:
         ).hexdigest()
         self._ensure_schema()
         owner = uuid.uuid4().hex
-        with self.db() as db:
-            # Cache hits are read-only. Only a miss reserves the writer for the
-            # atomic lease and host budget, then releases it before HTTP/JSON.
-            value = self._cached(db, key, host, time.time())
+        if self.split_history_lanes:
+            # Reuse a single read snapshot of the provider policy and cache
+            # row without occupying the local WS publication writer guard.
+            # Misses still recheck BOTH inside BEGIN IMMEDIATE below.
+            with self.read_db() as reader:
+                reader.execute("BEGIN")
+                value = self._cached(reader, key, host, time.time())
             if value is not None:
                 return key, None, json.loads(value)
+        with self.db() as db:
+            if not self.split_history_lanes:
+                value = self._cached(db, key, host, time.time())
+                if value is not None:
+                    return key, None, json.loads(value)
             db.execute("BEGIN IMMEDIATE")
             now = time.time()
             value = self._cached(db, key, host, now)
@@ -879,8 +888,19 @@ class PublicCache:
                     self._store_denial(db, host, cooldown, denial_status)
                 db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
                 if time.monotonic() >= self._next_cleanup:
-                    db.execute("DELETE FROM cache WHERE until<?", (time.time() - 120,))
-                    db.execute("DELETE FROM lease WHERE until<?", (time.time(),))
-                    self._next_cleanup = time.monotonic() + 30
+                    if self.split_history_lanes:
+                        # Bound stale-history garbage collection in the
+                        # shared writer transaction; defer the next chunk.
+                        n = db.execute("DELETE FROM cache WHERE k IN (SELECT k FROM cache "
+                                       "WHERE until<? ORDER BY until LIMIT 128)",
+                                       (time.time()-120,)).rowcount
+                        m = db.execute("DELETE FROM lease WHERE k IN (SELECT k FROM lease "
+                                       "WHERE until<? ORDER BY until LIMIT 128)",
+                                       (time.time(),)).rowcount
+                        self._next_cleanup = time.monotonic() + (.5 if max(n,m)==128 else 30.)
+                    else:
+                        db.execute("DELETE FROM cache WHERE until<?", (time.time() - 120,))
+                        db.execute("DELETE FROM lease WHERE until<?", (time.time(),))
+                        self._next_cleanup = time.monotonic() + 30
                 db.commit()
         return published

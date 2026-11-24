@@ -125,6 +125,9 @@ def main():
         hub = MarketDataHub(args.cache, source=source, max_workers=args.concurrency)
         if os.environ.get('BCC_BYBIT_DUAL_WS_CANDIDATE') == '1':
             hub.source.shared.bybit_ws_source_deadlines = True
+        if os.environ.get('BCC_BYBIT_SPLIT_HISTORY_CANDIDATE') == '1':
+            hub.enable_split_history()
+            print('Dedicated REST history/metadata executors enabled', flush=True)
         hub.set_ws_dispatcher(ws_updates)
         for label, stream in (('tickers', quote_stream), ('depth50', book_stream),
                               ('kline1', kline_stream), ('polybook', poly_stream),
