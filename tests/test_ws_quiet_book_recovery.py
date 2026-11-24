@@ -71,6 +71,8 @@ def test_missing_book_recovery_batches_and_failed_send_closes_owned_socket():
     assert all(len(row['args'])==10 for row in socket.sent)
     assert stream.refresh_stale_books(symbols)==0
     advance(c,1)
+    assert stream.refresh_stale_books(symbols)==0
+    advance(c,.26)
     def broken(_):raise OSError('socket lost')
     socket.send=broken
     with pytest.raises(StreamUnavailable,match='refresh'):

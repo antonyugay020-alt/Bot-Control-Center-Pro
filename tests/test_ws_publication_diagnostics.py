@@ -74,6 +74,8 @@ def test_ticker_recovery_commands_are_visible_but_never_refresh_mark():
         stream.mark("BTCUSDT")
     sock.fail=True
     now[0]+=.51
+    assert stream.refresh_stale_marks(["BTCUSDT"]) == 0
+    now[0]+=.75
     with pytest.raises(StreamUnavailable):
         stream.refresh_stale_marks(["BTCUSDT"])
     pressure=stream.refresh_pressure()

@@ -46,10 +46,10 @@ def test_thousand_held_mark_recoveries_are_fair_and_cannot_burst_all_at_once():
     moment[0]+=3.01
     try:
         assert stream.refresh_stale_marks(names)==MAX_REFRESH_TOPICS_PER_SCAN
-        assert stream.refresh_pressure()=={
-            'deferred_symbols':len(names)-MAX_REFRESH_TOPICS_PER_SCAN,
-            'per_scan_budget':MAX_REFRESH_TOPICS_PER_SCAN,
-        }
+        pressure = stream.refresh_pressure()
+        assert pressure['deferred_symbols'] == len(names)-MAX_REFRESH_TOPICS_PER_SCAN
+        assert pressure['per_scan_budget'] == MAX_REFRESH_TOPICS_PER_SCAN
+        assert pressure['pending_snapshot_topics'] == MAX_REFRESH_TOPICS_PER_SCAN
         assert len(socket.messages)==2*((MAX_REFRESH_TOPICS_PER_SCAN+9)//10)
         assert all(len(x['args']) <= 10 for x in socket.messages)
         first=refreshed_topics(socket,'tickers')

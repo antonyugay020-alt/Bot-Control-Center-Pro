@@ -13,6 +13,7 @@ import threading
 import time
 from dataclasses import dataclass
 from .ws_dispatch import ReconnectBackoff, request_snapshots, MAX_REFRESH_TOPICS_PER_SCAN
+from .ws_recovery import SnapshotRecovery
 
 
 class StreamUnavailable(RuntimeError):
@@ -66,6 +67,7 @@ class BybitQuoteStream:
         # fabricated from best bid/ask or renewed by quote-only deltas.
         self._marks = {}
         self._mark_refresh_due = {}
+        self._snapshot_recovery = SnapshotRecovery()
         # Expose WS recovery debt; never pretend an unrefreshed mark is fresh.
         self._refresh_backlog = 0
         # Aggregate event provenance only, no prices/symbols/account identifiers.
@@ -83,7 +85,7 @@ class BybitQuoteStream:
         from .ws_dispatch import synchronize_bybit_symbols
         return synchronize_bybit_symbols(
             self, symbols, subscribed=self._subscriptions, topic="tickers",
-            caches=("_quotes", "_marks", "_mark_refresh_due"), subscribe=self.subscribe_many, error_type=StreamUnavailable,
+            caches=("_quotes", "_marks", "_mark_refresh_due", "_snapshot_recovery"), subscribe=self.subscribe_many, error_type=StreamUnavailable,
         )
 
     def subscribe(self, symbol):
@@ -144,6 +146,7 @@ class BybitQuoteStream:
             self._quotes.clear()
             self._marks.clear()
             self._mark_refresh_due.clear()
+            self._snapshot_recovery.clear()
             self._refresh_backlog = 0
 
     def connect(self, socket=None):
@@ -158,6 +161,7 @@ class BybitQuoteStream:
             self._quotes.clear()
             self._marks.clear()
             self._mark_refresh_due.clear()
+            self._snapshot_recovery.clear()
             self._refresh_backlog = 0
             for symbol in self._subscriptions:
                 self._mark_refresh_due[symbol] = self._mono() + 3.0
@@ -260,6 +264,14 @@ class BybitQuoteStream:
                             and -5 <= self._wall() - bid_ms / 1000 <= self._max_age
                             and -5 <= self._wall() - ask_ms / 1000 <= self._max_age
                         )
+            if kind == "snapshot" and mark is not None and set(incoming) == {"bid1Price", "ask1Price"}:
+                actual_mark = self._marks.get(symbol)
+                actual_quote = self._quotes.get(symbol)
+                if (actual_mark is not None and actual_quote is not None
+                        and actual_mark[1] == ts
+                        and actual_quote.bid_exchange_ms == ts
+                        and actual_quote.ask_exchange_ms == ts):
+                    self._snapshot_recovery.observe_snapshot(symbol, (ts, ts, ts))
             if not changed:
                 return False
         if self.on_update is not None:
@@ -275,9 +287,9 @@ class BybitQuoteStream:
         Never reuse or restamp old observations. A bounded unsubscribe/
         resubscribe on the established public socket asks Bybit to send a
         fresh snapshot before independent mark or quote sides expire. Background
-        symbols are admitted in oldest-due batches of at most 20 per turn;
-        owned exposure is never capped and keeps its half-second
-        lead/cooldown. Refresh begins before expiry,
+        symbols are admitted in oldest-due batches of at most 20 per turn.
+        Exposure keeps its half-second proactive lead, but an unresolved
+        recovery is not repeated before its response timeout. Refresh begins before expiry,
         allowing a quiet symbol to retain genuine independent observations.
         The subsequent genuine WebSocket event is still required before
         margin/risk becomes available again.
@@ -320,12 +332,19 @@ class BybitQuoteStream:
                     and -5 <= wall - quote.bid_exchange_ms / 1000 < lead_age
                     and -5 <= wall - quote.ask_exchange_ms / 1000 < lead_age
                 )
+                if self._snapshot_recovery.waiting(symbol, now):
+                    continue
                 if (fresh and quote_fresh) or now < self._mark_refresh_due.get(symbol, 0):
                     continue
                 if len(stale) >= MAX_REFRESH_TOPICS_PER_SCAN or (not priority and background_selected >= 20):
                     deferred += 1
                     continue
                 stale.append(symbol)
+                self._snapshot_recovery.begin(symbol, now, (
+                    row[1] if row is not None else -1,
+                    quote.bid_exchange_ms if quote is not None else -1,
+                    quote.ask_exchange_ms if quote is not None else -1,
+                ))
                 background_selected += int(not priority)
                 self._mark_refresh_due[symbol] = now + (.5 if priority else 1.)
             self._refresh_backlog = deferred
@@ -356,7 +375,8 @@ class BybitQuoteStream:
                         snapshot_topics_requested=self._refresh_topics_sent,
                         snapshot_batches_requested=self._refresh_batches_sent,
                         snapshot_send_failures=self._refresh_send_failures,
-                        connections_opened=self._connections_opened)
+                        connections_opened=self._connections_opened,
+                        **self._snapshot_recovery.stats())
 
     def snapshot_for_hub(self, symbol):
         """Return quote/mark from ONE websocket incarnation, without REST.

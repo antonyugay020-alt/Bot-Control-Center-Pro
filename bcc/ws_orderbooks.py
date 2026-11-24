@@ -14,6 +14,7 @@ import threading
 import time
 from dataclasses import dataclass
 from .ws_dispatch import ReconnectBackoff, request_snapshots, MAX_REFRESH_TOPICS_PER_SCAN
+from .ws_recovery import SnapshotRecovery
 
 from .ws_quotes import StreamUnavailable
 
@@ -50,6 +51,7 @@ class BybitOrderbookWS:
         self._symbols = set()
         self._books = {}
         self._refresh_due = {}
+        self._snapshot_recovery = SnapshotRecovery()
         self._priority_symbols = frozenset()
         self._refresh_backlog = 0
         self._verified_book_events = 0
@@ -63,7 +65,7 @@ class BybitOrderbookWS:
         from .ws_dispatch import synchronize_bybit_symbols
         return synchronize_bybit_symbols(
             self, symbols, subscribed=self._symbols, topic="orderbook.50",
-            caches=("_books", "_refresh_due"), subscribe=self.subscribe, error_type=StreamUnavailable,
+            caches=("_books", "_refresh_due", "_snapshot_recovery"), subscribe=self.subscribe, error_type=StreamUnavailable,
         )
 
     def set_priority_symbols(self, symbols):
@@ -119,6 +121,7 @@ class BybitOrderbookWS:
         self._socket = None
         self._books.clear()
         self._refresh_due.clear()
+        self._snapshot_recovery.clear()
         self._refresh_backlog = 0
 
     def disconnect(self, *, generation=None):
@@ -226,6 +229,7 @@ class BybitOrderbookWS:
             self._verified_book_events += 1
             if kind == "snapshot":
                 self._verified_book_snapshots += 1
+                self._snapshot_recovery.observe_snapshot(symbol, (new.ts,))
         if self.on_update is not None:
             try:
                 self.on_update("depth50", symbol)
@@ -254,12 +258,15 @@ class BybitOrderbookWS:
                 fresh = (book is not None and book.generation == self._generation
                          and 0 <= now - book.received_mono < lead_age
                          and -.5 <= wall - book.ts < lead_age)
+                if self._snapshot_recovery.waiting(symbol, now):
+                    continue
                 if fresh or now < self._refresh_due.get(symbol, 0):
                     continue
                 if len(stale) >= MAX_REFRESH_TOPICS_PER_SCAN:
                     deferred += 1
                     continue
                 stale.append(symbol)
+                self._snapshot_recovery.begin(symbol, now, (book.ts if book is not None else -1,))
                 self._refresh_due[symbol] = now + 1.0
             self._refresh_backlog = deferred
             if not stale:
@@ -288,7 +295,8 @@ class BybitOrderbookWS:
                         snapshot_topics_requested=self._refresh_topics_sent,
                         snapshot_batches_requested=self._refresh_batches_sent,
                         snapshot_send_failures=self._refresh_send_failures,
-                        connections_opened=self._connections_opened)
+                        connections_opened=self._connections_opened,
+                        **self._snapshot_recovery.stats())
 
     def get_orderbook(self, symbol):
         with self._lock:
