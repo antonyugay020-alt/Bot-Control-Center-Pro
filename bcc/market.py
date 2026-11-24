@@ -1036,6 +1036,11 @@ class PublicData:
                                int(market_now()*1000)) is None:
                     self._finish_shared(shared_key,owner,host)
                     raise DataUnavailable("Bybit: закрытая минута не подтверждена")
+                if os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE")=="1":
+                    # An immutable exact closed minute remains recoverable
+                    # across a missed consumer cycle. No live price/risk TTL
+                    # is changed, and the consumer checks the exact boundary.
+                    cache_ttl = max(cache_ttl,180.)
             if self._complete_closed_window(url, params, data):
                 # The cache key is the explicit end boundary, not a moving
                 # "latest" alias. Historical fetches remain quota fenced.
@@ -1263,6 +1268,68 @@ class PublicData:
                 if priority:
                     self._hub_priority_until[subscription_key] = now + 30
 
+    def cached_closed_cohort(self, requirements):
+        """Advance warm verified history from a single shared read snapshot.
+
+        Only the background cohort reader calls this method. It performs no
+        HTTP, no subscription writes, and no executable-price or account
+        mutation. The existing history lane owns cold starts and lease renewal.
+        """
+        if (os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE") != "1"
+                or os.environ.get("BCC_MARKET_HUB_MODE") != "client"
+                or os.environ.get("BCC_BYBIT_CLOSED_HISTORY_CANDIDATE") != "1"
+                or os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE") != "1"
+                or os.environ.get("BCC_BYBIT_WS_KLINES") != "1"
+                or not isinstance(self.shared, PublicCache)):
+            return {}
+        from .closed_cohort import plan, extend
+        from .indicators import aggregate
+        with self._lock:
+            prior = {symbol: self.cache.get(("closed_bars",symbol),(0,[]))[1]
+                     for symbol in requirements}
+        if not any(prior.values()):
+            return {}
+        # A warm window was established with a quorum. Do not do a blocking
+        # cold clock probe on this cache-only plane, and never use OS fallback.
+        clock.bounds()
+        boundary = int(market_now()//60)*60000
+        self._assert_provider_allowed("api.bybit.com")
+        sizes = {s:max(100,int(n)) for s,n in requirements.items()}
+        requests = {}
+        for symbol, previous in prior.items():
+            missing = plan(previous,sizes[symbol],boundary)
+            if missing is not None:
+                requests[symbol] = missing
+        if not requests:
+            return {}
+        try:
+            tails = self.shared.read_closed_cohort(requests)
+        except ProviderDenied as exc:
+            raise SourceAccessDenied(exc.host,exc.http_status) from exc
+        result = {}
+        for symbol in requests:
+            bars = extend(prior[symbol],max(sizes[symbol],len(prior[symbol])),
+                          boundary,tails.get(symbol,{}))
+            if bars is not None:
+                aggregate(bars,1,boundary,"bar_close")
+                result[symbol] = bars
+        self._assert_provider_allowed("api.bybit.com")
+        if int(market_now()//60)*60000 != boundary:
+            return {}
+        with self._lock:
+            for symbol,bars in list(result.items()):
+                key = ("closed_bars",symbol)
+                previous = self.cache.get(key,(0,[]))[1]
+                if previous and previous[-1]["t"] > bars[-1]["t"]:
+                    del result[symbol]
+                    continue
+                if (previous and previous[-1]["t"] == bars[-1]["t"]
+                        and len(previous)>=len(bars)):
+                    result[symbol] = previous
+                    continue
+                self.cache[key] = (time.time(),bars)
+        return result
+
     def closed_candles(self, symbol, required=500, *, priority=False):
         """Actual finalized minute rows, shared by all closed-only strategies.
 
@@ -1388,7 +1455,12 @@ class PublicData:
             if int(market_now() // 60) * 60000 != boundary:
                 raise DataUnavailable("Новая минута: требуется подтверждение закрытой свечи")
             with self._lock:
-                self.cache[key] = (time.time(), bars)
+                previous = self.cache.get(key,(0,[]))[1]
+                if not previous or previous[-1]["t"] < bars[-1]["t"] or (
+                        previous[-1]["t"] == bars[-1]["t"] and len(previous)<len(bars)):
+                    self.cache[key] = (time.time(), bars)
+                elif previous[-1]["t"] == bars[-1]["t"]:
+                    bars = previous[-required:]
             return bars
         finally:
             self._thread.position_history = prior_priority

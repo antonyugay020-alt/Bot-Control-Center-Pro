@@ -475,6 +475,21 @@ class PublicCache:
         values = [json.loads(rows[key]) if key in rows else None for key in keys]
         return [self._project_payload(host, value) for value in values]
 
+    def read_closed_cohort(self, requests):
+        """One read snapshot across all missing finalized portfolio minutes."""
+        from .closed_cohort import read_tails
+        from .market_clock import market_now
+        self._ensure_schema()
+        with self.read_db() as db:
+            db.execute("BEGIN")
+            try:
+                status = self._denied(db, "api.bybit.com")
+                if status is not None:
+                    raise ProviderDenied("api.bybit.com", status)
+                return read_tails(db, requests, time.time(), int(market_now()*1000))
+            finally:
+                db.rollback()
+
     def read_closed_minutes(self, symbol, starts, *, include_rest=False):
         """Read exact finalized minutes under the existing provider fence."""
         from .closed_minutes import read, HOST

@@ -67,7 +67,7 @@
     "bcc/constructor_transaction.py": "1cfd25a130450f820f5dc623f11568641820f6b84c9eb73c194eb5f4a87ad578",
     "bcc/control.py": "64a9d9fe889ec9e9f989f6793050ffa09f00fcfedaf6346d95ddfcda08ce3092",
     "bcc/coordination.py": "f53ff56ae3ffc5311b515e6c5cca3456d5547a88f7e451acd9a73b1df1f928ef",
-    "bcc/data_cache.py": "5332df31ae54dd377d85e4b41483b2a8ade83c734689040a0fdfa8ed493efe51",
+    "bcc/data_cache.py": "f749548b9b60149ff902068ecd80785bdc6e86b430bd24fbcf6944c4ff6e5f22",
     "bcc/execution.py": "7ca97407a77e226f7d9c9ce3274d0074913d35264fbf4a29823acf607a71f50a",
     "bcc/fleet.py": "5c10de977f44f3c0041802b1434f5e7cb51abe0445a731fa1a2b8f0194fe9da4",
     "bcc/flow_layout.py": "1e5d9c4b48fbd8a31046030276a74a2c488a9ee90a3d8e89027b2714cd3b054a",
@@ -81,7 +81,7 @@
     "bcc/lifecycle.py": "ad60ddfac8c4bf30ad186d92c8e6a5b6f53ab11bea64a8c32be4a215e271c2c6",
     "bcc/liquidation.py": "736574079c32b441bde3a6c8f204e906131bbe8c0943c86cbdf8a74b01c9eb6f",
     "bcc/margin.py": "8177172cf760c2c333140fbc34daecace379196ed9bf4ff42fd9d11338a33c17",
-    "bcc/market.py": "f5c5a0a06be5415f5fe53f5e59dab45beac8ce8271f847a2370b9e5c0d400076",
+    "bcc/market.py": "f0853a0291c097a477ed26bdc45065156bfa56c156a34502365f5486beef2578",
     "bcc/market_clock.py": "c56b38ec7b9a322be15d883dd7831b2a6da65b79627d930894d6374c9375ef7f",
     "bcc/market_health.py": "4872159d8b0a6531909e7d55b7c54fb22b11630ba2e5a4d0a8b236a91fc7a961",
     "bcc/market_hub.py": "dfe65a5bdcf6f184c5eb20a1270fb046b8720bf6787522a1a9812c3d1add45c2",
@@ -99,7 +99,7 @@
     "bcc/runtime_paths.py": "7acdb59ad9b6b0533a430072a0017151f20d9fe1aa9cab219d0c974a9bcb60fc",
     "bcc/runtime_process.py": "ca867b2528d80bf3c18a2d2cacf964b9cf59e42f17fb240036bdd7765d607900",
     "bcc/runtime_service.py": "5124f6b6541fb02aff743b256654572024c4d77c0f89fcef048a3f8b0f14a523",
-    "bcc/scheduler.py": "a6d0b27712fab9cc4339903fd653ebdb1483e5df40f8d1a40dcb74f504f0940d",
+    "bcc/scheduler.py": "20e52f9ab0db227f130f1c381cbdbff3878bb1c742e7ab27f9612ffda7a3f798",
     "bcc/section_hierarchy.py": "d510c55f542234e59f2dcb4028529ee03a320bd868818a73b94cf7f8306e5674",
     "bcc/service_guard.py": "e622ffc5120972cfd2c6acdfeb6dd74b6b17228a562e193e9daa516483661ebb",
     "bcc/shared_risk.py": "807fa433a3724af8cdedcabe05427071f156d6ec397ca29055dd6e0ddad2adf1",
@@ -594,6 +594,8 @@
     "tests/test_central_closed_minutes.py": "e569b47e8cd6ca7319015c14a3effbde7d18d3d283b3cbd4a944d2eefd65ab56",
     "bcc/hub_minute_repair.py": "1bbcfcb9a8b3c8a5cc80d321647cd5a715d564e2ec7c48195f153c16e8ff03cf",
     "tests/test_canonical_minute_repair.py": "55201c506d73cd0a878d9e87e8eada7168265ce2b173966a22024bd40a41dc50",
-    "tests/test_hub_clock_outage.py": "b3fec96db6c0f2c853e944aefec02894c3088cddbeed172d5309b4b4fc5ab623"
+    "tests/test_hub_clock_outage.py": "b3fec96db6c0f2c853e944aefec02894c3088cddbeed172d5309b4b4fc5ab623",
+    "bcc/closed_cohort.py": "75547f6a1a4f555ff7b37684880a8523704aa1c044e2d9da1c37ecf35f2b9482",
+    "tests/test_portfolio_closed_cohort.py": "ee20919a34913e977aac2cad484035f475c7321b4d10f5b0e318b902e327202e"
   }
 }

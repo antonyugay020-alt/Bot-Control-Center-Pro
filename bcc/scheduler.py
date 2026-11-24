@@ -86,6 +86,7 @@ class MarketScheduler:
         # This capability is resolved before each collect admission; a standalone
         # _fetch adapter retains its historical metadata contract.
         self._risk_refresh_independent = False
+        self._closed_cohort = None
 
     @staticmethod
     def _oldest_tier_first(priority, state):
@@ -212,6 +213,80 @@ class MarketScheduler:
         except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
             return None, str(exc)
 
+    def _closed_symbols(self, state, symbols):
+        """One eligibility calculation for normal and cohort history paths."""
+        def has_intrabar(value):
+            if isinstance(value,dict):
+                return (value.get("trigger")=="intrabar"
+                        or any(has_intrabar(v) for v in value.values()))
+            return isinstance(value,(list,tuple)) and any(has_intrabar(v) for v in value)
+        if (os.environ.get("BCC_BYBIT_MAINTAINED_MARK_CANDIDATE") != "1"
+                or self.cfg.get("strategy") != "VELES"
+                or not callable(getattr(self.source,"closed_candles",None))
+                or has_intrabar(self.cfg)):
+            return set()
+        intrabar = {p.get("symbol") for p in
+                    (*state["positions"].values(),*state.get("pending",{}).values())
+                    if has_intrabar(p)}
+        return set(symbols)-intrabar
+
+    def _poll_closed_cohort(self, state, closed_symbols, priority_set):
+        reader = getattr(self.source,"cached_closed_cohort",None)
+        if (os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE")!="1"
+                or self.period==0 or not callable(reader)):
+            return
+        from .market_clock import ClockUnavailable
+        from .data_cache import CacheBusy,ProviderDenied
+        from .closed_cohort import ClosedCohort
+        if self._closed_cohort is None:
+            if not closed_symbols:
+                return
+            self._closed_cohort = ClosedCohort(reader,recoverable=(
+                DataUnavailable,ClockUnavailable,CacheBusy,ProviderDenied,OSError))
+        try:
+            boundary=int(market_now()//60)*60000
+        except ClockUnavailable:
+            boundary=None
+        req = ({s:max(100,int(self.history_size(self.cfg,s,state)))
+                for s in closed_symbols} if boundary is not None else {})
+        fresh = self._closed_cohort.poll(req,boundary,time.monotonic())
+        # Only the first ready handoff of a new closed minute accelerates
+        # evaluation. Existing jobs stay single-flight and retain ownership.
+        for symbol in fresh:
+            if symbol in priority_set:
+                self.quote_due[symbol]=0.
+            else:
+                self.due[symbol]=0.
+                if symbol in self._scan_retries:
+                    self._scan_retries[symbol]=0.
+
+    def _apply_closed_cohort(self, completed, closed_symbols):
+        cohort=self._closed_cohort
+        if cohort is None:
+            return 0
+        try:
+            boundary=int(market_now()//60)*60000
+        except ValueError:
+            return 0
+        if cohort.boundary != boundary:
+            return 0
+        applied=0
+        for symbol,tick,error in completed:
+            if error is not None or tick is None or tick.risk_only or symbol not in closed_symbols:
+                continue
+            bars=cohort.ready.get(symbol)
+            if bars is None:
+                continue
+            if (not tick.bars or tick.history_error
+                    or tick.bars[-1]["t"] < bars[-1]["t"]):
+                # Only indicator history is replaced; retain the separately
+                # admitted book, funding, risk metadata, and original errors.
+                tick.bars=bars
+                tick.history_error=""
+                tick.live_history=True
+                applied+=1
+        return applied
+
     def collect(self, state, timeout=0.2):
         symbols = list(
             dict.fromkeys(
@@ -244,6 +319,7 @@ class MarketScheduler:
         scan = [s for s in symbols if s not in priority_set]
         scan_set = set(scan)
         configured_set = set(self.cfg['symbols'])
+        closed_symbols = self._closed_symbols(state, configured_set | priority_set)
         for symbol in list(self._scan_retries):
             if symbol not in scan_set or symbol not in configured_set:
                 del self._scan_retries[symbol]
@@ -309,6 +385,7 @@ class MarketScheduler:
                     self.risk_pool = StrategyDispatcher(workers=self.risk_capacity,
                         maximum_pending=self.risk_capacity,thread_name_prefix='position-risk')
                 self.risk_jobs[symbol] = self.risk_pool.submit(symbol,self._risk,symbol)
+        self._poll_closed_cohort(state, closed_symbols, priority_set)
         primary_drained = set()
         def drain():
             for symbol, job in list(self.jobs.items()):
@@ -481,20 +558,7 @@ class MarketScheduler:
                     and not book_is_fresh(self._quote_ready.get(symbol, 0))):
                 return False
             opened = opened_by_symbol.get(symbol, [])
-            def has_intrabar(value):
-                if isinstance(value, dict):
-                    return (value.get("trigger") == "intrabar"
-                            or any(has_intrabar(v) for v in value.values()))
-                return isinstance(value, (list,tuple)) and any(has_intrabar(v) for v in value)
-            # Check both current configuration and persisted active settings;
-            # an old intrabar exit must retain the existing live-candle path.
-            closed_only = (os.environ.get("BCC_BYBIT_MAINTAINED_MARK_CANDIDATE") == "1"
-                           and self.cfg.get("strategy") == "VELES"
-                           and callable(getattr(self.source,"closed_candles",None))
-                           and not has_intrabar(self.cfg)
-                           and not any(has_intrabar(p) for p in
-                                       (*state["positions"].values(), *state.get("pending",{}).values())
-                                       if p.get("symbol") == symbol))
+            closed_only = symbol in closed_symbols
             self.jobs[symbol] = self.pool.submit(
                 symbol, self._fetch,
                 symbol,
@@ -589,6 +653,19 @@ class MarketScheduler:
             time.sleep(min(timeout, self.period))
         drain()
         drain_quotes()
+        # Newly arrived closed evidence can be delivered on the very next
+        # admitted executable quote, even while the original history/funding
+        # future is still occupied. No new order or duplicate trade tick.
+        self._poll_closed_cohort(state, closed_symbols, priority_set)
+        applied = self._apply_closed_cohort(completed,closed_symbols)
+        if self._closed_cohort is not None:
+            cohort=self._closed_cohort
+            self.last_pressure.update(closed_cohort_ready=len(cohort.ready),
+                closed_cohort_eligible=len(closed_symbols),
+                closed_cohort_reads=cohort.reads,
+                closed_cohort_delivered=cohort.delivered,
+                closed_cohort_errors=cohort.errors,
+                closed_cohort_handoffs=applied)
         self.last_pressure.update(quote_jobs=len(self.quote_jobs), quote_capacity=self.quote_capacity,
                                   history_jobs=len(self.jobs), history_capacity=self.capacity,
                                   deferred_refreshes=len(self._retry_ticks),risk_jobs=len(self.risk_jobs))
@@ -606,6 +683,8 @@ class MarketScheduler:
             job.cancel()
         for job in self.risk_jobs.values():
             job.cancel()
+        if self._closed_cohort is not None:
+            self._closed_cohort.close()
         self.pool.close(wait=True)
         if self.quote_pool is not None:
             self.quote_pool.close(wait=True)
