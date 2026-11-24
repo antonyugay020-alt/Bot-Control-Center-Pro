@@ -123,6 +123,14 @@ def test_ws_book_reaches_persisted_live_qt_pnl_and_revokes_on_disconnection(tmp_
             monkeypatch.setattr(source.session, "get", lambda *a, **kw: (
                 (_ for _ in ()).throw(AssertionError("REST forbidden"))
             ))
+            # Cold native Qt startup can exceed the real three-second TTL.
+            # Finish opening the view before delivering the first live event.
+            window = MainWindow(root)
+            window.show()
+            window.current = folder
+            window.refresh()
+            app.processEvents()
+            assert window.positions.rowCount() == 1
             exchange_snapshot(100.4, generation)
             assert hub.publish_ws_event("tickers", symbol)
             assert hub.publish_ws_event("depth50", symbol)
@@ -133,12 +141,28 @@ def test_ws_book_reaches_persisted_live_qt_pnl_and_revokes_on_disconnection(tmp_
 
             assert snapshot(persisted, symbol)[1] == 100.4
             store.audit()
-            window = MainWindow(root)
-            window.show()
-            window.current = folder
-            window.refresh()
             window.refresh_live_positions()
             assert window.positions.rowCount() == 1
+            assert "нет свежей оценки" not in window.positions.item(0, 6).text(), (
+                "Fresh PnL did not reach Qt", persisted["marks"][symbol],
+                time.time(), time.monotonic(),
+            )
+
+            # An intact connection does not make an old observation fresh.
+            # Wait on actual monotonic expiry, not an enlarged TTL or mock.
+            deadline = time.monotonic() + 4.
+            while quote_is_recent(persisted["marks"][symbol], maximum=3):
+                assert time.monotonic() < deadline, "quote did not expire"
+                time.sleep(.02)
+            window.refresh_live_positions()
+            assert window.positions.item(0, 6).text() == "— (нет свежей оценки)"
+
+            # A genuinely new event on the same generation restores PnL.
+            exchange_snapshot(100.4, generation)
+            assert hub.publish_ws_event("tickers", symbol)
+            assert hub.publish_ws_event("depth50", symbol)
+            process_tick(cfg, store, Veles(), market_tick(source, symbol))
+            window.refresh_live_positions()
             assert "нет свежей оценки" not in window.positions.item(0, 6).text()
 
             # Consumer reports the WS outage, worker revokes stale valuation.

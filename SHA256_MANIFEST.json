@@ -231,7 +231,7 @@
     "tests/test_bybit_ws_mandatory_lifecycle.py": "92ef0d8c1670dc2cb122ed2e71e33ec522f2d1225914dfce62c9b0e4d5f50c6c",
     "tests/test_bybit_ws_outage_margin_recovery.py": "2aa6255c82f6c8cde0c1f783a278c25eb61298d34172cb3adc2768239d533b42",
     "tests/test_bybit_ws_position_fast_lane.py": "d2c3944b4b314ac766eec9bd9d6690e8475f9ff5e3587f1888369fccac8561c7",
-    "tests/test_bybit_ws_sqlite_qt_e2e.py": "3c004f708e34240a7a46bc321d3910e60b134026ef482135e6109045b3bbf9a1",
+    "tests/test_bybit_ws_sqlite_qt_e2e.py": "9c239d8d54e81a254f61281b33f3a9607e0b61ca2dcadbca6bf349b3334b829d",
     "tests/test_cached_execution_handoff.py": "0918924c96fcfdcf0461bafa815f10aba3a934d126335c2db24f89b653bd3e08",
     "tests/test_cached_read_during_cooldown.py": "ed97d1e4b103cb96d2af86ea36cf7f50039525db2a76559ba8a9328865953e04",
     "tests/test_chart_storage.py": "270a2753af356649dde426c2b8b8e94282e495067914b2fc37af5951ceb27c6b",
