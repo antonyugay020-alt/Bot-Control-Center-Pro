@@ -67,7 +67,7 @@
     "bcc/constructor_transaction.py": "1cfd25a130450f820f5dc623f11568641820f6b84c9eb73c194eb5f4a87ad578",
     "bcc/control.py": "64a9d9fe889ec9e9f989f6793050ffa09f00fcfedaf6346d95ddfcda08ce3092",
     "bcc/coordination.py": "f53ff56ae3ffc5311b515e6c5cca3456d5547a88f7e451acd9a73b1df1f928ef",
-    "bcc/data_cache.py": "91e77056ea4c0aa65c2fa7b8d09ce6c5bcdb634f000df23514837ab5e9de3388",
+    "bcc/data_cache.py": "cfca666d8b42a63708117a75e0b771f76b298a53d6ad13edb97c1ecedbf59687",
     "bcc/execution.py": "7ca97407a77e226f7d9c9ce3274d0074913d35264fbf4a29823acf607a71f50a",
     "bcc/fleet.py": "5c10de977f44f3c0041802b1434f5e7cb51abe0445a731fa1a2b8f0194fe9da4",
     "bcc/flow_layout.py": "1e5d9c4b48fbd8a31046030276a74a2c488a9ee90a3d8e89027b2714cd3b054a",
@@ -124,7 +124,7 @@
     "bcc/ws_klines.py": "6727e98680f3cb46278c6cf66285b32944271b5c2d8ce8f90d2895352b5b35d0",
     "bcc/ws_orderbooks.py": "f4ef0a022b58b242ececfa8aec50822d232fdc5850f1e321c15512ac33fa05d5",
     "bcc/ws_polymarket.py": "02cb7000d4f89c1296e896775e7fcfaf0f06ba6fffd434691ff81075eb55bf19",
-    "bcc/ws_quotes.py": "9699a9b6ac1da490e7e3817daae0a7f43f43171dcc526715e71702cd19fd8731",
+    "bcc/ws_quotes.py": "67df34cc863dadbbc92cd1697e1bea2fe0cf525996dd7f8fe2ac37ffbf0a9994",
     "bcc/ws_symbols.py": "b15a76d5f850ba964efa5470ef19cb572385bae91777fc9228a9d1b2a08baa79",
     "docs/ACCEPTANCE_REGRESSION_20261112.json": "78b48b4f4c43838b1ee310d451ac28362f314fde515d68d4e053a702b99ec061",
     "docs/AUTOMATIC_WINDOWS_ACCEPTANCE_RU.md": "5ff5861455e748d9f381e3ba0ffc8641018f7887ec742911b668907cb5c87d27",
@@ -549,7 +549,7 @@
     "tools/export_test_report.py": "09f85e9ae97cf7bf0ba689d3a5f3603a6e915a37ae5fb2f78c735503574d9b4b",
     "tools/manual_qa_9047.py": "7d756590b86b042cfdb2c4603579f4482fd7800df0e5f84315797684172438e4",
     "tools/manual_qa_current.py": "4c5351feb2c33703dcb9b9afa75bd6ed1a3c13c5482e769189d30ee487fd53e8",
-    "tools/market_hub_service.py": "ebd636ac1d07c1271db8b596df67b68ca0a267fd259bc212b51a98cb94d3f890",
+    "tools/market_hub_service.py": "34b4fa497efb0ef7800f7377ada28b9263fc22af22744afe5e8f2fb42051adce",
     "tools/process_guard.py": "ea2d2c5addc3b55508c77ef22330e9fdecfa27485ac1e3a67b7833e818c8a1b4",
     "tools/qa_budgets.py": "366489c1b00637ca45ee1eb20840c9235648488c404c6fe418501e0d2d025694",
     "tools/qa_locale.py": "a46a7105622cb23629465e7051ce0b3492fdc7bc7f67f3ba88cd144e1d79fa9a",
@@ -568,7 +568,12 @@
     "tools/windows_check.py": "6ca39be1d3a9a6e35e675f9daa964859e5401f21c454f4e48633d868ceb94bdf",
     "tools/ws_offline_acceptance.py": "aed71c8e11d0a0f8dddaf035337c9d9887439f7ef3aade3825b5d4885b72b7f8",
     "tests/test_ws_publication_diagnostics.py": "89b2a8cdf9bc559aa8f7c0f4bf3f8873e968c385d6a0180d638f57a40ad75dd6",
-    "bcc/ws_recovery.py": "24f292c3356df6162c48868a642ce6ffec6da544032b51c1017c221309348814",
-    "tests/test_ws_snapshot_response_gate.py": "7f814061372555f2e9a317f9a15364bbb7f53c709acdd638df5c2b0a635de86c"
+    "bcc/ws_recovery.py": "94df9d12da4ac53754fc8589ffc98b3a4717d52093831d61ed9cd00143d03ccb",
+    "tests/test_ws_snapshot_response_gate.py": "7f814061372555f2e9a317f9a15364bbb7f53c709acdd638df5c2b0a635de86c",
+    "bcc/ws_dual_quotes.py": "ce8390f3db517bb7a36b52b7ec84dd9c1787982d8237067623fdcf87d2b82255",
+    "bcc/ws_recovery_quotes.py": "13faea5e04b6f86112a5715600a79e5981eae2e532e143ec102c2c956d4e6e7c",
+    "bcc/ws_source_deadline.py": "64ead1787c44ddee0a8fa622c2c0ad16fd058192b2e849f77de0dc488a06829b",
+    "tests/test_ws_dual_quotes.py": "3c61f0e9a5c429f51826ea40976a0eedf7699f180b8e1ad15e2b5597d40b2f27",
+    "tests/test_ws_source_deadline.py": "e4849b95d3c86ad02750acbe4b351ceedf270e3910bbf13ff6c0dec919f2d7b9"
   }
 }

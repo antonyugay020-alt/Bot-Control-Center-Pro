@@ -39,6 +39,8 @@ class PublicCache:
         self._ready = False
         self._setup_lock = threading.Lock()
         self._next_cleanup = 0
+        # Explicit isolated candidate only; legacy publishers keep their TTL.
+        self.bybit_ws_source_deadlines = False
         with self._guards_lock:
             self._guard = self._guards.setdefault(
                 str(self.path.resolve()), threading.RLock()
@@ -379,8 +381,15 @@ class PublicCache:
 
     @staticmethod
     def _accepted_payload(host, value):
-        return not (host=='api.bybit.com' and isinstance(value,dict)
-                    and 'retCode' in value and value['retCode']!=0)
+        if host=='api.bybit.com' and isinstance(value,dict):
+            if 'retCode' in value and value['retCode']!=0:
+                return False
+            # A wall-clock adjustment or delayed reader may not prolong a
+            # deadline-marked WS envelope beyond its original exchange age.
+            if value.get('_bcc_ws_source_deadline') is True:
+                from .ws_source_deadline import remaining_bybit_ws_seconds
+                return remaining_bybit_ws_seconds(value) > 0
+        return True
 
     @staticmethod
     def _cached(db, key, host, now):
@@ -620,6 +629,16 @@ class PublicCache:
                                         candidate["_bcc_ws_mark_at"] = stamp
                                         candidate["result"]["list"][0]["markPrice"] = str(old_mark)
                                         value = json.dumps(candidate, allow_nan=False)
+                    if (self.bybit_ws_source_deadlines and host == "api.bybit.com"
+                            and url.endswith(("/tickers", "/orderbook"))):
+                        from .ws_source_deadline import remaining_bybit_ws_seconds
+                        candidate = json.loads(value)
+                        ttl = remaining_bybit_ws_seconds(candidate)
+                        if ttl <= 0:
+                            outcomes[-1] = False
+                            continue
+                        candidate['_bcc_ws_source_deadline'] = True
+                        value = json.dumps(candidate, allow_nan=False)
                     db.execute(
                         "INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
                         (key, value, now + ttl, host),

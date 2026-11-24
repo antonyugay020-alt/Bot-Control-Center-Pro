@@ -92,8 +92,13 @@ def main():
         from bcc.market import PublicData
         from bcc.market_clock import clock, market_now
         if args.bybit_ws_quotes:
-            from bcc.ws_quotes import BybitQuoteStream
-            quote_stream = BybitQuoteStream(wall=market_now, on_update=on_update)
+            # Explicit diagnostic opt-in only; no default transport change.
+            if os.environ.get('BCC_BYBIT_DUAL_WS_CANDIDATE') == '1':
+                from bcc.ws_dual_quotes import DualBybitQuoteStream
+                quote_stream = DualBybitQuoteStream(wall=market_now, on_update=on_update)
+            else:
+                from bcc.ws_quotes import BybitQuoteStream
+                quote_stream = BybitQuoteStream(wall=market_now, on_update=on_update)
         if args.bybit_ws_books:
             from bcc.ws_orderbooks import BybitOrderbookWS
             book_stream = BybitOrderbookWS(wall=market_now, on_update=on_update)
@@ -110,6 +115,8 @@ def main():
                             kline_stream=kline_stream, polymarket_stream=poly_stream,
                             binance_stream=binance_stream)
         hub = MarketDataHub(args.cache, source=source, max_workers=args.concurrency)
+        if os.environ.get('BCC_BYBIT_DUAL_WS_CANDIDATE') == '1':
+            hub.source.shared.bybit_ws_source_deadlines = True
         hub.set_ws_dispatcher(ws_updates)
         for label, stream in (('tickers', quote_stream), ('depth50', book_stream),
                               ('kline1', kline_stream), ('polybook', poly_stream),
@@ -183,6 +190,10 @@ def main():
                         ("binance_trade", binance_stream),
                     ):
                         if stream is None:
+                            continue
+                        health = getattr(stream, 'transport_health', None)
+                        if callable(health):
+                            states[label] = health()
                             continue
                         with stream._lock:
                             states[label] = {

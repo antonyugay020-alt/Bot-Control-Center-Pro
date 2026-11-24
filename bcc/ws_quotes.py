@@ -281,7 +281,17 @@ class BybitQuoteStream:
                 pass
         return True
 
-    def refresh_stale_marks(self, symbols):
+    def _wire_refresh_pending(self, symbol):
+        return False
+
+    def _send_recovery_requests(self, symbols):
+        request_snapshots(self._socket, "tickers", symbols,
+                          batch_size=self.MAX_SUB_PER_MSG)
+
+    def _handle_control_message(self, socket, payload, generation):
+        return False
+
+    def refresh_stale_marks(self, symbols, *, max_topics=MAX_REFRESH_TOPICS_PER_SCAN):
         """Request a NEW exchange ticker snapshot for quiet symbols.
 
         Never reuse or restamp old observations. A bounded unsubscribe/
@@ -294,6 +304,8 @@ class BybitQuoteStream:
         The subsequent genuine WebSocket event is still required before
         margin/risk becomes available again.
         """
+        if type(max_topics) is not int or not 1 <= max_topics <= MAX_REFRESH_TOPICS_PER_SCAN:
+            raise ValueError("invalid mark refresh topic budget")
         if not isinstance(symbols, (list, tuple, set)):
             raise ValueError("invalid mark refresh symbols")
         if any(type(s) is not str or not _SYMBOL.fullmatch(s) for s in symbols):
@@ -332,11 +344,11 @@ class BybitQuoteStream:
                     and -5 <= wall - quote.bid_exchange_ms / 1000 < lead_age
                     and -5 <= wall - quote.ask_exchange_ms / 1000 < lead_age
                 )
-                if self._snapshot_recovery.waiting(symbol, now):
+                if self._wire_refresh_pending(symbol) or self._snapshot_recovery.waiting(symbol, now):
                     continue
                 if (fresh and quote_fresh) or now < self._mark_refresh_due.get(symbol, 0):
                     continue
-                if len(stale) >= MAX_REFRESH_TOPICS_PER_SCAN or (not priority and background_selected >= 20):
+                if len(stale) >= max_topics or (not priority and background_selected >= 20):
                     deferred += 1
                     continue
                 stale.append(symbol)
@@ -351,8 +363,7 @@ class BybitQuoteStream:
             if not stale:
                 return 0
             try:
-                request_snapshots(self._socket, "tickers", stale,
-                                  batch_size=self.MAX_SUB_PER_MSG)
+                self._send_recovery_requests(stale)
                 self._refresh_topics_sent += len(stale)
                 self._refresh_batches_sent += (len(stale) + self.MAX_SUB_PER_MSG - 1) // self.MAX_SUB_PER_MSG
             except Exception as exc:
@@ -431,7 +442,7 @@ class BybitQuoteStream:
             # the timestamp of the unmodified executable quote side.
             return q.bid, q.ask, min(q.bid_exchange_ms, q.ask_exchange_ms) / 1000
 
-    def run(self, *, websocket_app_factory=None, retry_delay=1.0):
+    def run(self, *, websocket_app_factory=None, retry_delay=1.0, reset_stop=True):
         """Blocking producer loop; caller owns its thread and shutdown lifecycle.
 
         An injected factory allows offline tests without a network connection.
@@ -445,7 +456,8 @@ class BybitQuoteStream:
         if type(retry_delay) not in (int, float) or not math.isfinite(retry_delay) or not 0.1 <= retry_delay <= 30:
             raise ValueError("invalid retry delay")
         reconnect = ReconnectBackoff(base=retry_delay)
-        self._stop.clear()
+        if reset_stop:
+            self._stop.clear()
         while not self._stop.is_set():
             started = time.monotonic()
             self.disconnect()
@@ -473,6 +485,8 @@ class BybitQuoteStream:
                 except (TypeError, ValueError):
                     return
                 if not isinstance(payload, dict):
+                    return
+                if self._handle_control_message(ws, payload, state["generation"]):
                     return
                 if payload.get("op") in ("subscribe", "unsubscribe") and payload.get("success") is False:
                     self.disconnect(generation=state["generation"])

@@ -32,6 +32,12 @@ class SnapshotRecovery:
             raise RuntimeError('Snapshot recovery already pending')
         self._pending[symbol] = (now + SNAPSHOT_RESPONSE_TIMEOUT, tuple(stamps))
 
+    def extend_wait(self, symbol, now):
+        """A wire ACK allows response time, never extends source price age."""
+        pending = self._pending.get(symbol)
+        if pending is not None:
+            self._pending[symbol] = (max(pending[0], now + SNAPSHOT_RESPONSE_TIMEOUT), pending[1])
+
     def observe_snapshot(self, symbol, stamps):
         pending = self._pending.get(symbol)
         if pending is None:
