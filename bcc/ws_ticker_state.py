@@ -4,8 +4,10 @@ The explicit mark timestamp never changes on an omitted mark field. A valid
 same-topic ordered delta can separately confirm the maintained value. Bybit's
 cross sequence is NOT documented as consecutive per topic, so this module
 cannot prove detection of exchange-internal message loss from sequence jumps.
-A local continuity break invalidates the chain until a new complete mark
-snapshot. Nothing here is used by the production risk/price decoder.
+A malformed/regressive frame or connection retirement breaks continuity.
+A quiet topic expires at read time, but a fresh ordered frame on the same
+owned socket may restore diagnostic state. This is not proof of losslessness
+or a financial price source. The production risk/price decoder is unchanged.
 """
 from dataclasses import dataclass
 import math
@@ -63,7 +65,9 @@ class TickerState:
         self._counts = dict(snapshots=0, explicit_marks=0, omitted_mark_deltas=0,
                             rejected=0, continuity_breaks=0, duplicates=0,
                             cross_sequence_jumps=0, raw_explicit_marks=0,
-                            raw_explicit_conflicts=0, raw_explicit_regressions=0)
+                            raw_explicit_conflicts=0, raw_explicit_regressions=0,
+                            equal_sequence_new_timestamp=0, quiet_resumptions=0,
+                            quiet_explicit_resumptions=0, quiet_omitted_resumptions=0)
 
     def connect(self):
         with self._lock:
@@ -148,7 +152,8 @@ class TickerState:
 
         An omitted mark is usable only following a real mark snapshot and
         while the same-symbol stream has no observed break. A silent topic,
-        invalid frame, backwards sequence, or excessive gap cannot confirm.
+        invalid frame or backwards sequence cannot confirm. Silence is an
+        observation expiry, not proof that the ordered transport broke.
         Other symbols, ACKs and pongs never confirm a mark.
         """
         with self._lock:
@@ -220,7 +225,9 @@ class TickerState:
                 if sequence < prior.sequence:
                     return self._invalidate(symbol, 'sequence_regression')
                 if sequence == prior.sequence:
-                    return self._invalidate(symbol, 'equal_sequence_new_timestamp')
+                    # Bybit can reuse a cross-sequence on a newer ticker
+                    # timestamp; only the exact (cs, ts) duplicate is ignored.
+                    self._counts['equal_sequence_new_timestamp'] += 1
             if kind == 'snapshot':
                 if not explicit:
                     return self._invalidate(symbol, 'snapshot_without_mark')
@@ -229,12 +236,18 @@ class TickerState:
                 chain = self._chain_counter
             elif prior is None:
                 return self._invalidate(symbol, 'missing_snapshot')
-            elif not 0 <= now-prior.received_mono <= 3.:
-                return self._invalidate(symbol, 'local_receive_gap')
-            elif stamp-prior.confirmed_ms > 3000:
-                return self._invalidate(symbol, 'exchange_timestamp_gap')
+            elif now < prior.received_mono:
+                return self._invalidate(symbol, 'monotonic_clock_regression')
             else:
                 chain = prior.chain
+                # During silence observations() returns None. An actual fresh
+                # same-topic frame restores only maintained-state evidence,
+                # not the explicit mark timestamp. A transport or ordering
+                # failure still clears the chain and requires a snapshot.
+                if now-prior.received_mono > 3. or stamp-prior.confirmed_ms > 3000:
+                    self._counts['quiet_resumptions'] += 1
+                    self._counts['quiet_explicit_resumptions' if explicit
+                                 else 'quiet_omitted_resumptions'] += 1
             if prior is not None and sequence > prior.sequence + 1:
                 self._counts['cross_sequence_jumps'] += 1
             if explicit:

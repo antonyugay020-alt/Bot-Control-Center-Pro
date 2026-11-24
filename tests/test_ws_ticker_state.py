@@ -42,7 +42,9 @@ def test_ack_other_symbol_and_silence_never_confirm():
     assert r.feed(2, symbol='ETHUSDT', kind='snapshot', markPrice='200')
     assert not r.tracker.ingest({'op':'pong'}, r.gen)
     assert r.state() is None
-    assert not r.feed(3, lastPrice='102')  # no bridging an observed gap
+    assert r.feed(3, lastPrice='102')  # fresh same-topic evidence after silence
+    assert r.state().price == 100.
+    assert r.state().explicit_ms == 10000000
     assert r.feed(4, kind='snapshot', markPrice='101')
     assert r.state().price == 101.
 
@@ -133,7 +135,7 @@ def test_independent_explicit_measure_survives_chain_loss_without_repairing_it()
     assert r.state().price==103
 
 
-@pytest.mark.parametrize('cs,offset,reason',[(10,.2,'equal_sequence_new_timestamp'),(9,.2,'sequence_regression'),(11,-.1,'timestamp_regression'),(11,3.2,'local_receive_gap')])
+@pytest.mark.parametrize('cs,offset,reason',[(9,.2,'sequence_regression'),(11,-.1,'timestamp_regression')])
 def test_first_break_preserves_actual_comparison_evidence(cs,offset,reason):
     r=Replay(); assert r.feed(10,kind='snapshot',markPrice='100')
     old=round(r.now*1000);r.now+=max(offset,.1)
@@ -169,3 +171,40 @@ def test_duplicate_conflict_cannot_be_replayed_into_explicit_measure():
     assert r.tracker.comparison_observations()[0]['BTCUSDT'].price==102
     r.tracker.disconnect(r.gen)
     assert all(s is None for v in r.tracker.comparison_observations() for s in v.values())
+
+
+@pytest.mark.parametrize('gap',[.2,3.2,15.,61.2])
+@pytest.mark.parametrize('explicit',[False,True])
+def test_same_sequence_can_resume_but_never_refresh_explicit_on_omission(gap,explicit):
+    r=Replay();assert r.feed(10,kind='snapshot',markPrice='100')
+    start=r.state();r.now+=gap
+    if gap>3.:
+        assert r.state() is None
+        assert r.tracker.comparison_observations()[0]['BTCUSDT'] is None
+    assert r.feed(10,**({'markPrice':'101'} if explicit else {'indexPrice':'101'}))
+    end=r.state();assert end.chain==start.chain
+    assert end.confirmed_ms==round(r.now*1000)
+    assert end.explicit_ms==(end.confirmed_ms if explicit else start.explicit_ms)
+    assert end.price==(101. if explicit else 100.)
+    assert r.tracker.stats()['equal_sequence_new_timestamp']==1
+    assert r.tracker.stats()['quiet_resumptions']==int(gap>3.)
+    assert r.tracker.stats()['continuity_breaks']==0
+
+
+def test_sparse_500_topics_24_rounds_do_not_fake_freshness_or_destroy_state():
+    names=tuple(f'Q{i}USDT' for i in range(500));r=Replay(names)
+    for s in names:assert r.feed(1,symbol=s,kind='snapshot',markPrice='100')
+    initial=round(r.now*1000)
+    for rnd in range(24):
+        r.now+=4.+rnd
+        assert all(v is None for v in r.tracker.observations().values())
+        for i,s in enumerate(names):
+            if i%2==rnd%2:
+                assert r.feed(1,symbol=s,indexPrice='101')
+        states=r.tracker.observations()
+        assert sum(v is not None for v in states.values())==250
+        assert all(v is None or v.explicit_ms==initial for v in states.values())
+        assert all(v is None for v in r.tracker.comparison_observations()[0].values())
+    stats=r.tracker.stats()
+    assert stats['quiet_omitted_resumptions']==6000
+    assert stats['continuity_breaks']==0
