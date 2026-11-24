@@ -70,3 +70,23 @@ def test_real_worker_consumes_current_cache_for_aged_handoff_without_transport_r
     monkeypatch.setattr(reader,'get',lambda *a,**k:pytest.fail('Owner attempted a GET'))
     runtime.run_loop(folder,cfg,store,reader,Engine(),{},lambda:bool(done),lambda *a:100,None)
     assert done==[1] and len(store.history())==20;store.audit()
+
+
+def test_scanner_handoff_refreshes_candidate_mark_without_rewriting_risk_time(portfolio,monkeypatch):
+    symbols,reader,_,_=portfolio;reference();symbol=symbols[0]
+    old=reader.position_orderbook(symbol)
+    old['at']-=4
+    stamp=time.time()-10
+    old['margin_data']={'symbol':symbol,'risk_at':stamp,'tiers':[{'id':1}],
+                       'quote':{'bid':99.,'ask':99.,'at':stamp}}
+    old['margin_marks']={}
+    before=deepcopy(old)
+    monkeypatch.setattr(reader,'get',lambda *a,**k:pytest.fail('Owner attempted transport'))
+    fresh=reader.cached_execution_book(symbol,old)
+    assert fresh is not None
+    assert fresh['margin_data']['quote']['bid']==100.45
+    assert fresh['margin_data']['quote']['at']>stamp
+    assert fresh['margin_marks'][symbol]==fresh['margin_data']['quote']
+    assert fresh['margin_data']['risk_at']==stamp
+    assert fresh['margin_data']['tiers']==before['margin_data']['tiers']
+    assert old==before

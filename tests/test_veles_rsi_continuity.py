@@ -144,3 +144,39 @@ def test_handoff_commits_atomic_close_open_and_restores_after_restart(tmp_path, 
     assert list(restarted['positions']) == [target]
     assert restarted['stats'][source]['cycles'] == 1
     assert [e['action'] for e in reversed(store.history())] == ['OPEN', 'CLOSE', 'OPEN']
+
+
+@pytest.mark.parametrize("temporary", [True,False])
+def test_current_closed_rsi_cross_survives_only_transient_market_block(temporary):
+    import math
+    from bcc.indicators import evaluate
+    cfg=defaults('VELES');cfg['symbols']=['BTCUSDT']
+    cfg['sections']=[range_section(40,50)]
+    cfg['settings'].update(leverage=1,allocation_pct=10,slippage_pct=0)
+    cfg['settings']['orders'].update(count=1,first_offset_pct=0)
+    spec=cfg['sections'][0]['entry']
+    for phase in range(200):
+        rows=bars([100+3*math.sin(i/4+phase/10) for i in range(180)])
+        now=180*60000
+        if evaluate(spec,rows,now,{}).matched:
+            break
+    else:
+        pytest.fail('No closed RSI crossing fixture')
+    state=initial_state(500);events=[]
+    state['strategy']['veles_bootstrapped']={'BTCUSDT':True}
+    attach(state)
+    state['_entry_blocked']='No current Bybit market evidence'
+    state['_entry_data_blocked']=temporary
+    engine=Veles()
+    engine.process(cfg,state,events,'BTCUSDT',rows,99.99,100.01,now)
+    assert not events and not state['positions']
+    assert state['diagnostics']['BTCUSDT'][0]['signal_matched']
+    state.pop('_entry_blocked');state.pop('_entry_data_blocked')
+    attach(state)
+    engine.process(cfg,state,events,'BTCUSDT',rows,99.99,100.01,now)
+    assert bool(state['positions']) is temporary
+    assert [e['action'] for e in events]==(['OPEN'] if temporary else [])
+    if temporary:
+        attach(state)
+        engine.process(cfg,state,events,'BTCUSDT',rows,99.99,100.01,now)
+        assert sum(e['action']=='OPEN' for e in events)==1

@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 import requests
 
 from .data_cache import CacheBusy, CacheContention, ProviderDenied, PublicCache
-from .market_clock import book_is_fresh, clock, market_now, observed_quote, utc_bounds
+from .market_clock import book_is_fresh, clock, market_now, observed_quote, quote_is_recent, utc_bounds
 
 
 class DataUnavailable(RuntimeError):
@@ -1432,9 +1432,24 @@ class PublicData:
             return None
         try:
             clock.bounds()
+            mark = None
             with self.shared.priority_reads():
-                value = self.shared.read_fresh('https://api.bybit.com/v5/market/orderbook',
-                    {'category':'linear','symbol':symbol,'limit':50}, 'api.bybit.com')
+                depth = ('https://api.bybit.com/v5/market/orderbook',
+                         {'category':'linear','symbol':symbol,'limit':50})
+                # Read candidate collateral and depth in one admitted snapshot
+                # after the scheduler handoff, not before waiting on the owner.
+                if isinstance(previous.get('margin_data'), dict):
+                    value, ticker = self.shared.read_fresh_many([
+                        depth, ('https://api.bybit.com/v5/market/tickers',
+                                {'category':'linear','symbol':symbol}),
+                    ], 'api.bybit.com')
+                    if isinstance(ticker, dict):
+                        try:
+                            mark = self._decode_ws_position_mark(symbol, ticker)
+                        except DataUnavailable:
+                            pass
+                else:
+                    value = self.shared.read_fresh(*depth, 'api.bybit.com')
         except ProviderDenied as exc:
             raise SourceAccessDenied(exc.host, exc.http_status) from exc
         except CacheBusy as exc:
@@ -1452,9 +1467,15 @@ class PublicData:
                 if any((a[0]<=b[0] if descending else a[0]>=b[0]) for a,b in zip(levels,levels[1:])):
                     return None
             executable_quote({'bids':bids,'asks':asks})
-            return dict(previous,bids=bids,asks=asks,at=stamp,response_at=stamp,
-                        engine_at=None,update_id=data.get('u'),sequence=data.get('seq'),
-                        transport={'via':'market_hub_cache','received_pc':time.time()})
+            refreshed = dict(previous,bids=bids,asks=asks,at=stamp,response_at=stamp,
+                             engine_at=None,update_id=data.get('u'),sequence=data.get('seq'),
+                             transport={'via':'market_hub_cache','received_pc':time.time()})
+            if mark is not None:
+                old_mark = previous['margin_data'].get('quote')
+                if not quote_is_recent(old_mark, maximum=3) or mark['at'] >= old_mark['at']:
+                    refreshed['margin_data'] = dict(previous['margin_data'], quote=mark)
+                    refreshed['margin_marks'] = {**previous.get('margin_marks', {}), symbol:mark}
+            return refreshed
         except (DataUnavailable,ValueError,TypeError,KeyError,IndexError,OverflowError):
             return None
 
