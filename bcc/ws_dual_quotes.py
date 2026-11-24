@@ -124,7 +124,7 @@ class DualBybitQuoteStream:
                         continue
                     if remaining(round(at * 1000), 2.) > 0:
                         quotes.append((bid, ask, at, fence))
-            return (max(marks, key=lambda m: m[1], default=None),
+            return (max(marks, key=lambda m: (m[1], len(m)==3), default=None),
                     max(quotes, key=lambda q: q[2], default=None))
 
     def mark(self, symbol):

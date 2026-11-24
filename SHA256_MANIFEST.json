@@ -81,7 +81,7 @@
     "bcc/lifecycle.py": "ad60ddfac8c4bf30ad186d92c8e6a5b6f53ab11bea64a8c32be4a215e271c2c6",
     "bcc/liquidation.py": "736574079c32b441bde3a6c8f204e906131bbe8c0943c86cbdf8a74b01c9eb6f",
     "bcc/margin.py": "8177172cf760c2c333140fbc34daecace379196ed9bf4ff42fd9d11338a33c17",
-    "bcc/market.py": "4dfb7040966e7fcbdbd033d3dc3b94a41ea10d3becdc08c9d10574ea31b0e592",
+    "bcc/market.py": "4b52c09693bfe212154b001482d781769c10ccae8fc267133ef3b2036c123ccb",
     "bcc/market_clock.py": "5d2d47e0a2617c008feb05052813716b92e66c39c7e918968370e8269354fcac",
     "bcc/market_health.py": "4872159d8b0a6531909e7d55b7c54fb22b11630ba2e5a4d0a8b236a91fc7a961",
     "bcc/market_hub.py": "976a40984a3833aa77cc71aa5cff5eeb144836e5df81cdfbf2f3231c154dc230",
@@ -124,7 +124,7 @@
     "bcc/ws_klines.py": "6727e98680f3cb46278c6cf66285b32944271b5c2d8ce8f90d2895352b5b35d0",
     "bcc/ws_orderbooks.py": "f4ef0a022b58b242ececfa8aec50822d232fdc5850f1e321c15512ac33fa05d5",
     "bcc/ws_polymarket.py": "02cb7000d4f89c1296e896775e7fcfaf0f06ba6fffd434691ff81075eb55bf19",
-    "bcc/ws_quotes.py": "cb2d78da628828ab6dffab87f893d321412ca83d16dfdcc690a69aca811361ef",
+    "bcc/ws_quotes.py": "900104252aa44db8013cc4c3f77cc16af9cef0b400877eb3285a0453d519b2dd",
     "bcc/ws_symbols.py": "b15a76d5f850ba964efa5470ef19cb572385bae91777fc9228a9d1b2a08baa79",
     "docs/ACCEPTANCE_REGRESSION_20261112.json": "78b48b4f4c43838b1ee310d451ac28362f314fde515d68d4e053a702b99ec061",
     "docs/AUTOMATIC_WINDOWS_ACCEPTANCE_RU.md": "5ff5861455e748d9f381e3ba0ffc8641018f7887ec742911b668907cb5c87d27",
@@ -570,7 +570,7 @@
     "tests/test_ws_publication_diagnostics.py": "89b2a8cdf9bc559aa8f7c0f4bf3f8873e968c385d6a0180d638f57a40ad75dd6",
     "bcc/ws_recovery.py": "94df9d12da4ac53754fc8589ffc98b3a4717d52093831d61ed9cd00143d03ccb",
     "tests/test_ws_snapshot_response_gate.py": "7f814061372555f2e9a317f9a15364bbb7f53c709acdd638df5c2b0a635de86c",
-    "bcc/ws_dual_quotes.py": "5646c9032f4a4a76bd36c39334a30043f96ea195cef27c4473080dbb1cd6adbf",
+    "bcc/ws_dual_quotes.py": "870afb321bb739e029bdaba69301cd75250660deebf46d3442fd3761905f7e08",
     "bcc/ws_recovery_quotes.py": "13faea5e04b6f86112a5715600a79e5981eae2e532e143ec102c2c956d4e6e7c",
     "bcc/ws_source_deadline.py": "64ead1787c44ddee0a8fa622c2c0ad16fd058192b2e849f77de0dc488a06829b",
     "tests/test_ws_dual_quotes.py": "848de85efba4522c58b91e9dba7605c251919868e9990c18557314e068bda98a",
@@ -586,6 +586,6 @@
     "tests/test_ticker_proof_recovery.py": "21e776c6803ff38ab427d6398ff5af90b425bd9511873b4c01336defbce575e8",
     "bcc/ws_maintained_marks.py": "9a32ab55605dce9bebaf6a19aaeecc41dfd6404c86b86b7060124eb8840c8c25",
     "tests/test_ws_maintained_marks.py": "812e98cbb282c71f6d0596442d7540831b54ec63e9b8ea5f0f392a00f9c6988b",
-    "tests/test_ws_maintained_candidate.py": "fce51914de69f7a70131b7480bd1c700af74e72459c15e0abc755f2542f73d77"
+    "tests/test_ws_maintained_candidate.py": "aa315a9cfe12b1f9e3fd8a76e5582c2fa0692f399b9884e1cbea8db9f92746ff"
   }
 }

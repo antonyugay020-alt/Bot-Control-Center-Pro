@@ -449,6 +449,10 @@ class BybitQuoteStream:
             # the timestamp of the unmodified executable quote side.
             return q.bid, q.ask, min(q.bid_exchange_ms, q.ask_exchange_ms) / 1000
 
+    def _reject_wire(self, socket, generation):
+        # Legacy explicit-field transport ignores malformed frames.
+        pass
+
     def run(self, *, websocket_app_factory=None, retry_delay=1.0, reset_stop=True):
         """Blocking producer loop; caller owns its thread and shutdown lifecycle.
 
@@ -490,8 +494,10 @@ class BybitQuoteStream:
                 try:
                     payload = json.loads(raw)
                 except (TypeError, ValueError):
+                    self._reject_wire(ws, state["generation"])
                     return
                 if not isinstance(payload, dict):
+                    self._reject_wire(ws, state["generation"])
                     return
                 if self._handle_control_message(ws, payload, state["generation"]):
                     return
@@ -561,8 +567,21 @@ class MaintainedQuoteStream(BybitQuoteStream):
 
     def subscribe_many(self, symbols):
         with self._lock:
+            previous = set(self._subscriptions)
             super().subscribe_many(symbols)
             self._maintained.sync(self._subscriptions)
+            added = self._subscriptions - previous if self._connected else set()
+        self._notify_symbols(added)
+
+    def _reject_wire(self, socket, generation):
+        # An unparseable frame on a maintained stream means continuity is
+        # unknown. Retire only the exact owned socket; never a newer session.
+        with self._lock:
+            if (not self._connected or socket is not self._socket
+                    or generation != self._generation):
+                return
+            self.disconnect(generation=generation)
+        socket.close()
 
     def ingest(self, payload, *, generation):
         with self._lock:

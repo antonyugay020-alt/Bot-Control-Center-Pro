@@ -1388,6 +1388,9 @@ class PublicData:
             raise DataUnavailable("Invalid maintained WS mark provenance") from exc
         quote = {"bid": mark, "ask": mark, "at": at}
         if meta is not None:
+            from .ws_split_ticker import valid_fence
+            if not valid_fence(value.get("_bcc_ws_mark_fence")):
+                raise DataUnavailable("Invalid maintained WS mark origin")
             quote.update(mark_basis="snapshot_delta", mark_explicit_at=meta[0]/1000,
                          mark_cs=meta[1], mark_chain=meta[2])
         return observed_quote(quote)

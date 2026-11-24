@@ -78,3 +78,29 @@ def test_malformed_maintained_provenance_cannot_be_projected(monkeypatch):
     row['_bcc_ws_mark_explicit_at']=round((now+1)*1000)
     assert ws_split_ticker.project_ticker(row)==(None,0.)
     with pytest.raises(DataUnavailable):PublicData._decode_ws_position_mark('BTCUSDT',row)
+
+
+def test_unparseable_primary_frame_retires_exact_socket_only(monkeypatch):
+    now=[round(time.time(),3)]
+    monkeypatch.setattr(market_clock,'book_age_bounds',lambda t:(now[0]-t,now[0]-t+.05))
+    notifications=[]
+    stream=DualBybitQuoteStream(wall=lambda:now[0],monotonic=lambda:now[0],
+        maintained=True,on_update=lambda *a:notifications.append(a))
+    class OwnedSocket(Sink):
+        def __init__(self):self.closed=False
+        def close(self):self.closed=True
+    primary=OwnedSocket(); reserve=OwnedSocket()
+    stream.sync_symbols(['BTCUSDT'])
+    generation=stream._primary.connect(primary)
+    stream._recovery.connect(reserve)
+    assert stream._primary.ingest(dict(type='snapshot',topic='tickers.BTCUSDT',
+        ts=round(now[0]*1000),cs=1,data=dict(symbol='BTCUSDT',markPrice='100')),
+        generation=generation)
+    stream._primary._reject_wire(primary,generation-1)
+    assert not primary.closed and stream._primary.maintained_mark('BTCUSDT') is not None
+    notifications.clear()
+    stream._primary._reject_wire(primary,generation)
+    assert primary.closed and not reserve.closed
+    assert stream._primary.maintained_mark('BTCUSDT') is None
+    assert notifications==[('tickers','BTCUSDT')]
+    stream.stop()
