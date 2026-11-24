@@ -39,7 +39,7 @@ class BybitKlineWS:
     MAX_SUB_PER_MSG = 10
 
     def __init__(self, *, monotonic=time.monotonic, wall=time.time,
-                 max_age=10., on_update=None):
+                 max_age=10., on_update=None, retain_confirmed=False):
         if (type(max_age) not in (int, float) or not math.isfinite(max_age)
                 or not 0 < max_age <= 15):
             raise ValueError("invalid kline maximum age")
@@ -52,12 +52,16 @@ class BybitKlineWS:
         self._symbols = set()
         self._socket = None
         self._candles = {}
+        if type(retain_confirmed) is not bool:
+            raise ValueError("invalid finalized candle candidate")
+        self.retain_confirmed = retain_confirmed
+        self._confirmed = {}
 
     def sync_symbols(self, symbols):
         from .ws_dispatch import synchronize_bybit_symbols
         return synchronize_bybit_symbols(
             self, symbols, subscribed=self._symbols, topic="kline.1",
-            caches=("_candles",), subscribe=self.subscribe, error_type=StreamUnavailable,
+            caches=("_candles", "_confirmed"), subscribe=self.subscribe, error_type=StreamUnavailable,
         )
 
     def subscribe(self, symbols):
@@ -94,6 +98,7 @@ class BybitKlineWS:
         self._connected = False
         self._socket = None
         self._candles.clear()
+        self._confirmed.clear()
 
     def disconnect(self, *, generation=None):
         with self._lock:
@@ -148,22 +153,37 @@ class BybitKlineWS:
                     symbol not in self._symbols):
                 return False
             previous = self._candles.get(symbol)
-            if previous is not None and (
+            candle = Candle(symbol, start, end, op, hi, lo, cl, vol,
+                            confirmed, ts, self._mono(), generation)
+            # The forming-minute cursor and finalized historical evidence
+            # have independent ordering. A late valid confirmation must
+            # never roll the live candle backwards or disappear behind it.
+            final_changed = False
+            if self.retain_confirmed:
+                from .closed_minutes import remember
+                final_changed = remember(self._confirmed, candle)
+            out_of_order = previous is not None and (
                     start < previous.start_ms or
                     (start == previous.start_ms and
                      (ts < previous.message_ms or
-                      (previous.confirmed and not confirmed)))):
+                      (previous.confirmed and not confirmed))))
+            if not out_of_order:
+                self._candles[symbol] = candle
+            elif not final_changed:
                 return False
-            self._candles[symbol] = Candle(
-                symbol, start, end, op, hi, lo, cl, vol, confirmed,
-                ts, self._mono(), generation,
-            )
         if self.on_update is not None:
             try:
                 self.on_update("kline1", symbol)
             except Exception:
                 pass
         return True
+
+    def get_confirmed_candles(self, symbol):
+        from .closed_minutes import snapshot
+        with self._lock:
+            if not self.retain_confirmed or not self._connected or symbol not in self._symbols:
+                return []
+            return snapshot(self._confirmed, symbol, int(self._wall() * 1000))
 
     def get_candle(self, symbol):
         with self._lock:

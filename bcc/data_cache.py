@@ -42,6 +42,7 @@ class PublicCache:
         # Explicit isolated candidate only; legacy publishers keep their TTL.
         self.bybit_ws_source_deadlines = False
         self.split_history_lanes = False
+        self.central_closed_history = False
         with self._guards_lock:
             self._guard = self._guards.setdefault(
                 str(self.path.resolve()), threading.RLock()
@@ -66,6 +67,7 @@ class PublicCache:
             "read_connections": 0,
             "read_operations": 0,
             "read_local_busy": 0,
+            "finalized_minutes_published": 0,
         }
 
     @staticmethod
@@ -472,6 +474,18 @@ class PublicCache:
         values = [json.loads(rows[key]) if key in rows else None for key in keys]
         return [self._project_payload(host, value) for value in values]
 
+    def read_closed_minutes(self, symbol, starts):
+        """Read exact finalized minutes under the existing provider fence."""
+        from .closed_minutes import read, HOST
+        from .market_clock import market_now
+        self._ensure_schema()
+        with self.read_db() as db:
+            db.execute("BEGIN")
+            status = self._denied(db, HOST)
+            if status is not None:
+                raise ProviderDenied(HOST, status)
+            return read(db, symbol, starts, time.time(), int(market_now() * 1000))
+
     def remaining_ttl(self, url, params, host):
         """Read the actual residence deadline; a cache hit never renews it."""
         from .market import PublicData
@@ -586,7 +600,42 @@ class PublicCache:
                     or record.get('url') != 'https://api.bybit.com/v5/market/tickers'
                     or record.get('host') != 'api.bybit.com') for record in records):
             raise ValueError('Split ticker requires admitted candidate publisher')
-        encoded = [self._websocket_record(**record) for record in records]
+        # Finalized history is prevalidated outside the shared writer and
+        # committed only with the original active kline subscription. It is
+        # NOT a new public route or HTTP lease.
+        from .closed_minutes import prepare as prepare_closed, publish as publish_closed
+        from .market_clock import market_now
+        encoded, finalized = [], []
+        for record in records:
+            value = record["value"]
+            closed = value.get("_bcc_ws_finalized_minutes") if isinstance(value, dict) else None
+            only = value.get("_bcc_ws_closed_only", False) if isinstance(value, dict) else False
+            if closed is not None or only:
+                if (not self.central_closed_history or record["url"] !=
+                        "https://api.bybit.com/v5/market/kline"
+                        or record["host"] != "api.bybit.com"
+                        or type(only) is not bool or value.get("_bcc_ws_kline") is not True):
+                    raise ValueError("Unadmitted finalized minute publication")
+                # Drop evidence that aged beyond the bounded historical
+                # window while waiting in the publication queue. Other
+                # market rows in this cohort must not fail because of it.
+                prepared = []
+                if type(closed) is not list or len(closed) > 3:
+                    raise ValueError("Invalid finalized minute batch")
+                for row in closed:
+                    try:
+                        prepared.extend(prepare_closed([row], record["params"]["symbol"],
+                                                       int(market_now()*1000)))
+                    except ValueError:
+                        continue
+                payload = dict(value)
+                payload.pop("_bcc_ws_finalized_minutes", None)
+                payload.pop("_bcc_ws_closed_only", None)
+                encoded.append(self._websocket_record(**dict(record, value=payload)))
+                finalized.append((prepared, only))
+            else:
+                encoded.append(self._websocket_record(**record))
+                finalized.append(([], False))
         if not encoded:
             return []
         self._ensure_schema()
@@ -604,15 +653,32 @@ class PublicCache:
                 db.rollback()
                 return [False] * len(encoded)
             outcomes = []
-            for key, url, params, host, value, ttl in encoded:
-                subscribed = db.execute(
-                    "SELECT 1 FROM hub_subscriptions WHERE k=? "
-                    "AND active_until>? AND url=? AND params=?",
-                    (key, now, url, params),
-                ).fetchone()
-                allowed = subscribed is not None and self._denied(db, host) is None
+            finalized_count = 0
+            # Same transaction, same lease and denial checks as before.
+            # One indexed subscription read per batch instead of per row.
+            if self.central_closed_history:
+                keys = list(dict.fromkeys(row[0] for row in encoded))
+                admitted_keys = set(db.execute(
+                    "SELECT k,url,params FROM hub_subscriptions WHERE active_until>? AND k IN ("
+                    + ",".join("?" for _ in keys) + ")", (now, *keys)).fetchall())
+                denied = {host: self._denied(db, host) for host in {row[3] for row in encoded}}
+            for (key, url, params, host, value, ttl), (closed, only) in zip(encoded, finalized):
+                if self.central_closed_history:
+                    allowed = (key, url, params) in admitted_keys and denied[host] is None
+                else:
+                    subscribed = db.execute(
+                        "SELECT 1 FROM hub_subscriptions WHERE k=? "
+                        "AND active_until>? AND url=? AND params=?",
+                        (key, now, url, params),
+                    ).fetchone()
+                    allowed = subscribed is not None and self._denied(db, host) is None
                 outcomes.append(allowed)
                 if allowed:
+                    if closed:
+                        finalized_count += publish_closed(db, closed, now)
+                    if only:
+                        outcomes[-1] = bool(closed)
+                        continue
                     # A fresh bid/ask-only WS event must not destroy a still
                     # valid genuine mark previously published on the SAME
                     # socket incarnation. Both observations retain their
@@ -678,6 +744,7 @@ class PublicCache:
                         (key, value, now + ttl, host),
                     )
             db.commit()
+            self.stats["finalized_minutes_published"] += finalized_count
         return outcomes
 
     def begin(self, url, params, host, *, priority=False, websocket=False):

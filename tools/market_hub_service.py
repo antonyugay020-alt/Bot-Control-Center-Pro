@@ -112,7 +112,8 @@ def main():
             book_stream = BybitOrderbookWS(wall=market_now, on_update=on_update)
         if args.bybit_ws_klines:
             from bcc.ws_klines import BybitKlineWS
-            kline_stream = BybitKlineWS(wall=market_now, on_update=on_update)
+            kline_stream = BybitKlineWS(wall=market_now, on_update=on_update,
+                retain_confirmed=os.environ.get('BCC_BYBIT_CLOSED_HISTORY_CANDIDATE') == '1')
         if args.poly_ws_books:
             from bcc.ws_polymarket import PolymarketMarketWS
             poly_stream = PolymarketMarketWS(wall=market_now, on_update=on_update)
@@ -128,6 +129,11 @@ def main():
         if os.environ.get('BCC_BYBIT_SPLIT_HISTORY_CANDIDATE') == '1':
             hub.enable_split_history()
             print('Dedicated REST history/metadata executors enabled', flush=True)
+        if os.environ.get('BCC_BYBIT_CLOSED_HISTORY_CANDIDATE') == '1':
+            if kline_stream is None:
+                raise RuntimeError('Central finalized history requires Bybit kline stream')
+            hub.source.shared.central_closed_history = True
+            print('Central finalized minute cache enabled', flush=True)
         hub.set_ws_dispatcher(ws_updates)
         for label, stream in (('tickers', quote_stream), ('depth50', book_stream),
                               ('kline1', kline_stream), ('polybook', poly_stream),
@@ -230,6 +236,10 @@ def main():
                               "queue": queue_stats,
                               "publication": hub.ws_publication_stats(),
                               "rest_lanes": hub.rest_lane_health(),
+                              "closed_history": {
+                                  "enabled": hub.source.shared.central_closed_history,
+                                  "published": hub.source.shared.stats["finalized_minutes_published"],
+                              },
                           }, sort_keys=True), flush=True)
                     last_ws_health = time.monotonic()
                 if ws_threads and not hub._leader_held:

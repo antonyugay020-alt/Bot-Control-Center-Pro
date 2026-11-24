@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import re
+import sqlite3
 import threading
 import time
 from datetime import datetime, timezone
@@ -1226,6 +1227,26 @@ class PublicData:
         except (KeyError,TypeError,ValueError,IndexError,OverflowError):
             return False
 
+    def _renew_closed_minute_stream(self, symbol, priority):
+        """Keep warm and cold closed-bar symbols subscribed across boundaries."""
+        from .market_hub import HubRegistry
+        url = "https://api.bybit.com/v5/market/kline"
+        params = dict(category="linear", symbol=symbol, interval="1", limit=10)
+        subscription_key = HubRegistry.identity(url, params)[0]
+        with self._lock:
+            if self._hub_registry is None:
+                self._hub_registry = HubRegistry(self.shared.path)
+            now = time.monotonic()
+            if (now >= self._hub_renew_at.get(subscription_key, 0)
+                    or (priority and now >= self._hub_priority_until.get(subscription_key, 0))):
+                try:
+                    self._hub_registry.subscribe(url, params, lifetime=90, priority=priority)
+                except (sqlite3.Error, OSError, CacheBusy) as exc:
+                    raise DataUnavailable("Не обновлена подписка закрытых свечей: " + str(exc)) from exc
+                self._hub_renew_at[subscription_key] = now + 30
+                if priority:
+                    self._hub_priority_until[subscription_key] = now + 30
+
     def closed_candles(self, symbol, required=500, *, priority=False):
         """Actual finalized minute rows, shared by all closed-only strategies.
 
@@ -1243,6 +1264,12 @@ class PublicData:
         with self._lock:
             previous = self.cache.get(key, (0, []))[1]
         found = {b["t"]: b for b in previous if b["t"] < boundary}
+        central = (os.environ.get("BCC_BYBIT_CLOSED_HISTORY_CANDIDATE") == "1"
+                   and os.environ.get("BCC_MARKET_HUB_MODE") == "client"
+                   and os.environ.get("BCC_BYBIT_WS_KLINES") == "1"
+                   and isinstance(self.shared, PublicCache))
+        if central:
+            self._renew_closed_minute_stream(symbol, priority)
 
         def complete():
             bars = [found[t] for t in sorted(found)][-required:]
@@ -1272,7 +1299,22 @@ class PublicData:
         self._thread.closed_history = True
         try:
             bars = complete()
-            if bars is None and previous:
+            if bars is None and previous and central:
+                # Read the exact most recent finalized minutes from one
+                # shared snapshot, not the mutable current-candle tail.
+                starts = list(range(max(boundary-180000, previous[-1]["t"]+60000),
+                                    boundary, 60000))
+                if starts:
+                    try:
+                        for row in self.shared.read_closed_minutes(symbol, starts):
+                            found[row["t"]] = {k:row[k] for k in
+                                ("t","open","high","low","close","volume")}
+                    except ProviderDenied as exc:
+                        raise SourceAccessDenied(exc.host, exc.http_status) from exc
+                    except CacheContention:
+                        pass  # bounded REST repair remains policy-admitted
+                    bars = complete()
+            elif bars is None and previous:
                 try:
                     absorb(self.bybit("kline", {"symbol":symbol,"interval":"1","limit":10}), ws=True)
                 except WebSocketKlineUnavailable:
@@ -1285,7 +1327,13 @@ class PublicData:
                 # can page back through the same existing public quota.
                 remaining = required
                 if len(previous) >= required and boundary - previous[-1]["t"] <= 90 * 60000:
-                    remaining = min(required,100)
+                    if central:
+                        # All consumers of the same missing minute share
+                        # one exact REST identity, even with different RSI
+                        # history lengths. Request only the missing tail.
+                        remaining = max(1, (boundary - previous[-1]["t"])//60000 - 1)
+                    else:
+                        remaining = min(required,100)
                 end = boundary - 1
                 for _ in range((remaining + 999)//1000):
                     limit = min(1000,remaining)

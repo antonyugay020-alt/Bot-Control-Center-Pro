@@ -750,6 +750,7 @@ class MarketDataHub:
         self._ws_quote_symbols = ()
         self._ws_book_symbols = ()
         self._ws_dispatcher = None
+        self._finalized_published = {}
         # WS -> SQLite publication evidence. Aggregate only: no symbols,
         # prices, account details, or exchange timestamp modifications.
         self._ws_publication_lock = threading.Lock()
@@ -925,22 +926,39 @@ class MarketDataHub:
                 # discarding otherwise fresh independent quote/mark clocks.
                 ttl = 1.5
             elif kind == "kline1":
-                candle = stream.get_candle(symbol)
-                stamp = candle.message_ms / 1000
-                if not -5 <= market_now() - stamp <= 10:
+                final_reader = getattr(stream, "get_confirmed_candles", None)
+                closed = (final_reader(symbol)
+                          if getattr(self.source.shared, "central_closed_history", False)
+                          and callable(final_reader) else [])
+                candle = None
+                try:
+                    current = stream.get_candle(symbol)
+                    if -5 <= market_now() - current.message_ms / 1000 <= 10:
+                        candle = current
+                except StreamUnavailable:
+                    pass
+                if candle is None and not closed:
                     return False
-                value = {
-                    "retCode": 0, "retMsg": "OK", "_bcc_ws_kline": True,
-                    # Legacy/current-bar adapters may not expose finality.
-                    # Absence or a non-boolean flag is NEVER a closed candle.
-                    "_bcc_ws_kline_confirmed": getattr(candle, "confirmed", False) is True,
-                    "time": candle.message_ms,
-                    "result": {"list": [[
-                        str(candle.start_ms), str(candle.open), str(candle.high),
-                        str(candle.low), str(candle.close), str(candle.volume),
-                        "0",
-                    ]]},
-                }
+                if candle is None:
+                    # Historical evidence must not republish an expired
+                    # forming candle. Only the separate minute key is written.
+                    value = {"retCode": 0, "_bcc_ws_kline": True,
+                             "_bcc_ws_closed_only": True,
+                             "time": max(row["confirmed_ms"] for row in closed),
+                             "result": {"list": []}}
+                else:
+                    value = {
+                        "retCode": 0, "retMsg": "OK", "_bcc_ws_kline": True,
+                        "_bcc_ws_kline_confirmed": getattr(candle, "confirmed", False) is True,
+                        "time": candle.message_ms,
+                        "result": {"list": [[
+                            str(candle.start_ms), str(candle.open), str(candle.high),
+                            str(candle.low), str(candle.close), str(candle.volume),
+                            "0",
+                        ]]},
+                    }
+                if closed:
+                    value["_bcc_ws_finalized_minutes"] = closed
                 ttl = .75
             else:
                 book = stream.get_orderbook(symbol)
@@ -1004,11 +1022,22 @@ class MarketDataHub:
                     outcomes = self.source.shared.publish_websockets(
                         [row for _, row in valid], leader_owner=self.owner,
                         leader_token=token)
-                except CacheBusy:
+                except CacheBusy as exc:
                     busy = len(valid)
+                    from .data_cache import CacheContention
+                    if (getattr(self.source.shared, "central_closed_history", False)
+                            and isinstance(exc, CacheContention) and self._ws_dispatcher is not None):
+                        # Re-read current exchange evidence on retry. Never
+                        # replay stale payloads or extend original prices.
+                        for index, _ in valid:
+                            self._ws_dispatcher.notify(*events[index])
                 else:
-                    for (index, _), outcome in zip(valid, outcomes):
+                    for (index, record), outcome in zip(valid, outcomes):
                         results[index] = outcome
+                        rows = record["value"].get("_bcc_ws_finalized_minutes")
+                        if outcome and rows:
+                            self._finalized_published[events[index][1]] = tuple(
+                                (row["t"], row["confirmed_ms"]) for row in rows)
                 finally:
                     commit_seconds = time.monotonic() - commit_start
             return results
@@ -1154,6 +1183,21 @@ class MarketDataHub:
                     kline.sync_symbols(valid_klines)
                 else:
                     kline.subscribe(valid_klines)
+                # A quiet symbol may send its final message just before the
+                # conservative local closing boundary. Revisit uncommitted
+                # final evidence during the existing subscription scan.
+                reader = getattr(kline, "get_confirmed_candles", None)
+                if (getattr(self.source.shared, "central_closed_history", False)
+                        and self._ws_dispatcher is not None and callable(reader)):
+                    active = set(valid_klines)
+                    for old in tuple(self._finalized_published):
+                        if old not in active:
+                            self._finalized_published.pop(old, None)
+                    for symbol in valid_klines:
+                        rows = reader(symbol)
+                        identity = tuple((row["t"], row["confirmed_ms"]) for row in rows)
+                        if identity and identity != self._finalized_published.get(symbol):
+                            self._ws_dispatcher.notify("kline1", symbol)
             except (ValueError, StreamUnavailable):
                 pass
         if binance is not None:
