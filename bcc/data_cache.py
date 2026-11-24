@@ -392,6 +392,13 @@ class PublicCache:
         return True
 
     @staticmethod
+    def _project_payload(host, value):
+        if host == 'api.bybit.com' and isinstance(value, dict) and value.get('_bcc_ws_split_ticker') is True:
+            from .ws_split_ticker import project_ticker
+            return project_ticker(value)[0]
+        return value if PublicCache._accepted_payload(host, value) else None
+
+    @staticmethod
     def _cached(db, key, host, now):
         # A public response already cached inside its validated TTL does not
         # consume exchange request budget. A remote cooldown must prevent new
@@ -402,8 +409,11 @@ class PublicCache:
         row = db.execute(
             "SELECT value,until FROM cache WHERE k=? AND host=?", (key, host)
         ).fetchone()
-        if row and row[1] > now and PublicCache._accepted_payload(host,json.loads(row[0])):
-            return row[0]
+        if row and row[1] > now:
+            raw = json.loads(row[0])
+            projected = PublicCache._project_payload(host, raw)
+            if projected is not None:
+                return row[0] if projected is raw else json.dumps(projected, allow_nan=False)
         cooldown = db.execute(
             "SELECT until FROM cooldown WHERE host=?", (host,)
         ).fetchone()
@@ -427,7 +437,7 @@ class PublicCache:
                 (key, host, time.time()),
             ).fetchone()
         value = json.loads(row[0]) if row else None
-        return value if self._accepted_payload(host,value) else None
+        return self._project_payload(host, value)
 
     def read_fresh_many(self, requests, host):
         """One read snapshot for a portfolio; no HTTP, leases or budget debit."""
@@ -459,7 +469,7 @@ class PublicCache:
             finally:
                 db.rollback()
         values = [json.loads(rows[key]) if key in rows else None for key in keys]
-        return [value if self._accepted_payload(host,value) else None for value in values]
+        return [self._project_payload(host, value) for value in values]
 
     def remaining_ttl(self, url, params, host):
         """Read the actual residence deadline; a cache hit never renews it."""
@@ -566,6 +576,12 @@ class PublicCache:
                 or type(leader_owner) is not str or not leader_owner
                 or type(leader_token) is not str or not leader_token):
             raise ValueError("Invalid WS publication batch")
+        if any(isinstance(record.get('value'), dict)
+               and record['value'].get('_bcc_ws_split_ticker') is True
+               and (not self.bybit_ws_source_deadlines
+                    or record.get('url') != 'https://api.bybit.com/v5/market/tickers'
+                    or record.get('host') != 'api.bybit.com') for record in records):
+            raise ValueError('Split ticker requires admitted candidate publisher')
         encoded = [self._websocket_record(**record) for record in records]
         if not encoded:
             return []
@@ -598,7 +614,16 @@ class PublicCache:
                     # socket incarnation. Both observations retain their
                     # independent ORIGINAL exchange timestamps; no synthetic
                     # value or cache freshness extension grants authority.
-                    if url == "https://api.bybit.com/v5/market/tickers":
+                    split_ticker = (self.bybit_ws_source_deadlines and host == "api.bybit.com"
+                                    and url == "https://api.bybit.com/v5/market/tickers")
+                    if split_ticker:
+                        from .ws_split_ticker import project_ticker
+                        candidate, ttl = project_ticker(json.loads(value), symbol=json.loads(params)["symbol"])
+                        if candidate is None:
+                            outcomes[-1] = False
+                            continue
+                        value = json.dumps(candidate, allow_nan=False)
+                    elif url == "https://api.bybit.com/v5/market/tickers":
                         candidate = json.loads(value)
                         fence = candidate.get("_bcc_ws_connection_fence")
                         if (candidate.get("_bcc_ws_quote") is True
@@ -630,7 +655,7 @@ class PublicCache:
                                         candidate["result"]["list"][0]["markPrice"] = str(old_mark)
                                         value = json.dumps(candidate, allow_nan=False)
                     if (self.bybit_ws_source_deadlines and host == "api.bybit.com"
-                            and url.endswith(("/tickers", "/orderbook"))):
+                            and url.endswith("/orderbook")):
                         from .ws_source_deadline import remaining_bybit_ws_seconds
                         candidate = json.loads(value)
                         ttl = remaining_bybit_ws_seconds(candidate)
@@ -808,7 +833,8 @@ class PublicCache:
         """
         if owner is None:
             return False
-        if not self._accepted_payload(host,value):
+        if ((isinstance(value, dict) and value.get('_bcc_ws_split_ticker') is True)
+                or not self._accepted_payload(host,value)):
             value = None
         # Serialization may be expensive for a long candle history. It must not
         # run while blocking every other bot's short write transaction.

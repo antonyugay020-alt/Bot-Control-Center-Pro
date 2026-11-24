@@ -7,7 +7,7 @@ import pytest
 from bcc.data_cache import PublicCache
 from bcc.market_hub import HubRegistry
 from bcc import ws_source_deadline as policy
-from bcc import data_cache
+from bcc import data_cache, ws_split_ticker
 
 HOST='api.bybit.com'
 MARK='https://api.bybit.com/v5/market/tickers'
@@ -36,7 +36,9 @@ def controlled(monkeypatch):
     utc=[base]
     monkeypatch.setattr(data_cache,'time',SimpleNamespace(time=lambda:wall[0],
                         monotonic=time.monotonic,sleep=time.sleep))
-    monkeypatch.setattr(policy,'book_age_bounds',lambda stamp:(utc[0]-stamp,utc[0]-stamp+.1))
+    bounds = lambda stamp: (utc[0]-stamp, utc[0]-stamp+.1)
+    monkeypatch.setattr(policy, 'book_age_bounds', bounds)
+    monkeypatch.setattr(ws_split_ticker, 'book_age_bounds', bounds)
     return wall,utc
 
 

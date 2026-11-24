@@ -87,6 +87,37 @@ class DualBybitQuoteStream:
                 c[0][1] if c[0] is not None else -1.,
                 c[1][2] if c[1] is not None else -1.))
 
+    def independent_observations_for_hub(self, symbol):
+        """Read independent live fields, retaining the accepted mark's 3s bound.
+
+        The existing consumer mark contract is three seconds; a quote stays
+        subject to its own two-second source limit. No cached value from a
+        retired generation is carried into a new publication.
+        """
+        from .ws_split_ticker import remaining
+        with self._lock:
+            if symbol not in self._demand:
+                return None, None
+            marks, quotes = [], []
+            for child in (self._primary, self._recovery):
+                with child._lock:
+                    if not child._connected or symbol not in child._subscriptions:
+                        continue
+                    fence = child._connection_fence
+                    row = child._marks.get(symbol)
+                    if (row is not None and row[3] == child._generation
+                            and 0 <= child._mono() - row[2] < 3.
+                            and remaining(row[1], 3.) > 0):
+                        marks.append((row[0], row[1] / 1000, fence))
+                    try:
+                        bid, ask, at = child.quote(symbol)
+                    except StreamUnavailable:
+                        continue
+                    if remaining(round(at * 1000), 2.) > 0:
+                        quotes.append((bid, ask, at, fence))
+            return (max(marks, key=lambda m: m[1], default=None),
+                    max(quotes, key=lambda q: q[2], default=None))
+
     def mark(self, symbol):
         mark, _, _ = self.snapshot_for_hub(symbol)
         if mark is None:

@@ -821,6 +821,14 @@ class MarketDataHub:
                     return False
                 value = {"_bcc_ws_polybook": True, **book}
                 ttl = .35
+            elif (kind == "tickers" and getattr(self.source.shared, "bybit_ws_source_deadlines", False)
+                  and callable(getattr(stream, "independent_observations_for_hub", None))):
+                from .ws_split_ticker import make_split_ticker, project_ticker
+                mark, quote = stream.independent_observations_for_hub(symbol)
+                value, _ = project_ticker(make_split_ticker(symbol, mark, quote), symbol=symbol)
+                if value is None:
+                    return False
+                ttl = 1.5
             elif kind == "tickers":
                 # Independently transport the exchange's real markPrice.
                 # Partial ticker deltas may refresh mark without changing
