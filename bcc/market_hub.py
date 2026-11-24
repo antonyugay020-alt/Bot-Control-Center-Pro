@@ -896,7 +896,9 @@ class MarketDataHub:
                     return False
                 value = {
                     "retCode": 0, "retMsg": "OK", "_bcc_ws_kline": True,
-                    "_bcc_ws_kline_confirmed": candle.confirmed,
+                    # Legacy/current-bar adapters may not expose finality.
+                    # Absence or a non-boolean flag is NEVER a closed candle.
+                    "_bcc_ws_kline_confirmed": getattr(candle, "confirmed", False) is True,
                     "time": candle.message_ms,
                     "result": {"list": [[
                         str(candle.start_ms), str(candle.open), str(candle.high),
