@@ -4,6 +4,8 @@ This module never obtains prices itself, opens sockets, or changes a TTL.
 A history request cannot occupy the metadata executor. Both lanes are bounded
 by the original total concurrency limit and keep the registry's fencing tokens.
 """
+import logging
+
 KLINE_URL = 'https://api.bybit.com/v5/market/kline'
 
 
@@ -33,8 +35,14 @@ def admit_rest_lanes(hub):
             index = next(i for i, item in enumerate(available) if not item[3])
             available.insert(0, available.pop(index))
         for key, url, params, urgent, generation in available[:free]:
-            if (url == KLINE_URL) != history or key in hub._inflight:
-                raise RuntimeError('REST lane returned inconsistent demand')
+            if (url == KLINE_URL) != history:
+                raise RuntimeError('REST lane returned wrong route')
+            if key in hub._inflight:
+                # A duplicate selection is not another transport authority.
+                # Keep the original future and generation, never stop the
+                # independent WS publisher or submit another GET for it.
+                logging.warning('Duplicate REST demand skipped; original in-flight request retained')
+                continue
 
             def fetch(request_url=url, request_params=params, is_urgent=urgent):
                 try:

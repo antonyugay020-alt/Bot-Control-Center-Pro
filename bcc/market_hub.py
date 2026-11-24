@@ -667,6 +667,12 @@ class HubRegistry:
             ") THEN 1 ELSE 2 END, next_due,k LIMIT ?"
         )
         with self._connect() as db:
+            # All three selections must observe one WAL read snapshot.
+            # Otherwise a concurrent priority promotion / rearm between
+            # SELECTs can return the same key from both classes or through
+            # the urgent OFFSET. BEGIN (not IMMEDIATE) never takes the
+            # SQLite writer reservation; end the read before validation.
+            db.execute('BEGIN')
             now = time.time()
             urgent = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
