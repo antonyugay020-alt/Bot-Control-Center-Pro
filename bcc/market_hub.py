@@ -767,6 +767,19 @@ class MarketDataHub:
             max_workers=self.max_workers // 2, thread_name_prefix="hub-history-get")
         self.source.shared.split_history_lanes = True
 
+    def rest_lane_health(self):
+        if self._history_pool is None:
+            return {"enabled": False}
+        from .hub_rest_lanes import KLINE_URL
+        rows = list(self._inflight.values())
+        count = sum(item[1] == KLINE_URL for item in rows)
+        return {"enabled": True,
+                "history_capacity": self.max_workers // 2,
+                "metadata_capacity": self.max_workers - self.max_workers // 2,
+                "history_inflight": count,
+                "metadata_inflight": len(rows) - count,
+                "ack_pending": sum(item[0].done() for item in rows)}
+
     def acquire_leadership(self, *, lifetime=120):
         """Single admission path for service readiness and every producer mode.
 
@@ -1206,13 +1219,14 @@ class MarketDataHub:
                 and params.get('interval') == '1'):
             return 3600.
         delay = 2. if failed else 120. if '/risk-limit' in url else .25 if 'orderbook' in url or '/book' in url else 1.
+        cap = delay
         if not failed and self._history_pool is not None:
-            # Schedule unchanged long-lived metadata at actual cache
-            # deadlines, not a perpetual one-second cache-hit/ACK cycle.
+            # Only an existing cache row proves a long metadata deadline.
+            # Missing rows keep the original short retry interval.
             if '/instruments-info' in url:
-                delay = 3600.
+                cap = 3600.
             elif '/funding/history' in url:
-                delay = 60.
+                cap = 60.
         remaining = getattr(getattr(self.source,'shared',None),'remaining_ttl',None)
         if failed or not callable(remaining):
             return delay
@@ -1224,7 +1238,7 @@ class MarketDataHub:
                 return delay  # Legacy/custom adapters may not publish a row.
             # Rechecking cached risk data must not postpone its real renewal
             # for another whole poll interval after that cache has expired.
-            return max(.05,min(delay,ttl+.025))
+            return max(.05,min(cap,ttl+.025))
         except (CacheBusy,ProviderDenied):
             return min(delay,2.)
 

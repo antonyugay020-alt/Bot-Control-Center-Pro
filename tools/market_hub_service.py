@@ -229,6 +229,7 @@ def main():
                               "streams": states,
                               "queue": queue_stats,
                               "publication": hub.ws_publication_stats(),
+                              "rest_lanes": hub.rest_lane_health(),
                           }, sort_keys=True), flush=True)
                     last_ws_health = time.monotonic()
                 if ws_threads and not hub._leader_held:
