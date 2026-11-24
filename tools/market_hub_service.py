@@ -12,6 +12,11 @@ from bcc.market_hub import MarketDataHub
 from bcc.ws_dispatch import MarketEventQueue
 
 
+def create_market_event_queue():
+    """Producer must use adaptive active-demand capacity, not a fixed 16k cap."""
+    return MarketEventQueue(urgent_burst=8)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--cache', required=True)
@@ -57,7 +62,7 @@ def main():
     quote_stream = book_stream = kline_stream = poly_stream = binance_stream = None
     ws_threads = []
     ws_jobs = []
-    ws_updates = MarketEventQueue(capacity=16384, urgent_burst=8)
+    ws_updates = create_market_event_queue()
 
     def on_update(kind, symbol):
         ws_updates.notify(kind, symbol)
@@ -193,6 +198,9 @@ def main():
                             elif label == "bybit_depth":
                                 states[label]["subscribed"] = len(stream._symbols)
                                 states[label]["received_symbols"] = len(stream._books)
+                            pressure = getattr(stream, "refresh_pressure", None)
+                            if callable(pressure):
+                                states[label]["refresh"] = pressure()
                     queue_stats = ws_updates.stats()
                     print("Market Hub WS health: " +
                           json.dumps({
