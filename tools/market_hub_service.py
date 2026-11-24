@@ -253,6 +253,7 @@ def main():
                                   "published": hub.source.shared.stats["finalized_minutes_published"],
                                   "repair_enabled": hub.source.shared.central_repair,
                                   "repair_scheduled": hub._repair_scheduled,
+                                  "repair_completed": hub._repair_completed,
                               },
                           }, sort_keys=True), flush=True)
                     last_ws_health = time.monotonic()

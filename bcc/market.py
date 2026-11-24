@@ -1029,7 +1029,8 @@ class PublicData:
                     and url == "https://api.bybit.com/v5/market/kline"
                     and type(params) is dict and params.get("interval")=="1"
                     and params.get("limit")==1 and type(params.get("end")) is int
-                    and (params["end"]+1)%60000==0):
+                    and (params["end"]+1)%60000==0
+                    and 0<=market_now()*1000-(params["end"]+1)<180000):
                 from .hub_minute_repair import rest_minute
                 if rest_minute(data,params["symbol"],params["end"]-59999,
                                int(market_now()*1000)) is None:
@@ -1365,7 +1366,8 @@ class PublicData:
                     limit = min(1000,remaining)
                     data = self.bybit("kline", {"symbol":symbol,"interval":"1","limit":limit,"end":end})
                     if (central and limit==1 and
-                            os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1"):
+                            os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1"
+                            and 0<=market_now()*1000-(end+1)<180000):
                         from .hub_minute_repair import rest_minute
                         if rest_minute(data,symbol,end-59999,int(market_now()*1000)) is None:
                             raise DataUnavailable("Bybit: закрытая минута не подтверждена")

@@ -11,7 +11,7 @@ from bcc.hub_minute_repair import URL, HOST, params_for, identity, rest_minute
 
 
 def test_proactive_repair_is_once_per_active_symbol_and_shared(tmp_path,monkeypatch):
-    now_ms=60061000
+    now_ms=60062000
     start=60000000
     monkeypatch.setattr(market_clock,"market_now",lambda:now_ms/1000)
     source=PublicData()

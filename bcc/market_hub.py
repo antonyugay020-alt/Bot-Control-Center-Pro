@@ -754,6 +754,7 @@ class MarketDataHub:
         self._repair_boundary = None
         self._repair_seen = set()
         self._repair_scheduled = 0
+        self._repair_completed = 0
         # WS -> SQLite publication evidence. Aggregate only: no symbols,
         # prices, account details, or exchange timestamp modifications.
         self._ws_publication_lock = threading.Lock()
@@ -1103,6 +1104,8 @@ class MarketDataHub:
             self._repair_boundary = boundary
             self._repair_seen.clear()
         pending = sorted(set(symbols)-self._repair_seen)
+        if pending:
+            self.source.shared._ensure_schema()
         for offset in range(0,len(pending),64):
             jobs = pending[offset:offset+64]
             with self.registry._connect() as db:
@@ -1276,7 +1279,19 @@ class MarketDataHub:
         if context is not None:
             context.position_mark = financial_priority
         try:
-            return self.source.get(url, params=params)
+            result = self.source.get(url, params=params)
+            if (getattr(self.source.shared,"central_repair",False)
+                    and url=="https://api.bybit.com/v5/market/kline"
+                    and type(params) is dict and params.get("interval")=="1"
+                    and params.get("limit")==1 and type(params.get("end")) is int
+                    and (params["end"]+1)%60000==0):
+                from .market_clock import market_now
+                from .hub_minute_repair import rest_minute
+                if rest_minute(result,params["symbol"],params["end"]-59999,
+                               int(market_now()*1000)) is not None:
+                    with self._ws_publication_lock:
+                        self._repair_completed += 1
+            return result
         finally:
             if context is not None:
                 context.position_mark = previous
