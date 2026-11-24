@@ -1094,9 +1094,12 @@ class MarketDataHub:
         provider budget, denial and HTTP ownership checks. No direct network
         operation is performed on the WS subscription/control thread.
         """
-        from .market_clock import market_now
+        from .market_clock import ClockUnavailable, market_now
         from .hub_minute_repair import schedule
-        now_ms = int(market_now()*1000)
+        try:
+            now_ms = int(market_now()*1000)
+        except ClockUnavailable:
+            return  # No verified minute; leave all outstanding demand intact.
         boundary = now_ms//60000*60000
         if now_ms-boundary < 1500:
             return
@@ -1114,8 +1117,13 @@ class MarketDataHub:
             jobs = pending[offset:offset+64]
             with self.registry._connect() as db:
                 db.execute("BEGIN IMMEDIATE")
-                now_ms = int(market_now()*1000)
+                try:
+                    now_ms = int(market_now()*1000)
+                except ClockUnavailable:
+                    db.rollback()
+                    return
                 if now_ms//60000*60000 != boundary:
+                    db.rollback()
                     return
                 # Refusals are never bypassed, including by scheduling.
                 from .data_cache import PublicCache
@@ -1475,7 +1483,7 @@ class MarketDataHub:
             keeper.join(timeout=2)
         return results
 
-    def poll_nonblocking(self):
+    def poll_nonblocking(self, *, market_ready=True):
         """Run one short producer scheduling turn without awaiting slow HTTP.
 
         A slow regular request must not delay urgent marks on free workers.
@@ -1484,7 +1492,7 @@ class MarketDataHub:
         Only the Hub service uses this method; run_once stays synchronous for
         deterministic offline tests and existing integrations.
         """
-        if self._pool is None:
+        if self._pool is None and market_ready:
             return self.run_once()
         now = time.monotonic()
         if now >= self._leader_check_due:
@@ -1501,6 +1509,11 @@ class MarketDataHub:
             # always be cancelled; its single-flight cache lease is separate.
             return []
 
+        # Keep the leadership lease alive during a clock outage. Do not
+        # admit new market work, acknowledge old futures, or invent a time
+        # boundary. Completed HTTP jobs remain accounted for until recovery.
+        if not market_ready:
+            return []
         self._maintain_registry()
         self.subscribe_active_websockets()
         results = []

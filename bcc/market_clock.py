@@ -147,6 +147,32 @@ class MarketClock:
         with self._lock:
             return self._bounds()
 
+    def poll_refresh(self):
+        """Nonblocking service maintenance, including cold/expired references.
+
+        Readiness is the current verified quorum, NOT a pending probe. Never
+        extend lifetime or use OS wall time when no quorum is available.
+        Worker ensure() keeps its original synchronous cold-start contract.
+        """
+        with self._lock:
+            now = time.monotonic()
+            try:
+                self._bounds()
+                valid = True
+            except ClockUnavailable:
+                valid = False
+            if valid and now - self._reference[3] < self.refresh_after:
+                return True
+            if self._attempted is not None and now - self._attempted < 10:
+                return valid
+            if self._refresh_thread is None or not self._refresh_thread.is_alive():
+                self._refresh_thread = threading.Thread(
+                    target=self._refresh_background,
+                    name="public-clock-refresh", daemon=True,
+                )
+                self._refresh_thread.start()
+            return valid
+
     def ensure(self):
         # Cold/invalid references require a synchronous quorum. An already
         # vetted reference remains usable only within its ORIGINAL lifetime;

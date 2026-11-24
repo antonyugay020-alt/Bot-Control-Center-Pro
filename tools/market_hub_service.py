@@ -9,6 +9,7 @@ import sqlite3
 import threading
 import time
 from bcc.market_hub import MarketDataHub
+from bcc.market_clock import ClockUnavailable, clock, market_now
 from bcc.ws_dispatch import MarketEventQueue
 
 
@@ -88,7 +89,12 @@ def main():
             if not batch:
                 continue
             try:
+                # No fresh WS evidence is published while the producer's
+                # independent UTC quorum is absent. Never use wall fallback.
+                clock.bounds()
                 hub.publish_ws_events(batch)
+            except ClockUnavailable:
+                continue
             except (sqlite3.Error, OSError, ValueError) as exc:
                 print("WebSocket event publication unavailable: " +
                       type(exc).__name__, flush=True)
@@ -104,7 +110,6 @@ def main():
             args.binance_ws_price):
         from websocket import WebSocketApp
         from bcc.market import PublicData
-        from bcc.market_clock import clock, market_now
         if args.bybit_ws_quotes:
             # Explicit diagnostic opt-in only; no default transport change.
             if os.environ.get('BCC_BYBIT_DUAL_WS_CANDIDATE') == '1':
@@ -161,21 +166,31 @@ def main():
         hub = MarketDataHub(args.cache, max_workers=args.concurrency)
     print('Market Hub cache initialized', flush=True)
     last_client = time.monotonic()
-    last_clock_refresh = 0.0
     last_ws_health = 0.0
     ready_logged = False
+    clock_was_ready = None
+    clock_outages = 0
+    clock_recoveries = 0
     try:
         while not stop.is_set():
             try:
-                if ws_jobs and time.monotonic() - last_clock_refresh >= 10:
-                    # WS messages use the same independent, bounded trading
-                    # UTC reference as PAPER decisions, never raw OS wall time.
-                    # No verified clock => no WS producer readiness.
-                    clock.ensure()
-                    last_clock_refresh = time.monotonic()
+                market_ready = not ws_jobs or clock.poll_refresh()
+                if ws_jobs and clock_was_ready != market_ready:
+                    if not market_ready:
+                        clock_outages += int(clock_was_ready is True)
+                        print("Market Hub clock unavailable; market admission paused", flush=True)
+                    else:
+                        clock_recoveries += int(clock_was_ready is False and ready_logged)
+                        print("Market Hub verified clock available; market admission enabled", flush=True)
+                    clock_was_ready = market_ready
                 if any(not thread.is_alive() for thread in ws_threads):
                     raise RuntimeError("Bybit public WebSocket producer exited")
+                if publisher is not None and not publisher.is_alive():
+                    raise RuntimeError("Public WebSocket cache publisher exited")
                 if not ready_logged:
+                    if not market_ready:
+                        stop.wait(args.poll)
+                        continue
                     # Startup lease and steady-state queue use the same
                     # bounded SQLite contention policy. A brief writer lock
                     # must not kill the service before it can acknowledge
@@ -206,7 +221,18 @@ def main():
                         ws_threads.append(thread)
                     print('Market Hub leader lease acquired', flush=True)
                     ready_logged = True
-                hub.poll_nonblocking()
+                try:
+                    hub.poll_nonblocking(market_ready=market_ready)
+                except ClockUnavailable:
+                    # The clock may expire after the admission check and
+                    # before an individual scheduler operation. This is a
+                    # recoverable external-data outage, not loss of leadership.
+                    market_ready = False
+                    if clock_was_ready:
+                        clock_outages += 1
+                        print("Market Hub clock unavailable during scheduling; market admission paused", flush=True)
+                    clock_was_ready = False
+                    hub.poll_nonblocking(market_ready=False)
                 if ws_threads and time.monotonic() - last_ws_health >= 10:
                     # Only aggregate public transport liveness and queue
                     # pressure; no token ids, API keys or market payloads.
@@ -222,7 +248,10 @@ def main():
                             continue
                         health = getattr(stream, 'transport_health', None)
                         if callable(health):
-                            states[label] = health()
+                            try:
+                                states[label] = health()
+                            except ClockUnavailable:
+                                states[label] = {"clock": "unavailable"}
                             continue
                         with stream._lock:
                             states[label] = {
@@ -248,6 +277,11 @@ def main():
                               "queue": queue_stats,
                               "publication": hub.ws_publication_stats(),
                               "rest_lanes": hub.rest_lane_health(),
+                              "clock": {
+                                  "ready": market_ready,
+                                  "outages": clock_outages,
+                                  "recoveries": clock_recoveries,
+                              },
                               "closed_history": {
                                   "enabled": hub.source.shared.central_closed_history,
                                   "published": hub.source.shared.stats["finalized_minutes_published"],
