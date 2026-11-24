@@ -1022,16 +1022,7 @@ class PublicData:
             # workers for the minute, instead of repeating a REST backfill
             # every second. Never extend live / unbounded history, quotes,
             # mark-price or risk timestamps. Consumers still verify finality.
-            if (url == "https://api.bybit.com/v5/market/kline"
-                    and type(params) is dict and params.get("interval") == "1"
-                    and type(params.get("end")) is int
-                    and (params["end"] + 1) % 60000 == 0
-                    and isinstance(data, dict)
-                    and type(data.get("time")) is int
-                    and data["time"] >= params["end"] + 1
-                    and isinstance(data.get("result"), dict)
-                    and isinstance(data["result"].get("list"), list)
-                    and data["result"]["list"]):
+            if self._complete_closed_window(url, params, data):
                 # The cache key is the explicit end boundary, not a moving
                 # "latest" alias. Historical fetches remain quota fenced.
                 cache_ttl = max(cache_ttl, 60.)
@@ -1206,6 +1197,35 @@ class PublicData:
             self.cache[("bars", symbol)] = (time.time(), bars)
         return bars
 
+    @staticmethod
+    def _complete_closed_window(url, params, data):
+        """Only a complete exact historical range may use the longer TTL."""
+        if (url != "https://api.bybit.com/v5/market/kline"
+                or type(params) is not dict or params.get("interval") != "1"
+                or type(params.get("end")) is not int or (params["end"]+1)%60000
+                or type(params.get("limit")) is not int or params["limit"]<1
+                or not isinstance(data,dict) or type(data.get("time")) is not int
+                or data["time"]<params["end"]+1):
+            return False
+        try:
+            rows=data["result"]["list"]
+            count=params["limit"]
+            if type(rows) is not list or len(rows)!=count:
+                return False
+            boundary=params["end"]+1
+            stamps=sorted(int(row[0]) for row in rows)
+            if stamps!=list(range(boundary-count*60000,boundary,60000)):
+                return False
+            for row in rows:
+                op,hi,lo,cl,vol=map(float,row[1:6])
+                if (not all(math.isfinite(v) for v in (op,hi,lo,cl,vol))
+                        or min(op,hi,lo,cl)<=0 or vol<0
+                        or lo>min(op,cl) or hi<max(op,cl)):
+                    return False
+            return True
+        except (KeyError,TypeError,ValueError,IndexError,OverflowError):
+            return False
+
     def closed_candles(self, symbol, required=500, *, priority=False):
         """Actual finalized minute rows, shared by all closed-only strategies.
 
@@ -1264,7 +1284,7 @@ class PublicData:
                 # Warm history needs only the missing tail, cold history
                 # can page back through the same existing public quota.
                 remaining = required
-                if previous and boundary - previous[-1]["t"] <= 90 * 60000:
+                if len(previous) >= required and boundary - previous[-1]["t"] <= 90 * 60000:
                     remaining = min(required,100)
                 end = boundary - 1
                 for _ in range((remaining + 999)//1000):

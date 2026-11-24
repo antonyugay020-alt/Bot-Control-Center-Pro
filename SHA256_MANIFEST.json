@@ -81,7 +81,7 @@
     "bcc/lifecycle.py": "ad60ddfac8c4bf30ad186d92c8e6a5b6f53ab11bea64a8c32be4a215e271c2c6",
     "bcc/liquidation.py": "736574079c32b441bde3a6c8f204e906131bbe8c0943c86cbdf8a74b01c9eb6f",
     "bcc/margin.py": "8177172cf760c2c333140fbc34daecace379196ed9bf4ff42fd9d11338a33c17",
-    "bcc/market.py": "9697dabbf5176410565879edaac9662f41660b8d40bf82f9196be4bd2c2f56fa",
+    "bcc/market.py": "fdb9292fe52e92f1bfb46786ac8896d8afe3dc72bc86635e73d3ffab7a1276de",
     "bcc/market_clock.py": "5d2d47e0a2617c008feb05052813716b92e66c39c7e918968370e8269354fcac",
     "bcc/market_health.py": "4872159d8b0a6531909e7d55b7c54fb22b11630ba2e5a4d0a8b236a91fc7a961",
     "bcc/market_hub.py": "1ae6656d794853a7ee179c139117f8c8af9f9d3d0b45243779336fe6ef9f98b1",
@@ -573,7 +573,7 @@
     "bcc/ws_dual_quotes.py": "387265622aa3dc7b01076b8ef3092bfa43da0457b0168fa07e1615564519a2ba",
     "bcc/ws_recovery_quotes.py": "2ba3d17cc07ba78b47935e0d647836b2e13f6a43a12012322901c89297908936",
     "bcc/ws_source_deadline.py": "64ead1787c44ddee0a8fa622c2c0ad16fd058192b2e849f77de0dc488a06829b",
-    "tests/test_ws_dual_quotes.py": "848de85efba4522c58b91e9dba7605c251919868e9990c18557314e068bda98a",
+    "tests/test_ws_dual_quotes.py": "c66bbc474ba05e37a496fb644fb6ef6be8827578c032d200332177fd24fa95c2",
     "tests/test_ws_source_deadline.py": "e36920777207bc9ba491f688de7477ad5763f01f9d932ddf96a22743c482e82f",
     "bcc/ws_split_ticker.py": "f7a8e6a2307d5605aa6d0c826ec3d5c0af297680ffad8434017b5f2f28b66107",
     "tests/test_ws_split_ticker.py": "cb103ece7f4ef8e6686edae4d280b35d4a443440d476735ca78a0039663b5484",
@@ -587,6 +587,6 @@
     "bcc/ws_maintained_marks.py": "9a32ab55605dce9bebaf6a19aaeecc41dfd6404c86b86b7060124eb8840c8c25",
     "tests/test_ws_maintained_marks.py": "812e98cbb282c71f6d0596442d7540831b54ec63e9b8ea5f0f392a00f9c6988b",
     "tests/test_ws_maintained_candidate.py": "aa315a9cfe12b1f9e3fd8a76e5582c2fa0692f399b9884e1cbea8db9f92746ff",
-    "tests/test_closed_history_reuse.py": "690530d8ad6c288e539f59ade9601559a9d160f5e909695da0da21a1cec09456"
+    "tests/test_closed_history_reuse.py": "a8ea90afc8eae8cd1d69ba7ad333e89376104fd4659ac0fecbfb6d950bc30273"
   }
 }

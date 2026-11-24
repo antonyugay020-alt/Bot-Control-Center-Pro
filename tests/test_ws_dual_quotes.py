@@ -287,3 +287,35 @@ def test_dual_candidate_publication_to_real_sqlite_and_reader(tmp_path, monkeypa
     finally:
         if reader is not None:reader.close()
         hub.close();source.close();stream.stop();depth.stop()
+
+
+def test_maintained_candidate_revokes_removed_pending_topic_without_resetting_siblings():
+    now=[10000.]
+    stream=DualBybitQuoteStream(wall=lambda:now[0],monotonic=lambda:now[0],maintained=True)
+    primary,sock=Socket(),Socket()
+    stream._primary.connect(primary);stream._recovery.connect(sock)
+    names=['BTCUSDT','ETHUSDT']
+    stream.sync_symbols(names);stream.set_priority_symbols(names)
+    now[0]+=1.
+    assert stream.refresh_stale_marks(names)==2
+    child=stream._recovery
+    assert full(child,now[0],'BTCUSDT') and full(child,now[0],'ETHUSDT')
+    now[0]+=1.1
+    assert stream.refresh_stale_marks(names)==2
+    req=sock.messages[-1]
+    assert req['op']=='unsubscribe'
+    generation=child._generation
+    stream.sync_symbols(['ETHUSDT'])
+    assert not sock.closed and child._generation==generation
+    assert stream.snapshot_for_hub('BTCUSDT')==(None,None,None)
+    # Re-add demand while its old wire operation is unsettled. The
+    # physically retained recovery topic cannot publish into the new demand.
+    stream.sync_symbols(names)
+    assert stream.independent_observations_for_hub('BTCUSDT')==(None,None)
+    assert child._handle_control_message(sock,dict(req_id=req['req_id'],op='unsubscribe',success=True),generation)
+    ack_commands(child,sock,len(sock.messages)-1)
+    stream.sync_symbols(names)
+    assert 'BTCUSDT' not in child._subscriptions
+    assert 'ETHUSDT' in child._subscriptions
+    assert not sock.closed and not primary.closed
+    assert stream.independent_observations_for_hub('BTCUSDT')==(None,None)
