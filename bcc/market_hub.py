@@ -1105,7 +1105,11 @@ class MarketDataHub:
             self._repair_seen.clear()
         pending = sorted(set(symbols)-self._repair_seen)
         if pending:
-            self.source.shared._ensure_schema()
+            from .data_cache import CacheContention
+            try:
+                self.source.shared._ensure_schema()
+            except CacheContention:
+                return  # Retry subscription scan; no market evidence admitted.
         for offset in range(0,len(pending),64):
             jobs = pending[offset:offset+64]
             with self.registry._connect() as db:
