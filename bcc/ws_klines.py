@@ -56,6 +56,9 @@ class BybitKlineWS:
             raise ValueError("invalid finalized candle candidate")
         self.retain_confirmed = retain_confirmed
         self._confirmed = {}
+        self._counts = dict(frames=0,confirmed_frames=0,invalid=0,
+                            retained=0,accepted=0,wrong_generation=0,
+                            early_confirmation=0,subscription_acks=0)
 
     def sync_symbols(self, symbols):
         from .ws_dispatch import synchronize_bybit_symbols
@@ -126,6 +129,9 @@ class BybitKlineWS:
         if not isinstance(data, list) or len(data) != 1 or type(data[0]) is not dict:
             return False
         row = data[0]
+        with self._lock:
+            self._counts["frames"] += 1
+            self._counts["confirmed_frames"] += int(row.get("confirm") is True)
         try:
             ts = payload["ts"]
             start = row["start"]
@@ -147,10 +153,12 @@ class BybitKlineWS:
             with self._lock:
                 if self._connected and generation == self._generation:
                     self._candles.pop(symbol, None)
+                self._counts["invalid"] += 1
             return False
         with self._lock:
             if (not self._connected or generation != self._generation or
                     symbol not in self._symbols):
+                self._counts["wrong_generation"] += 1
                 return False
             previous = self._candles.get(symbol)
             candle = Candle(symbol, start, end, op, hi, lo, cl, vol,
@@ -162,6 +170,8 @@ class BybitKlineWS:
             if self.retain_confirmed:
                 from .closed_minutes import remember
                 final_changed = remember(self._confirmed, candle)
+                self._counts["retained"] += int(final_changed)
+                self._counts["early_confirmation"] += int(confirmed and ts<end)
             out_of_order = previous is not None and (
                     start < previous.start_ms or
                     (start == previous.start_ms and
@@ -171,12 +181,20 @@ class BybitKlineWS:
                 self._candles[symbol] = candle
             elif not final_changed:
                 return False
+            self._counts["accepted"] += 1
         if self.on_update is not None:
             try:
                 self.on_update("kline1", symbol)
             except Exception:
                 pass
         return True
+
+    def transport_health(self):
+        with self._lock:
+            return dict(self._counts,subscribed=len(self._symbols),
+                        received_symbols=len(self._candles),
+                        confirmed_symbols=len(self._confirmed),
+                        connection="connected" if self._connected else "reconnecting")
 
     def get_confirmed_candles(self, symbol):
         from .closed_minutes import snapshot
@@ -234,6 +252,9 @@ class BybitKlineWS:
                     self.disconnect(generation=state["generation"])
                     socket.close()
                     return
+                if message.get("op")=="subscribe" and message.get("success") is True:
+                    with self._lock:
+                        self._counts["subscription_acks"] += 1
                 self.ingest(message, generation=state["generation"])
 
             def closed(socket, code, reason, state=state):

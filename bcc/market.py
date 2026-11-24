@@ -1023,6 +1023,18 @@ class PublicData:
             # workers for the minute, instead of repeating a REST backfill
             # every second. Never extend live / unbounded history, quotes,
             # mark-price or risk timestamps. Consumers still verify finality.
+            # V16 canonical one-minute repair accepts only the actual
+            # requested linear symbol, exact closed row and exchange time.
+            if (getattr(self.shared,"central_repair",False)
+                    and url == "https://api.bybit.com/v5/market/kline"
+                    and type(params) is dict and params.get("interval")=="1"
+                    and params.get("limit")==1 and type(params.get("end")) is int
+                    and (params["end"]+1)%60000==0):
+                from .hub_minute_repair import rest_minute
+                if rest_minute(data,params["symbol"],params["end"]-59999,
+                               int(market_now()*1000)) is None:
+                    self._finish_shared(shared_key,owner,host)
+                    raise DataUnavailable("Bybit: закрытая минута не подтверждена")
             if self._complete_closed_window(url, params, data):
                 # The cache key is the explicit end boundary, not a moving
                 # "latest" alias. Historical fetches remain quota fenced.
@@ -1315,7 +1327,8 @@ class PublicData:
                     deadline = time.monotonic() + (grace if len(starts) == 1 else 0.)
                     while True:
                         try:
-                            for row in self.shared.read_closed_minutes(symbol, starts):
+                            for row in self.shared.read_closed_minutes(symbol, starts,
+                                    include_rest=os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1"):
                                 found[row["t"]] = {k:row[k] for k in
                                     ("t","open","high","low","close","volume")}
                         except ProviderDenied as exc:
@@ -1351,6 +1364,11 @@ class PublicData:
                 for _ in range((remaining + 999)//1000):
                     limit = min(1000,remaining)
                     data = self.bybit("kline", {"symbol":symbol,"interval":"1","limit":limit,"end":end})
+                    if (central and limit==1 and
+                            os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1"):
+                        from .hub_minute_repair import rest_minute
+                        if rest_minute(data,symbol,end-59999,int(market_now()*1000)) is None:
+                            raise DataUnavailable("Bybit: закрытая минута не подтверждена")
                     rows = data["result"]["list"]
                     if not rows:
                         break

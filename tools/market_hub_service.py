@@ -74,10 +74,17 @@ def main():
             # transaction for each one to three live market notifications.
             # A saturated queue drains immediately; the low-load wait is
             # bounded to 20ms, far below the original source age fences.
-            if ws_updates.stats()["pending"] < 64:
+            if os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1":
+                # Bounded coalescing even under a busy depth feed. A key
+                # denotes the latest observation, not a queued tick payload.
+                if stop.wait(.040):
+                    break
+            elif ws_updates.stats()["pending"] < 64:
                 if stop.wait(.020):
                     break
             batch = ws_updates.take_batch(timeout=.1)
+            if os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1":
+                batch = list(dict.fromkeys(batch))
             if not batch:
                 continue
             try:
@@ -134,6 +141,11 @@ def main():
                 raise RuntimeError('Central finalized history requires Bybit kline stream')
             hub.source.shared.central_closed_history = True
             print('Central finalized minute cache enabled', flush=True)
+        if os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1":
+            if not hub.source.shared.central_closed_history or hub._history_pool is None:
+                raise RuntimeError("Central repair requires closed history and split REST lanes")
+            hub.source.shared.central_repair = True
+            print("Canonical closed-minute repair enabled",flush=True)
         hub.set_ws_dispatcher(ws_updates)
         for label, stream in (('tickers', quote_stream), ('depth50', book_stream),
                               ('kline1', kline_stream), ('polybook', poly_stream),
@@ -239,6 +251,8 @@ def main():
                               "closed_history": {
                                   "enabled": hub.source.shared.central_closed_history,
                                   "published": hub.source.shared.stats["finalized_minutes_published"],
+                                  "repair_enabled": hub.source.shared.central_repair,
+                                  "repair_scheduled": hub._repair_scheduled,
                               },
                           }, sort_keys=True), flush=True)
                     last_ws_health = time.monotonic()

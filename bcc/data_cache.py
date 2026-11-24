@@ -43,6 +43,7 @@ class PublicCache:
         self.bybit_ws_source_deadlines = False
         self.split_history_lanes = False
         self.central_closed_history = False
+        self.central_repair = False
         with self._guards_lock:
             self._guard = self._guards.setdefault(
                 str(self.path.resolve()), threading.RLock()
@@ -474,7 +475,7 @@ class PublicCache:
         values = [json.loads(rows[key]) if key in rows else None for key in keys]
         return [self._project_payload(host, value) for value in values]
 
-    def read_closed_minutes(self, symbol, starts):
+    def read_closed_minutes(self, symbol, starts, *, include_rest=False):
         """Read exact finalized minutes under the existing provider fence."""
         from .closed_minutes import read, HOST
         from .market_clock import market_now
@@ -484,7 +485,17 @@ class PublicCache:
             status = self._denied(db, HOST)
             if status is not None:
                 raise ProviderDenied(HOST, status)
-            return read(db, symbol, starts, time.time(), int(market_now() * 1000))
+            now, now_ms = time.time(), int(market_now()*1000)
+            rows = read(db, symbol, starts, now, now_ms)
+            if include_rest:
+                from .hub_minute_repair import cached_repair
+                found = {row["t"] for row in rows}
+                for start in starts:
+                    if start not in found:
+                        repaired = cached_repair(db,symbol,start,now,now_ms)
+                        if repaired is not None:
+                            rows.append(repaired)
+            return sorted(rows,key=lambda row:row["t"])
 
     def remaining_ttl(self, url, params, host):
         """Read the actual residence deadline; a cache hit never renews it."""

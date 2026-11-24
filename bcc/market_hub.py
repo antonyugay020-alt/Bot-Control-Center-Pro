@@ -751,6 +751,9 @@ class MarketDataHub:
         self._ws_book_symbols = ()
         self._ws_dispatcher = None
         self._finalized_published = {}
+        self._repair_boundary = None
+        self._repair_seen = set()
+        self._repair_scheduled = 0
         # WS -> SQLite publication evidence. Aggregate only: no symbols,
         # prices, account details, or exchange timestamp modifications.
         self._ws_publication_lock = threading.Lock()
@@ -1083,6 +1086,42 @@ class MarketDataHub:
         self._ws_dispatcher = dispatcher
         self._ws_subscription_scan_due = 0.
 
+    def _schedule_minute_repairs(self, symbols):
+        """One proactive, canonical REST request per missing closed minute.
+
+        The normal REST history pool executes the request with its original
+        provider budget, denial and HTTP ownership checks. No direct network
+        operation is performed on the WS subscription/control thread.
+        """
+        from .market_clock import market_now
+        from .hub_minute_repair import schedule
+        now_ms = int(market_now()*1000)
+        boundary = now_ms//60000*60000
+        if now_ms-boundary < 1500:
+            return
+        if self._repair_boundary != boundary:
+            self._repair_boundary = boundary
+            self._repair_seen.clear()
+        pending = sorted(set(symbols)-self._repair_seen)
+        for offset in range(0,len(pending),64):
+            jobs = pending[offset:offset+64]
+            with self.registry._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                now_ms = int(market_now()*1000)
+                if now_ms//60000*60000 != boundary:
+                    return
+                # Refusals are never bypassed, including by scheduling.
+                from .data_cache import PublicCache
+                if PublicCache._denied(db,"api.bybit.com") is not None:
+                    return
+                added = schedule(db,jobs,boundary-60000,time.time(),now_ms,
+                    owner=self.owner,token=self._leader_token,boot=self.registry._boot_epoch())
+                if added is None:
+                    return
+                db.commit()
+            self._repair_seen.update(jobs)
+            self._repair_scheduled += len(added)
+
     def subscribe_active_websockets(self):
         """Pre-register every demanded symbol on the shared WS producers."""
         if self._leader_token is None:
@@ -1200,6 +1239,8 @@ class MarketDataHub:
                             self._ws_dispatcher.notify("kline1", symbol)
             except (ValueError, StreamUnavailable):
                 pass
+            if getattr(self.source.shared,"central_repair",False):
+                self._schedule_minute_repairs(valid_klines)
         if binance is not None:
             try:
                 binance.subscribe(sorted(self.registry.active_binance_symbols()))
