@@ -577,6 +577,10 @@
     "tests/test_ws_source_deadline.py": "e36920777207bc9ba491f688de7477ad5763f01f9d932ddf96a22743c482e82f",
     "bcc/ws_split_ticker.py": "050a0bdb8ae9bb54692f476ea3bf57c6eafc04f7ea8b380de10d43c7fe0b47a7",
     "tests/test_ws_split_ticker.py": "cb103ece7f4ef8e6686edae4d280b35d4a443440d476735ca78a0039663b5484",
-    "tests/test_ws_mark_only_recovery.py": "175e59d754fdbd7f59a3d4f8148d3a1351bcfbdc2fb5d7070527420184f9506b"
+    "tests/test_ws_mark_only_recovery.py": "175e59d754fdbd7f59a3d4f8148d3a1351bcfbdc2fb5d7070527420184f9506b",
+    "bcc/ws_ticker_state.py": "9509398cef54fa1d4ab7f7e4ef9bcfb7bce16ff3e9303cecdb665bd7b78592e3",
+    "tests/test_ws_ticker_state.py": "08617d76efc3e2ebe08715ea3a73f78c2bc6a81468d082a21e12636ac84d597b",
+    "tools/bybit_ticker_state_proof.py": "3df1c14698d81e8f8fa606649f15677fd1ab61e2113e683f03025dfbac27f331",
+    "tests/test_ws_ticker_state_proof.py": "87789da634f180e41c8acaa8bf84c728383fb2115eae1a063a47182677d685dd"
   }
 }
