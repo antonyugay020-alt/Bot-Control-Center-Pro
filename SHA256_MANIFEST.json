@@ -99,7 +99,7 @@
     "bcc/runtime_paths.py": "7acdb59ad9b6b0533a430072a0017151f20d9fe1aa9cab219d0c974a9bcb60fc",
     "bcc/runtime_process.py": "ca867b2528d80bf3c18a2d2cacf964b9cf59e42f17fb240036bdd7765d607900",
     "bcc/runtime_service.py": "5124f6b6541fb02aff743b256654572024c4d77c0f89fcef048a3f8b0f14a523",
-    "bcc/scheduler.py": "6ef292bc32cde635d5e5480eb3f9978eab726b331b87e3a7f2119181f4f076a0",
+    "bcc/scheduler.py": "e025df7739307290cf51ab65fea814cbd9414d13f50e5f5542bea6e8b08360fc",
     "bcc/section_hierarchy.py": "d510c55f542234e59f2dcb4028529ee03a320bd868818a73b94cf7f8306e5674",
     "bcc/service_guard.py": "e622ffc5120972cfd2c6acdfeb6dd74b6b17228a562e193e9daa516483661ebb",
     "bcc/shared_risk.py": "807fa433a3724af8cdedcabe05427071f156d6ec397ca29055dd6e0ddad2adf1",
@@ -596,6 +596,7 @@
     "tests/test_canonical_minute_repair.py": "55201c506d73cd0a878d9e87e8eada7168265ce2b173966a22024bd40a41dc50",
     "tests/test_hub_clock_outage.py": "b3fec96db6c0f2c853e944aefec02894c3088cddbeed172d5309b4b4fc5ab623",
     "bcc/closed_cohort.py": "75547f6a1a4f555ff7b37684880a8523704aa1c044e2d9da1c37ecf35f2b9482",
-    "tests/test_portfolio_closed_cohort.py": "58533a43cf3a09521fd7274b98a255575c7a65f64e87245346ba0ce98ca7a8a5"
+    "tests/test_portfolio_closed_cohort.py": "58533a43cf3a09521fd7274b98a255575c7a65f64e87245346ba0ce98ca7a8a5",
+    "tests/test_closed_cohort_unit.py": "11496f67e7dcf126f0cef66b4e0e284df1159c9b6b6a9ff1f3b8256777cda70c"
   }
 }

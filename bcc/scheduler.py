@@ -440,7 +440,8 @@ class MarketScheduler:
                         self._history_results[symbol] = MarketTick(
                             symbol, tick.bars, None, tick.rates, tick.funding_marks,
                             tick.history_error, '', tick.margin_data,
-                            live_history=tick.live_history, history_denied=tick.history_denied)
+                            live_history=tick.live_history,
+                            history_denied=getattr(tick,"history_denied",False))
                     else:
                         completed.append((symbol, tick, None))
                 except Exception as exc:
@@ -689,6 +690,7 @@ class MarketScheduler:
         if self._closed_cohort is not None:
             cohort=self._closed_cohort
             self.last_pressure.update(closed_cohort_ready=len(cohort.ready),
+                closed_cohort_boundary=cohort.boundary,
                 closed_cohort_eligible=len(closed_symbols),
                 closed_cohort_reads=cohort.reads,
                 closed_cohort_delivered=cohort.delivered,
