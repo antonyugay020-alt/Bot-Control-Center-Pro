@@ -915,6 +915,8 @@ class PublicData:
                     and 0 <= now - self.cache[key][0] <= ttl):
                 return received(self.cache[key][1], "memory_cache")
         if now < self.cooldowns.get(host, 0):
+            if mark_leader is not None:
+                raise DataUnavailable("REST mark refresh: provider cooldown")
             # A local exchange cooldown must deny NEW requests, not a fresh
             # shared cache hit. Use a read-only lookup so a miss cannot
             # reserve a new provider request behind the cooldown.

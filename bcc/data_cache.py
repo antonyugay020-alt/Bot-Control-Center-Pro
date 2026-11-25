@@ -454,7 +454,7 @@ class PublicCache:
                 raise ValueError("mixed cache hosts")
             keys.append(hashlib.sha256(json.dumps([url, params], sort_keys=True).encode()).hexdigest())
         if include_rest_marks:
-            from .rest_mark_fallback import KEY, client_enabled, enabled
+            from .rest_mark_fallback import KEY, enabled
             if not enabled():
                 raise ValueError('REST mark fallback is not enabled')
             keys.append(KEY)
@@ -1026,9 +1026,15 @@ class PublicCache:
                         )
                         if compact is not None:
                             from .rest_mark_fallback import KEY
-                            db.execute("INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
-                                (KEY,json.dumps(compact,allow_nan=False),time.time()+3.,host))
-                        published = True
+                            old = db.execute("SELECT value FROM cache WHERE k=? AND host=?",
+                                             (KEY,host)).fetchone()
+                            old_stamp = json.loads(old[0]).get("time",0) if old else 0
+                            if type(old_stamp) is not int or compact["time"] > old_stamp:
+                                db.execute("INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
+                                    (KEY,json.dumps(compact,allow_nan=False),time.time()+3.,host))
+                                published = True
+                        else:
+                            published = True
                 if cooldown:
                     db.execute(
                         "INSERT INTO cooldown VALUES(?,?) ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)",

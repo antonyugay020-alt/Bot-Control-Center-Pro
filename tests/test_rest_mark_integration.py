@@ -106,3 +106,47 @@ def test_disabled_fallback_never_admits_snapshot(setup,monkeypatch):
         cache.read_fresh_many([],HOST,include_rest_marks=True)
     with pytest.raises(ValueError):
         cache.begin(URL,PARAMS,HOST,priority=True,mark_leader=fence)
+
+
+def test_rest_refresh_path_uses_public_http_and_original_timestamp(setup,monkeypatch):
+    now,cache,registry,fence,snapshot=setup
+    monkeypatch.delenv("BCC_MARKET_HUB_MODE",raising=False)
+    calls=[]
+    class Response:
+        status_code=200
+        headers={}
+        def raise_for_status(self): pass
+        def json(self): return snapshot()
+    class Session:
+        def get(self,url,**kw):
+            calls.append((url,kw))
+            return Response()
+    class Source(market.PublicData):
+        @property
+        def session(self):return Session()
+    source=Source(quote_stream=object())
+    source.shared=cache
+    try:
+        source.refresh_rest_marks(*fence)
+        assert len(calls)==1 and calls[0][0]==URL
+        assert calls[0][1]==dict(params=PARAMS,timeout=(1,2),allow_redirects=False)
+        first=cache.read_fresh_many([],HOST,include_rest_marks=True)[0]
+        assert first["time"]==round(now[0]*1000)
+        # Identical/regressive exchange timestamps never renew the compact row.
+        with pytest.raises(market.DataUnavailable):
+            source.refresh_rest_marks(*fence)
+        now[0]-=.1
+        with pytest.raises(market.DataUnavailable):
+            source.refresh_rest_marks(*fence)
+        assert cache.read_fresh_many([],HOST,include_rest_marks=True)[0]==first
+        now[0]+=.2
+        source.refresh_rest_marks(*fence)
+        assert cache.read_fresh_many([],HOST,include_rest_marks=True)[0]["time"]>first["time"]
+        source.cooldowns[HOST]=time.time()+30
+        before=len(calls)
+        with pytest.raises(market.DataUnavailable):
+            source.refresh_rest_marks(*fence)
+        assert len(calls)==before
+    finally:
+        source.shared=None
+        source.close()

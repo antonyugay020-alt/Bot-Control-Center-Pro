@@ -339,7 +339,7 @@ def main():
                                     else:
                                         fresh += 1
                                         continue
-                                if symbol in rest_index:
+                                if symbol in rest_index and book_is_fresh(rest_index[symbol]["at"]):
                                     fallback += 1
                             cached_marks = {"active":len(names),"fresh":fresh}
                             if rest_pump is not None:
