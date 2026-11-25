@@ -17,6 +17,9 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
         self._early_frames = 0
         self._released = 0
         self._empty_acks = 0
+        self._empty_acks_at_connect = 0
+        self._rotation_due = 0.
+        self._snapshot_rotations = 0
 
     def _sync_chain(self):
         self._maintained.sync((self._logical_demand & self._subscriptions)
@@ -26,6 +29,7 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
         with self._lock:
             self._staging.clear()
             generation = super().connect(socket)
+            self._empty_acks_at_connect = self._empty_acks
             self._sync_chain()
             return generation
 
@@ -136,6 +140,34 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
                 self._notify_symbols((symbol,))
             return changed
 
+    def chain_initialized(self, symbol):
+        """An intact but quiet chain is not a reason to destroy a subscription."""
+        with self._lock:
+            return (symbol in self._logical_demand and symbol not in self._wire_symbols
+                    and self._maintained.has_chain(symbol))
+
+    def rotate_after_empty_ack(self, symbols, *, interval=60.):
+        """Retire only the reserve when resubscribe ACKs fail to yield snapshots.
+
+        A new connection must obtain its own genuine snapshot. The caller
+        ensures no other symbol currently depends on reserve-only evidence.
+        No data or timestamp is inherited across the connection fence.
+        """
+        with self._lock:
+            now = self._mono()
+            if (not self._connected or self._socket is None or self._wire_symbols
+                    or now < self._rotation_due
+                    or self._empty_acks <= self._empty_acks_at_connect
+                    or not any(s in self._logical_demand and not self._maintained.has_chain(s)
+                               for s in symbols)):
+                return False
+            self._rotation_due = now + interval
+            self._snapshot_rotations += 1
+            socket = self._socket
+            self.disconnect()
+        socket.close()
+        return True
+
     def maintained_mark(self, symbol):
         with self._lock:
             if symbol in self._wire_symbols or symbol not in self._logical_demand:
@@ -152,4 +184,5 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
         with self._lock:
             return dict(super().refresh_pressure(), staged_topics=len(self._staging),
                         early_snapshots=self._early_snapshots, early_frames=self._early_frames,
-                        released_on_ack=self._released, ack_without_fresh_mark=self._empty_acks)
+                        released_on_ack=self._released, ack_without_fresh_mark=self._empty_acks,
+                        snapshot_rotations=self._snapshot_rotations)

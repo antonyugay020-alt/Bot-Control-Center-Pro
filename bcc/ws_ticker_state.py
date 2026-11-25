@@ -269,6 +269,13 @@ class TickerState:
                 and self._fresh(state.confirmed_ms) else None)
         return result
 
+    def has_chain(self, symbol):
+        """Continuity only; this does NOT attest to price freshness."""
+        with self._lock:
+            state = self._states.get(symbol)
+            return (self._generation is not None and state is not None
+                    and state.generation == self._generation)
+
     def observations(self):
         """Maintained-state evidence only; never resurrect a broken chain."""
         with self._lock:

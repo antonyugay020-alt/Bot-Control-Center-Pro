@@ -671,6 +671,21 @@ class PublicCache:
                 finalized.append(([], False))
         if not encoded:
             return []
+        # Parse immutable encoded records before taking the shared writer.
+        # In particular a 50-level book must not be decoded AND serialized
+        # while other processes are waiting on BEGIN IMMEDIATE. Only the
+        # current clock-dependent admission is evaluated inside the transaction.
+        source_records = []
+        for _, url, params, host, value, _ in encoded:
+            raw = symbol = book_encoded = None
+            if self.bybit_ws_source_deadlines and host == "api.bybit.com":
+                if url.endswith("/tickers"):
+                    raw, symbol = json.loads(value), json.loads(params)["symbol"]
+                elif url.endswith("/orderbook"):
+                    raw = json.loads(value)
+                    raw['_bcc_ws_source_deadline'] = True
+                    book_encoded = json.dumps(raw, allow_nan=False)
+            source_records.append((raw, symbol, book_encoded))
         self._ensure_schema()
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -695,7 +710,8 @@ class PublicCache:
                     "SELECT k,url,params FROM hub_subscriptions WHERE active_until>? AND k IN ("
                     + ",".join("?" for _ in keys) + ")", (now, *keys)).fetchall())
                 denied = {host: self._denied(db, host) for host in {row[3] for row in encoded}}
-            for (key, url, params, host, value, ttl), (closed, only) in zip(encoded, finalized):
+            for (key, url, params, host, value, ttl), (closed, only), (raw, symbol, book_encoded) in zip(
+                    encoded, finalized, source_records):
                 if self.central_closed_history:
                     allowed = (key, url, params) in admitted_keys and denied[host] is None
                 else:
@@ -721,8 +737,6 @@ class PublicCache:
                                     and url == "https://api.bybit.com/v5/market/tickers")
                     if split_ticker:
                         from .ws_split_ticker import project_ticker, empty_split_ticker
-                        raw = json.loads(value)
-                        symbol = json.loads(params)["symbol"]
                         if empty_split_ticker(raw, symbol):
                             db.execute("DELETE FROM cache WHERE k=? AND host=?", (key, host))
                             continue
@@ -765,13 +779,11 @@ class PublicCache:
                     if (self.bybit_ws_source_deadlines and host == "api.bybit.com"
                             and url.endswith("/orderbook")):
                         from .ws_source_deadline import remaining_bybit_ws_seconds
-                        candidate = json.loads(value)
-                        ttl = remaining_bybit_ws_seconds(candidate)
+                        ttl = remaining_bybit_ws_seconds(raw)
                         if ttl <= 0:
                             outcomes[-1] = False
                             continue
-                        candidate['_bcc_ws_source_deadline'] = True
-                        value = json.dumps(candidate, allow_nan=False)
+                        value = book_encoded
                     db.execute(
                         "INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
                         (key, value, now + ttl, host),
@@ -1001,6 +1013,7 @@ class PublicCache:
             if value is not None and ttl > 0
             else None
         )
+        compact_encoded = json.dumps(compact, allow_nan=False) if compact is not None else None
         self._ensure_schema()
         published = False
         with self.db() as db:
@@ -1034,7 +1047,7 @@ class PublicCache:
                         )
                         if compact is not None:
                             db.execute("INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
-                                (KEY,json.dumps(compact,allow_nan=False),time.time()+3.,host))
+                                (KEY,compact_encoded,time.time()+3.,host))
                         published = True
                 if cooldown:
                     db.execute(

@@ -161,3 +161,32 @@ def test_queue_batch_preserves_fair_order_coalescing_and_bound():
     assert queues[0].take_batch(timeout=0) == []
     with pytest.raises(ValueError):
         queues[0].take_batch(limit=65)
+
+
+def test_source_deadline_books_are_encoded_outside_writer(cohort, monkeypatch):
+    import json
+    from bcc import ws_source_deadline
+    hub, reader, queue, requests, stamp = cohort
+    cache = hub.source.shared
+    records = [hub._prepare_ws_event(*event) for event in queue.take_batch(timeout=0)
+               if event[0] == 'depth50']
+    assert len(records) == 28 and all(records)
+    cache.bybit_ws_source_deadlines = True
+    monkeypatch.setattr(ws_source_deadline, 'book_age_bounds', lambda t:(.1,.2))
+    original = json.dumps
+    encodings = []
+    def checked(value, *args, **kwargs):
+        if isinstance(value,dict) and value.get('_bcc_ws_book') is True:
+            assert not cache._connection.in_transaction
+            encodings.append(value.get('_bcc_ws_source_deadline'))
+        return original(value,*args,**kwargs)
+    monkeypatch.setattr(json,'dumps',checked)
+    assert cache.publish_websockets(records,leader_owner=hub.owner,
+        leader_token=hub._leader_token)==[True]*28
+    assert encodings.count(True)==28
+    with cache.read_db() as db:
+        assert db.execute('SELECT COUNT(*) FROM cache').fetchone()[0]==28
+    # Preparation does not grant freshness: source expiry at admission rejects.
+    monkeypatch.setattr(ws_source_deadline,'book_age_bounds',lambda t:(3.,3.1))
+    assert cache.publish_websockets(records,leader_owner=hub.owner,
+        leader_token=hub._leader_token)==[False]*28

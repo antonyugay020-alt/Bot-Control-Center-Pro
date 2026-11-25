@@ -77,14 +77,48 @@ def test_real_50_ticker_pairs_keep_both_lanes_and_never_reset_healthy_symbols(fl
     assert all(stream.independent_observations_for_hub(s)[0] is None for s in names)
     assert stream.refresh_stale_marks(names)==0
     now[0]+=2.1
-    first=stream.refresh_stale_marks(names)
-    assert 0<first<=16
-    second=stream.refresh_stale_marks(names)
-    assert 0<=second<=16
-    for _ in range(16):
-        assert stream.refresh_stale_marks(names)<=16
     assert stream.refresh_stale_marks(names)==0
-    assert sum(p._recovery_attempts for p in stream._pairs)<=50
+    assert sum(p._recovery_attempts for p in stream._pairs)==0
+    # An intact reserve chain resumes only with a real same-topic delta.
+    for s in names:
+        p=stream._pairs[stream._index(s)]
+        assert p._recovery.chain_initialized(s)
+        assert frame(p._recovery,s,now[0],26,kind='delta',indexPrice='101')
+    assert stream.transport_health()['mark_union']['fresh']==50
+
+
+def test_broken_reserve_empty_ack_rotates_only_reserve_and_requires_new_snapshot(fleet):
+    now,stream,sockets=fleet
+    symbol='BTCUSDT'; stream.sync_symbols([symbol])
+    index=stream._index(symbol); pair=stream._pairs[index]
+    primary,reserve=sockets[index]
+    assert frame(pair._primary,symbol,now[0],markPrice='100')
+    assert frame(pair._recovery,symbol,now[0],markPrice='100')
+    old_generation=pair._recovery._generation
+    now[0]+=.1
+    assert frame(pair._recovery,symbol,now[0],0,kind='delta',markPrice='999')
+    assert not pair._recovery.chain_initialized(symbol)
+    now[0]+=4.; assert stream.refresh_stale_marks([symbol])==0
+    now[0]+=2.1; assert stream.refresh_stale_marks([symbol])==1
+    unsubscribe=reserve.sent[-1]; assert unsubscribe['op']=='unsubscribe'
+    assert pair._recovery._handle_control_message(reserve,dict(op='unsubscribe',
+        req_id=unsubscribe['req_id'],success=True),old_generation)
+    subscribe=reserve.sent[-1]; assert subscribe['op']=='subscribe'
+    assert pair._recovery._handle_control_message(reserve,dict(op='subscribe',
+        req_id=subscribe['req_id'],success=True),old_generation)
+    assert pair._recovery.maintained_mark(symbol) is None
+    now[0]+=12.1
+    assert stream.refresh_stale_marks([symbol])==1
+    assert reserve.closed and not primary.closed
+    assert pair._recovery.refresh_pressure()['snapshot_rotations']==1
+    assert not pair._recovery.ingest(dict(topic='tickers.'+symbol,type='snapshot',
+        ts=round(now[0]*1000),cs=99,data=dict(symbol=symbol,markPrice='999')),
+        generation=old_generation)
+    new_socket=Socket(); pair._recovery.connect(new_socket)
+    assert stream.independent_observations_for_hub(symbol)[0] is None
+    assert not frame(pair._recovery,symbol,now[0],99,kind='delta',markPrice='999')
+    assert frame(pair._recovery,symbol,now[0],1,markPrice='101')
+    assert stream.independent_observations_for_hub(symbol)[0][0]==101.
 
 
 def test_real_hub_derives_demand_and_publishes_reserve_mark(fleet,tmp_path):

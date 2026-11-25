@@ -80,6 +80,12 @@ class MaintainedMarks:
             return True
         return previous is not None and current is None
 
+    def has_chain(self, symbol):
+        """Distinguish an intact quiet chain from one requiring a snapshot."""
+        selected = self.trackers.get(symbol)
+        return bool(self.fence and symbol in self.active and selected is not None
+                    and selected[0].has_chain(symbol))
+
     def mark(self, symbol):
         selected = self.trackers.get(symbol)
         if not self.fence or symbol not in self.active or selected is None:

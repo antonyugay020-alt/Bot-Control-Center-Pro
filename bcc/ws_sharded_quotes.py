@@ -61,7 +61,8 @@ class StablePair(DualBybitQuoteStream):
                 since = self._missing_since.setdefault(symbol, now)
                 if (symbol in self._recovery_demand and symbol not in pending
                         and now-since >= MISSING_GRACE
-                        and now >= self._retry_at.get(symbol, 0.)):
+                        and now >= self._retry_at.get(symbol, 0.)
+                        and not self._recovery.chain_initialized(symbol)):
                     eligible.append(symbol)
             eligible.sort(key=lambda s:(s not in self._priority, self._missing_since[s], s))
             selected = eligible[:RECOVERY_TOPICS_PER_SHARD]
@@ -71,6 +72,15 @@ class StablePair(DualBybitQuoteStream):
                 self._retry_at[symbol] = now + RETRY_INTERVAL
             self._recovery_attempts += len(selected)
             self._deferred = len(eligible)-len(selected)
+            # Silence expires financial evidence but does not break continuity.
+            # Broken reserve chains can request a snapshot; after an empty ACK,
+            # a bounded fresh reserve connection is preferable to endless wire
+            # churn. Never rotate while any symbol relies on the reserve alone.
+            if selected and not any(
+                    self._recovery.maintained_mark(s) is not None
+                    and self._primary.maintained_mark(s) is None for s in self._demand):
+                if self._recovery.rotate_after_empty_ack(selected):
+                    return len(selected)
             # Also check outstanding control deadlines when no new work is due.
             return self._recovery.refresh_stale_marks(selected,
                         max_topics=RECOVERY_TOPICS_PER_SHARD)

@@ -79,7 +79,10 @@ def isolated_pair():
     def refresh(names,*,max_topics):
         assert len(names)<=max_topics==RECOVERY_TOPICS_PER_SHARD
         calls.append(list(names));return len(names)
-    p._recovery=SimpleNamespace(_lock=threading.RLock(),_wire_symbols=set(),refresh_stale_marks=refresh)
+    p._primary=SimpleNamespace(maintained_mark=lambda s:None)
+    p._recovery=SimpleNamespace(_lock=threading.RLock(),_wire_symbols=set(),refresh_stale_marks=refresh,
+        chain_initialized=lambda s:False, maintained_mark=lambda s:None,
+        rotate_after_empty_ack=lambda symbols:False)
     p.independent_observations_for_hub=lambda s:(marks.get(s),None)
     return p,now,calls,marks,names
 
