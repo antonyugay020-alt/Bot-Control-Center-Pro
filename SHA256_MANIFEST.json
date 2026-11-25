@@ -598,7 +598,7 @@
     "bcc/closed_cohort.py": "75547f6a1a4f555ff7b37684880a8523704aa1c044e2d9da1c37ecf35f2b9482",
     "tests/test_portfolio_closed_cohort.py": "58533a43cf3a09521fd7274b98a255575c7a65f64e87245346ba0ce98ca7a8a5",
     "tests/test_closed_cohort_unit.py": "11496f67e7dcf126f0cef66b4e0e284df1159c9b6b6a9ff1f3b8256777cda70c",
-    "bcc/ws_recovery_maintained.py": "9375f0c78cb4e7551470675084c92e58f96899ec8c0de73b6749775a6b31c238",
-    "tests/test_ws_mark_delivery.py": "673db3d132af70d1cce850934f3f49a03fa128ac7b0b456de00c7d9876113271"
+    "bcc/ws_recovery_maintained.py": "9e5c3eecb1dfbd0de0ff8f56423f7dc3e25e65cdcd6e310c8ca5b23ab3649f39",
+    "tests/test_ws_mark_delivery.py": "0fba3f276413241cfd5a60fd73def8430fb5c3b6710f74e0af70627a545cb3a2"
   }
 }

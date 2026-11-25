@@ -142,3 +142,110 @@ def test_recovery_evidence_reaches_real_hub_cache_and_is_revoked(feed,tmp_path):
         assert source.shared.read_fresh(url,params,"api.bybit.com") is None
     finally:
         hub.close()
+
+
+def stage_new_snapshot(feed):
+    now,stream,sock,frame,events=feed
+    assert frame(1,"snapshot",markPrice="100")
+    now[0]+=2.4
+    assert stream.refresh_stale_marks([S])==1
+    child=stream._recovery
+    unsub=sock.messages[-1]
+    assert unsub["op"]=="unsubscribe"
+    def ack(msg,success=True):
+        return child._handle_control_message(sock,
+            dict(op=msg["op"],req_id=msg["req_id"],success=success),child._generation)
+    # No old generation evidence even if the old topic is still sending.
+    now[0]+=.1
+    assert not frame(2,"snapshot",markPrice="999")
+    assert ack(unsub)
+    sub=sock.messages[-1]
+    assert sub["op"]=="subscribe"
+    events.clear()
+    now[0]+=.2
+    assert frame(3,"snapshot",markPrice="101")
+    assert not events
+    assert stream.independent_observations_for_hub(S)==(None,None)
+    assert child.refresh_pressure()["early_snapshots"]==1
+    return now,stream,sock,frame,events,child,sub,ack
+
+
+def test_snapshot_before_ack_and_delta_keep_original_source_clocks(feed):
+    now,stream,sock,frame,events,child,sub,ack=stage_new_snapshot(feed)
+    explicit=round(now[0]*1000)
+    now[0]+=.1
+    assert frame(4,indexPrice="102")
+    confirmed=round(now[0]*1000)
+    assert not events and child.maintained_mark(S) is None
+    before=child.refresh_pressure()["recovered_snapshot_topics"]
+    now[0]+=.1
+    assert ack(sub)
+    mark,_=stream.independent_observations_for_hub(S)
+    assert mark[0]==101 and mark[1]==confirmed/1000 and mark[3]==explicit
+    assert events==[("tickers",S)]
+    pressure=child.refresh_pressure()
+    assert pressure["released_on_ack"]==1
+    assert pressure["recovered_snapshot_topics"]==before+1
+    assert pressure["pending_snapshot_topics"]==0
+    assert pressure["staged_topics"]==0
+    # Normal same-topic evidence avoids repeated recovery commands.
+    before=len(sock.messages)
+    for cs in range(5,50):
+        now[0]+=.25
+        assert frame(cs,indexPrice="102")
+        assert stream.refresh_stale_marks([S])==0
+        assert stream.independent_observations_for_hub(S)[0][3]==explicit
+    assert len(sock.messages)==before
+
+
+@pytest.mark.parametrize("failure",["denied","timeout","remove","disconnect","regression","wrong_ack"])
+def test_unconfirmed_or_broken_staged_chain_is_never_admitted(feed,failure):
+    now,stream,sock,frame,events,child,sub,ack=stage_new_snapshot(feed)
+    if failure=="denied":
+        assert ack(sub,False)
+    elif failure=="timeout":
+        now[0]+=2.
+        assert ack(sub)
+    elif failure=="remove":
+        stream.sync_symbols([])
+        assert ack(sub)
+    elif failure=="disconnect":
+        old=child._generation
+        child.disconnect()
+        assert child._handle_control_message(sock,
+            dict(op="subscribe",req_id=sub["req_id"],success=True),old)
+    elif failure=="regression":
+        now[0]+=.1
+        assert not frame(1,markPrice="999")
+        assert ack(sub)
+    else:
+        assert not child._handle_control_message(sock,
+            dict(op="subscribe",req_id="unrelated",success=True),child._generation)
+    assert stream.independent_observations_for_hub(S)[0] is None
+    assert child.refresh_pressure()["released_on_ack"]==0
+
+
+def test_early_snapshot_is_not_published_until_ack(feed,tmp_path):
+    from bcc.market import PublicData
+    from bcc.market_hub import MarketDataHub
+    now,stream,sock,frame,events,child,sub,ack=stage_new_snapshot(feed)
+    url="https://api.bybit.com/v5/market/tickers"
+    params={"category":"linear","symbol":S}
+    source=PublicData(quote_stream=stream)
+    hub=MarketDataHub(tmp_path/"cache.sqlite",source=source)
+    try:
+        source.shared.bybit_ws_source_deadlines=True
+        hub.registry.subscribe(url,params,priority=True)
+        assert hub.acquire_leadership()
+        assert hub.publish_ws_event("tickers",S)
+        assert source.shared.read_fresh(url,params,"api.bybit.com") is None
+        stamp=round(now[0]*1000)
+        now[0]+=.1
+        assert ack(sub)
+        assert hub.publish_ws_event("tickers",S)
+        row=source.shared.read_fresh(url,params,"api.bybit.com")
+        assert row["_bcc_ws_mark_at"]==stamp
+        assert row["_bcc_ws_mark_explicit_at"]==stamp
+        assert PublicData._decode_ws_position_mark(S,row)["bid"]==101.
+    finally:
+        hub.close()
