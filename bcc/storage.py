@@ -1,5 +1,6 @@
 """Durable bot storage. Trading state and executions share one SQLite commit."""
 
+import errno
 import hashlib
 import json
 import math
@@ -33,8 +34,10 @@ def load_json(path):
             raw = path.read_text(encoding="utf-8-sig")
             break
         except PermissionError as exc:
-            if (path.name != "process.json" or getattr(exc, "winerror", None) not in (5, 32, 33)
-                    or time.monotonic() >= deadline):
+            winerror = getattr(exc, "winerror", None)
+            transient = (winerror in (5, 32, 33)
+                         or (os.name == "nt" and winerror is None and exc.errno == errno.EACCES))
+            if path.name != "process.json" or not transient or time.monotonic() >= deadline:
                 raise
             time.sleep(.025)
     return json.loads(

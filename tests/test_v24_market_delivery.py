@@ -1,4 +1,5 @@
 """Bounded REST cadence, single compact writer and Windows heartbeat reads."""
+import errno
 import json
 import sqlite3
 import threading
@@ -146,3 +147,19 @@ def test_malformed_heartbeat_is_not_replaced_with_old_state(tmp_path):
     path.write_text('{"status":NaN}', encoding='utf-8')
     with pytest.raises(ValueError):
         storage.load_json(path)
+
+
+def test_windows_crt_eacces_without_winerror_is_bounded_and_retried(tmp_path, monkeypatch):
+    path = tmp_path / 'process.json'
+    path.write_text('{"status":"RUNNING"}', encoding='utf-8')
+    original = Path.read_text
+    attempts = []
+    def read(self, *args, **kwargs):
+        attempts.append(self)
+        if len(attempts) == 1:
+            raise PermissionError(errno.EACCES, 'CRT sharing violation')
+        return original(self, *args, **kwargs)
+    monkeypatch.setattr(storage, 'os', SimpleNamespace(name='nt'))
+    monkeypatch.setattr(Path, 'read_text', read)
+    assert storage.load_json(path) == {'status':'RUNNING'}
+    assert len(attempts) == 2
