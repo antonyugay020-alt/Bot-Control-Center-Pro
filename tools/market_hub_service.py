@@ -120,7 +120,14 @@ def main():
         from bcc.market import PublicData
         if args.bybit_ws_quotes:
             # Explicit diagnostic opt-in only; no default transport change.
-            if os.environ.get('BCC_BYBIT_DUAL_WS_CANDIDATE') == '1':
+            if os.environ.get("BCC_BYBIT_SHARDED_TICKERS_CANDIDATE")=="1":
+                if (os.environ.get("BCC_BYBIT_DUAL_WS_CANDIDATE")!="1"
+                        or os.environ.get("BCC_BYBIT_MAINTAINED_MARK_CANDIDATE")!="1"
+                        or os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")!="1"):
+                    raise RuntimeError("Sharded tickers require verified split mark publication")
+                from bcc.ws_sharded_quotes import ShardedBybitQuoteStream
+                quote_stream = ShardedBybitQuoteStream(wall=market_now,on_update=on_update)
+            elif os.environ.get('BCC_BYBIT_DUAL_WS_CANDIDATE') == '1':
                 from bcc.ws_dual_quotes import DualBybitQuoteStream
                 quote_stream = DualBybitQuoteStream(wall=market_now, on_update=on_update,
                     maintained=os.environ.get('BCC_BYBIT_MAINTAINED_MARK_CANDIDATE') == '1',
@@ -313,6 +320,8 @@ def main():
                                   "enabled": os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1",
                                   "balanced_batch": os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1",
                                   "cache": cached_marks,
+                                  "sharded": os.environ.get("BCC_BYBIT_SHARDED_TICKERS_CANDIDATE")=="1",
+                                  "derived_lease_updates": hub._derived_ticker_renewals,
                               },
                               "clock": {
                                   "ready": market_ready,

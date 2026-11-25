@@ -747,6 +747,8 @@ class MarketDataHub:
         self._prune_due = 0.0
         self._ws_subscription_scan_due = 0.0
         self._ws_mark_scan_due = 0.0
+        self._ticker_demand_due = 0.0
+        self._derived_ticker_renewals = 0
         self._ws_quote_symbols = ()
         self._ws_book_symbols = ()
         self._ws_dispatcher = None
@@ -1137,6 +1139,33 @@ class MarketDataHub:
             self._repair_seen.update(jobs)
             self._repair_scheduled += len(added)
 
+    def _renew_ticker_demand_from_history(self):
+        """Lease-fenced batch preparation of marks for already active history."""
+        from .ws_ticker_demand import renew_tickers
+        from .data_cache import PublicCache, CacheBusy
+        if self._leader_token is None:
+            return 0
+        try:
+            self.source.shared._ensure_schema()
+            with self.registry._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                if PublicCache._denied(db,"api.bybit.com") is not None:
+                    return 0
+                changed = renew_tickers(db,now=time.time(),owner=self.owner,
+                    token=self._leader_token,boot=self.registry._boot_epoch(),
+                    identity=self.registry.identity)
+                if changed is None:
+                    return 0
+                db.commit()
+            self._derived_ticker_renewals += changed
+            return changed
+        except CacheBusy:
+            return 0
+        except sqlite3.OperationalError as exc:
+            if any(word in str(exc).lower() for word in ("locked","busy")):
+                return 0
+            raise
+
     def subscribe_active_websockets(self):
         """Pre-register every demanded symbol on the shared WS producers."""
         if self._leader_token is None:
@@ -1161,6 +1190,10 @@ class MarketDataHub:
         if now < self._ws_subscription_scan_due:
             return
         self._ws_subscription_scan_due = now + 1.0
+        if (ticker is not None and os.environ.get("BCC_BYBIT_SHARDED_TICKERS_CANDIDATE")=="1"
+                and now>=self._ticker_demand_due):
+            self._ticker_demand_due = now + 10.
+            self._renew_ticker_demand_from_history()
         prioritize_marks = getattr(ticker, "set_priority_symbols", None)
         prioritize_books = getattr(orderbook, "set_priority_symbols", None)
         if (self._ws_dispatcher is not None or callable(prioritize_marks)

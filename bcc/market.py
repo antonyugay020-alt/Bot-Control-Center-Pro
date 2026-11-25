@@ -765,8 +765,15 @@ class PublicData:
             stable_closed_tail = ws_kline_tail and getattr(self._thread, 'closed_history', False)
             # Keep a closed-bar consumer subscribed across the next minute.
             # This is transport demand only, not a change of candle age.
-            lifetime = 90 if stable_closed_tail else 12 if transient_demand else 60
-            renewal = 30 if stable_closed_tail else 4 if transient_demand else 20
+            stable_ticker = (
+                os.environ.get("BCC_BYBIT_SHARDED_TICKERS_CANDIDATE")=="1"
+                and os.environ.get("BCC_BYBIT_WS_QUOTES")=="1"
+                and url=="https://api.bybit.com/v5/market/tickers"
+                and type(params) is dict and set(params)=={"category","symbol"}
+                and params.get("category")=="linear")
+            persistent_demand = stable_closed_tail or stable_ticker
+            lifetime = 90 if persistent_demand else 12 if transient_demand else 60
+            renewal = 30 if persistent_demand else 4 if transient_demand else 20
             with self._lock:
                 if self._hub_registry is None:
                     self._hub_registry = HubRegistry(self.shared.path)
@@ -789,7 +796,7 @@ class PublicData:
                     self._hub_renew_at[subscription_key] = now_mono + renewal
                     if urgent:
                         # Renew before the short-lived urgent lease expires.
-                        self._hub_priority_until[subscription_key] = now_mono + 5
+                        self._hub_priority_until[subscription_key] = now_mono + (30 if stable_ticker else 5)
             # This is a bounded queue wait, NOT permission to use an expired
             # market snapshot. In an overloaded system the client fails closed.
             deadline = time.monotonic() + (

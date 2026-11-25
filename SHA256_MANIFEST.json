@@ -81,10 +81,10 @@
     "bcc/lifecycle.py": "ad60ddfac8c4bf30ad186d92c8e6a5b6f53ab11bea64a8c32be4a215e271c2c6",
     "bcc/liquidation.py": "736574079c32b441bde3a6c8f204e906131bbe8c0943c86cbdf8a74b01c9eb6f",
     "bcc/margin.py": "8177172cf760c2c333140fbc34daecace379196ed9bf4ff42fd9d11338a33c17",
-    "bcc/market.py": "f0853a0291c097a477ed26bdc45065156bfa56c156a34502365f5486beef2578",
+    "bcc/market.py": "aa60026ff120cda3bcec45c8b85e719644533df36005e9566d32a18313b890a2",
     "bcc/market_clock.py": "c56b38ec7b9a322be15d883dd7831b2a6da65b79627d930894d6374c9375ef7f",
     "bcc/market_health.py": "4872159d8b0a6531909e7d55b7c54fb22b11630ba2e5a4d0a8b236a91fc7a961",
-    "bcc/market_hub.py": "dfe65a5bdcf6f184c5eb20a1270fb046b8720bf6787522a1a9812c3d1add45c2",
+    "bcc/market_hub.py": "ad41c8c093eb52dbbcfb4ff952ff63cf30dce469cac6326bef47857830a6bb78",
     "bcc/market_selection.py": "92995ed897565f90f5ade52973cdef75375b2adc6b95e7ba98bdca0e34344c91",
     "bcc/monitoring.py": "09cfd12432294500d65fe4ccd955477a2ab19d64f393600aa5c7f8103e42e64b",
     "bcc/poly_indicators.py": "becefd35bde14aa42e000c5293d1a7dd6e2d7f6a71c39dfc7d073fe292d11a2d",
@@ -549,7 +549,7 @@
     "tools/export_test_report.py": "09f85e9ae97cf7bf0ba689d3a5f3603a6e915a37ae5fb2f78c735503574d9b4b",
     "tools/manual_qa_9047.py": "7d756590b86b042cfdb2c4603579f4482fd7800df0e5f84315797684172438e4",
     "tools/manual_qa_current.py": "4c5351feb2c33703dcb9b9afa75bd6ed1a3c13c5482e769189d30ee487fd53e8",
-    "tools/market_hub_service.py": "2e9c0ee31a842f003b85c4cfe6e603b5e3195a20c6b5c542622845bc77a3eb56",
+    "tools/market_hub_service.py": "d0cf6b6a198176dffb624c09e6c22bcd9f8bd8a7d74966579eec25be8088b3d2",
     "tools/process_guard.py": "ea2d2c5addc3b55508c77ef22330e9fdecfa27485ac1e3a67b7833e818c8a1b4",
     "tools/qa_budgets.py": "366489c1b00637ca45ee1eb20840c9235648488c404c6fe418501e0d2d025694",
     "tools/qa_locale.py": "a46a7105622cb23629465e7051ce0b3492fdc7bc7f67f3ba88cd144e1d79fa9a",
@@ -599,6 +599,10 @@
     "tests/test_portfolio_closed_cohort.py": "58533a43cf3a09521fd7274b98a255575c7a65f64e87245346ba0ce98ca7a8a5",
     "tests/test_closed_cohort_unit.py": "11496f67e7dcf126f0cef66b4e0e284df1159c9b6b6a9ff1f3b8256777cda70c",
     "bcc/ws_recovery_maintained.py": "9e5c3eecb1dfbd0de0ff8f56423f7dc3e25e65cdcd6e310c8ca5b23ab3649f39",
-    "tests/test_ws_mark_delivery.py": "0fba3f276413241cfd5a60fd73def8430fb5c3b6710f74e0af70627a545cb3a2"
+    "tests/test_ws_mark_delivery.py": "0fba3f276413241cfd5a60fd73def8430fb5c3b6710f74e0af70627a545cb3a2",
+    "bcc/ws_sharded_quotes.py": "dc564fa66e12e012317edb1c3cf79fb6a9ca59ffa9d8d4364aa3961ea5e11222",
+    "bcc/ws_ticker_demand.py": "4f2e367a90b4608ae944ed3e581dc190ada8ef00abd403d55ac38bb3d8db090d",
+    "tests/test_ws_sharded_unit.py": "7749c54e2b9aebd145df1c0fa9fed7a69caa0f86f8eea55a1813b4f6b3ed61d7",
+    "tests/test_ws_sharded_integration.py": "6f1ef052f708bf32c2758859079b1abf3039b11cd1e2e82e4980555651fe5beb"
   }
 }
