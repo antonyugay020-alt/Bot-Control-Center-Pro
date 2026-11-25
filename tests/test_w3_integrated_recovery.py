@@ -127,7 +127,8 @@ def test_hub_service_continues_after_transient_sqlite_lock(monkeypatch, tmp_path
         def __init__(self, *_args, **_kw): pass
         def acquire_leadership(self, **kwargs):
             return self.registry.claim_leader(self.owner, **kwargs)
-        def poll_nonblocking(self):
+        def poll_nonblocking(self, *, market_ready):
+            assert market_ready is True
             attempts.append(1)
             if len(attempts) == 1:
                 raise sqlite3.OperationalError('database is locked')
@@ -159,7 +160,8 @@ def test_hub_service_survives_sqlite_contention_at_start_or_liveness(monkeypatch
         def __init__(self, *_args, **_kw): pass
         def acquire_leadership(self, **kwargs):
             return self.registry.claim_leader(self.owner, **kwargs)
-        def poll_nonblocking(self):
+        def poll_nonblocking(self, *, market_ready):
+            assert market_ready is True
             attempts['fetch'] += 1
         def close(self): pass
     monkeypatch.setattr(market_hub_service, 'MarketDataHub', Hub)

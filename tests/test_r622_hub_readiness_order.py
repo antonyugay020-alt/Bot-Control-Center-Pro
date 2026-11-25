@@ -31,7 +31,8 @@ def test_child_writes_authenticated_receipt_before_processing_slow_queue(tmp_pat
             assert max_workers == 6
         def acquire_leadership(self, *, lifetime):
             return 'epoch' if self.registry.claim_leader(self.owner, lifetime=lifetime) else None
-        def poll_nonblocking(self):
+        def poll_nonblocking(self, *, market_ready):
+            assert market_ready is True
             # This stands in for a network queue that could block for a long
             # time. In the old service dispatched its blocking batch BEFORE the receipt.
             calls.append('market-requests')
@@ -70,7 +71,7 @@ def test_child_never_claims_readiness_while_leader_lease_is_denied(tmp_path, mon
             assert max_workers == 6
         def acquire_leadership(self, *, lifetime):
             return 'epoch' if self.registry.claim_leader(self.owner, lifetime=lifetime) else None
-        def poll_nonblocking(self):
+        def poll_nonblocking(self, *, market_ready):
             pytest.fail('Never fetch data without leadership')
         def close(self):
             pass
@@ -84,3 +85,42 @@ def test_child_never_claims_readiness_while_leader_lease_is_denied(tmp_path, mon
         market_hub_service.main()
     assert len(attempts) == 2
     assert not receipt.exists()
+
+
+def test_child_clock_expiry_pauses_market_without_reclaiming_leadership(tmp_path, monkeypatch):
+    """A clock expiry during scheduling may renew ownership, never market admission."""
+    from bcc.market_clock import ClockUnavailable
+
+    receipt = tmp_path / 'receipt.json'
+    token = 'e' * 32
+    calls = []
+    expected_receipt = {'pid': os.getpid(), 'token': token, 'leader_owner': 'clock-owner'}
+
+    class Hub:
+        owner = 'clock-owner'
+        def __init__(self, cache, *, max_workers=1):
+            assert cache == str(tmp_path / 'cache.sqlite')
+        def acquire_leadership(self, *, lifetime):
+            assert lifetime == 120
+            calls.append('lease')
+            return 'epoch'
+        def poll_nonblocking(self, *, market_ready):
+            assert json.loads(receipt.read_text(encoding='utf-8')) == expected_receipt
+            calls.append(market_ready)
+            if calls == ['lease', True]:
+                raise ClockUnavailable('clock expired after admission check')
+            if calls == ['lease', True, False]:
+                return []
+            assert calls == ['lease', True, False, True]
+            raise Finished
+        def close(self):
+            calls.append('closed')
+
+    monkeypatch.setattr(market_hub_service, 'MarketDataHub', Hub)
+    monkeypatch.setattr(market_hub_service.signal, 'signal', lambda *a: None)
+    monkeypatch.setattr(sys, 'argv', ['hub', '--cache', str(tmp_path / 'cache.sqlite'),
+                                      '--ready-file', str(receipt), '--ready-token', token,
+                                      '--poll', '0.02', '--idle-exit', '0'])
+    with pytest.raises(Finished):
+        market_hub_service.main()
+    assert calls == ['lease', True, False, True, 'closed']
