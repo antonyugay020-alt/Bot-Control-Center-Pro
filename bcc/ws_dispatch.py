@@ -113,6 +113,8 @@ class MarketEventQueue:
         self._max_critical_wait = 0.
         self._urgent_streak = 0
         self._dropped = 0
+        self._depth_dispatched = {}
+        self._depth_delayed_batches = 0
 
     def configure(self, active, priority=()):
         """Apply validated live demand; risk priority cannot come from a frame."""
@@ -131,6 +133,8 @@ class MarketEventQueue:
                 self.capacity = max(self._base_capacity, min(100000, len(active)))
             self._demand_excess = max(0, len(active) - self.capacity)
             self._active, self._priority = active, priority
+            self._depth_dispatched = {item: stamp for item, stamp in self._depth_dispatched.items()
+                                      if item in active}
             retained = self._pending & active
             self._filtered += len(self._pending - retained)
             ordered = sorted(retained, key=self._enqueued.__getitem__)
@@ -212,46 +216,82 @@ class MarketEventQueue:
             result.append(item)
         return result
 
-    def take_mark_balanced_batch(self, *, limit=64, timeout=.1):
-        """Reserve up to a quarter of the batch for actual ticker updates.
+    def take_mark_balanced_batch(self, *, limit=64, timeout=.1, depth_interval=0.):
+        """Atomic unique-key drain with optional bounded depth coalescing.
 
-        Keep the original FIFO age within each mark class and retain the
-        normal fair dispatcher for all remaining slots. No additional
-        notification, price synthesis, or unbounded priority queue.
+        The receiver always retains the latest genuine book in its stream.
+        An early depth notification stays pending, even if it is the final
+        notification for that symbol. Tickers and candle events are never
+        delayed by the depth cadence. This is publication rate control, not
+        a freshness extension or a cap on subscriptions.
         """
         if type(limit) is not int or not 4 <= limit <= 64:
             raise ValueError("invalid balanced market batch limit")
-        if type(timeout) not in (int,float) or not 0 <= timeout <= 5:
+        if type(timeout) not in (int, float) or not 0 <= timeout <= 5:
             raise ValueError("invalid market batch timeout")
+        if type(depth_interval) not in (int, float) or not 0 <= depth_interval <= .25:
+            raise ValueError("invalid depth publication interval")
         result = []
         with self._cv:
             if not self._pending:
                 self._cv.wait(timeout=timeout)
-            if not self._pending:
-                return []
-            reserved = limit//4
+            now = time.monotonic()
+            # Only validated active demand may allocate persistent cadence state.
+            interval = depth_interval if self._active is not None else 0.
+
+            def remove(queue, item):
+                queue.remove(item)
+                self._pending.remove(item)
+                waited = max(0., now - self._enqueued.pop(item))
+                self._max_wait = max(self._max_wait, waited)
+                if item in self._priority:
+                    self._max_critical_wait = max(self._max_critical_wait, waited)
+                if interval and item[0] == "depth50":
+                    self._depth_dispatched[item] = now
+                result.append(item)
+
             for queue in (self._critical, self._regular):
-                # Enumerate a snapshot because deque.remove mutates it.
                 for item in tuple(queue):
-                    if len(result)>=reserved:
+                    if len(result) >= limit // 4:
                         break
-                    if item[0]!="tickers":
+                    if item[0] == "tickers":
+                        remove(queue, item)
+
+            delayed = False
+            def eligible(queue):
+                nonlocal delayed
+                selected = collections.deque()
+                for item in queue:
+                    if (interval and item[0] == "depth50"
+                            and now < self._depth_dispatched.get(item, -float("inf")) + interval):
+                        delayed = True
                         continue
-                    queue.remove(item)
-                    self._pending.remove(item)
-                    waited = time.monotonic()-self._enqueued.pop(item)
-                    self._max_wait = max(self._max_wait,waited)
-                    if item in self._priority:
-                        self._max_critical_wait = max(self._max_critical_wait,waited)
-                    result.append(item)
-                if len(result)>=reserved:
-                    break
-        while len(result)<limit:
-            item = self.take(timeout=0)
-            if item is None:
-                break
-            result.append(item)
-        return result
+                    selected.append(item)
+                    if len(selected) >= limit:
+                        break
+                return selected
+
+            critical, urgent, regular = (eligible(q) for q in
+                                         (self._critical, self._urgent, self._regular))
+            if delayed:
+                self._depth_delayed_batches += 1
+            while len(result) < limit and (critical or urgent or regular):
+                background = bool(urgent or regular)
+                if critical and (self._critical_streak < self.urgent_burst or not background):
+                    item = critical.popleft()
+                    self._critical_streak += 1
+                    remove(self._critical, item)
+                else:
+                    self._critical_streak = 0
+                    if urgent and (self._urgent_streak < self.urgent_burst or not regular):
+                        item = urgent.popleft()
+                        self._urgent_streak += 1
+                        remove(self._urgent, item)
+                    else:
+                        item = regular.popleft()
+                        self._urgent_streak = 0
+                        remove(self._regular, item)
+            return result
 
     def stats(self):
         with self._cv:
@@ -262,6 +302,7 @@ class MarketEventQueue:
                 "priority_keys": len(self._priority),
                 "event_capacity": self.capacity,
                 "active_over_capacity": self._demand_excess,
+                "depth_delayed_batches": self._depth_delayed_batches,
                 "pending": len(self._pending), "critical": len(self._critical),
                 "urgent": len(self._urgent), "regular": len(self._regular),
                 "dropped_notifications": self._dropped,

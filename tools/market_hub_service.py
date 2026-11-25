@@ -90,7 +90,7 @@ def main():
             elif ws_updates.stats()["pending"] < 64:
                 if stop.wait(.020):
                     break
-            batch = (ws_updates.take_mark_balanced_batch(timeout=.1) if mark_balanced
+            batch = (ws_updates.take_mark_balanced_batch(timeout=.1, depth_interval=.25) if mark_balanced
                      else ws_updates.take_batch(timeout=.1))
             if os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1":
                 batch = list(dict.fromkeys(batch))

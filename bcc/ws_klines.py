@@ -58,7 +58,10 @@ class BybitKlineWS:
         self._confirmed = {}
         self._counts = dict(frames=0,confirmed_frames=0,invalid=0,
                             retained=0,accepted=0,wrong_generation=0,
-                            early_confirmation=0,subscription_acks=0)
+                            early_confirmation=0,subscription_acks=0,
+                            wire_messages=0,wire_confirmed_rows=0,
+                            multi_row_messages=0,rejected_envelopes=0,
+                            oversized_envelopes=0)
 
     def sync_symbols(self, symbols):
         from .ws_dispatch import synchronize_bybit_symbols
@@ -119,16 +122,38 @@ class BybitKlineWS:
             return self._generation
 
     def ingest(self, payload, *, generation):
-        if not isinstance(payload, dict) or payload.get("type") != "snapshot":
+        if not isinstance(payload, dict):
             return False
         topic = payload.get("topic")
         if not isinstance(topic, str) or not topic.startswith("kline.1."):
             return False
         symbol = topic[len("kline.1."):]
         data = payload.get("data")
-        if not isinstance(data, list) or len(data) != 1 or type(data[0]) is not dict:
-            return False
-        row = data[0]
+        with self._lock:
+            self._counts["wire_messages"] += 1
+            if isinstance(data, list) and len(data) > 16:
+                self._counts["oversized_envelopes"] += 1
+            if isinstance(data, list) and len(data) <= 16:
+                self._counts["wire_confirmed_rows"] += sum(
+                    type(row) is dict and row.get("confirm") is True for row in data)
+                self._counts["multi_row_messages"] += int(len(data) > 1)
+            valid = (payload.get("type") == "snapshot" and isinstance(data, list)
+                     and 1 <= len(data) <= 16 and all(type(row) is dict for row in data))
+            if valid and len(data) > 1:
+                valid = (all(type(row.get("start")) is int for row in data)
+                         and len({row["start"] for row in data}) == len(data))
+            if not valid:
+                self._counts["rejected_envelopes"] += 1
+                return False
+        # The wire contract is an array. Process each distinct minute through
+        # the same original validation and generation fence; a newer forming
+        # row must never hide an actual confirmation for the preceding minute.
+        accepted = False
+        for row in data:
+            accepted = self._ingest_row(payload, symbol, row, generation) or accepted
+        return accepted
+
+    def _ingest_row(self, payload, symbol, row, generation):
         with self._lock:
             self._counts["frames"] += 1
             self._counts["confirmed_frames"] += int(row.get("confirm") is True)

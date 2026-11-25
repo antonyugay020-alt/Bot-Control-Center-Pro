@@ -762,6 +762,7 @@ class MarketDataHub:
         self._finalized_published = {}
         self._repair_boundary = None
         self._repair_seen = set()
+        self._repair_recheck_due = 0.
         self._repair_scheduled = 0
         self._repair_completed = 0
         # WS -> SQLite publication evidence. Aggregate only: no symbols,
@@ -1104,7 +1105,7 @@ class MarketDataHub:
         operation is performed on the WS subscription/control thread.
         """
         from .market_clock import ClockUnavailable, market_now
-        from .hub_minute_repair import schedule
+        from .hub_minute_repair import schedule, retry_candidates
         try:
             now_ms = int(market_now()*1000)
         except ClockUnavailable:
@@ -1112,16 +1113,32 @@ class MarketDataHub:
         boundary = now_ms//60000*60000
         if now_ms-boundary < 1500:
             return
+        now_mono = time.monotonic()
         if self._repair_boundary != boundary:
             self._repair_boundary = boundary
             self._repair_seen.clear()
-        pending = sorted(set(symbols)-self._repair_seen)
-        if pending:
-            from .data_cache import CacheContention
+            self._repair_recheck_due = now_mono + 5.
+        active = set(symbols)
+        pending = active - self._repair_seen
+        from .data_cache import CacheContention, PublicCache
+        if pending or now_mono >= self._repair_recheck_due:
             try:
                 self.source.shared._ensure_schema()
+                if now_mono >= self._repair_recheck_due:
+                    # A first attempt is not proof of delivery: the parent
+                    # may have expired or the HTTP lease may have been busy.
+                    # Inspect prior attempts in one read snapshot; only actual
+                    # missing and eligible jobs return to the writer.
+                    with self.source.shared.read_db() as db:
+                        db.execute('BEGIN')
+                        if PublicCache._denied(db, "api.bybit.com") is not None:
+                            return
+                        pending.update(retry_candidates(db, sorted(active & self._repair_seen),
+                            boundary-60000, time.time(), now_ms))
+                    self._repair_recheck_due = now_mono + 5.
             except CacheContention:
                 return  # Retry subscription scan; no market evidence admitted.
+        pending = sorted(pending)
         for offset in range(0,len(pending),64):
             jobs = pending[offset:offset+64]
             with self.registry._connect() as db:

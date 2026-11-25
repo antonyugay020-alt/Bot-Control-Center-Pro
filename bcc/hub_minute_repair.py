@@ -79,6 +79,39 @@ def cached_repair(db, symbol, start, now, now_ms):
         return None
 
 
+def retry_candidates(db, symbols, start, now, now_ms):
+    """Read-only reconciliation of a minute's prior scheduling attempts.
+
+    Revisit only active parents with missing evidence, no active repair
+    subscription and no live HTTP request. The writer repeats all checks.
+    """
+    result = []
+    for symbol in symbols:
+        parent = dict(category='linear', symbol=symbol, interval='1', limit=10)
+        active = db.execute('SELECT 1 FROM hub_subscriptions '
+            'WHERE k=? AND url=? AND params=? AND active_until>?',
+            (identity(parent), URL, json.dumps(parent, sort_keys=True, separators=(',',':')), now)).fetchone()
+        if not active:
+            continue
+        k = identity(params_for(symbol, start))
+        if db.execute('SELECT 1 FROM hub_subscriptions WHERE k=? AND active_until>?',
+                      (k, now)).fetchone():
+            continue
+        if db.execute('SELECT 1 FROM lease WHERE k=? AND until>?', (k, now)).fetchone():
+            continue
+        final = db.execute('SELECT value FROM cache WHERE k=? AND host=? AND until>?',
+                           (ws_key(symbol, start), HOST, now)).fetchone()
+        if final:
+            try:
+                if validate(json.loads(final[0]), symbol, now_ms)['t'] == start:
+                    continue
+            except (ValueError, TypeError):
+                pass
+        if cached_repair(db, symbol, start, now, now_ms) is None:
+            result.append(symbol)
+    return result
+
+
 def schedule(db, jobs, start, now, now_ms, *, owner, token, boot):
     """Caller owns a short write transaction. No network or cache publication.
 
