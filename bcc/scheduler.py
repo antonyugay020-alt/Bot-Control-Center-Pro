@@ -315,6 +315,40 @@ class MarketScheduler:
         self._closed_handoffs+=applied
         return applied
 
+    def refresh_closed_handoff(self, tick, state_reader):
+        """Consume completed closed-history work at the account-owner boundary.
+
+        The previous collect may have preceded a minute rollover or a ready
+        cohort future. Only poll the existing nonblocking reader and reuse
+        independently verified closed bars. No new book, risk or funding data
+        is manufactured, and the runtime still checks freshness at execution.
+        """
+        cohort = self._closed_cohort
+        if (cohort is None or tick.risk_only or tick.history_denied
+                or tick.symbol not in self._closed_sizes
+                or os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE") != "1"):
+            return False
+        try:
+            boundary = int(market_now() // 60) * 60000
+        except ValueError:
+            return False
+        if (tick.bars and not tick.history_error
+                and tick.bars[-1]["t"] >= boundary - 60000):
+            return False
+        if (cohort.boundary == boundary and tick.symbol not in cohort.ready
+                and (cohort.job is None or not cohort.job.done())):
+            return False
+        state = state_reader()
+        priority = {p["symbol"] for p in (*state["positions"].values(),
+                                          *state.get("pending", {}).values())}
+        symbols = set(self.cfg["symbols"]) | priority
+        symbols.update(p["symbol"] for p in state.get("funding_archive", {}).values())
+        closed = self._closed_symbols(state, symbols)
+        if tick.symbol not in closed:
+            return False
+        self._poll_closed_cohort(state, closed, priority)
+        return bool(self._apply_closed_cohort([(tick.symbol, tick, None)], closed, state))
+
     def collect(self, state, timeout=0.2):
         symbols = list(
             dict.fromkeys(

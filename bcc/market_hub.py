@@ -16,12 +16,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from .data_cache import PublicCache, CacheBusy
+from .public_writer import writer_gate, writer_transaction
 
 
 class HubRegistry:
     def __init__(self, path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._writer_gate = writer_gate(self.path)
         self._init()
 
     @staticmethod
@@ -52,6 +54,12 @@ class HubRegistry:
                 yield db
         finally:
             db.close()
+
+    @contextmanager
+    def _write_connect(self, *, migration=False):
+        """Join the cache's FIFO writer gate; read-only connections stay free."""
+        with writer_transaction(self._writer_gate, self._connect, migration=migration) as db:
+            yield db
 
     @staticmethod
     def _index_matches(db, name, columns):
@@ -125,6 +133,9 @@ class HubRegistry:
 
     def _init(self):
         with self._connect() as db:
+            if db.execute('PRAGMA journal_mode').fetchone()[0].lower() == 'wal' and self._schema_current(db):
+                return
+        with self._write_connect(migration=True) as db:
             # A journal-mode *change* needs exclusive access on Windows. The
             # supervisor also reads this schema while the producer starts:
             # do not try to reconfigure WAL on every readiness poll.
@@ -200,8 +211,7 @@ class HubRegistry:
             raise ValueError('Invalid hub lease')
         candidate = uuid.uuid4().hex
         boot = self._boot_epoch()
-        with self._connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+        with self._write_connect() as db:
             # Sample the clock only AFTER acquiring SQLite's writer lock.
             # A queued contender must not reclaim using a stale lease time.
             now = time.time()
@@ -264,8 +274,7 @@ class HubRegistry:
                 or not 1 <= lifetime <= 120):
             raise ValueError('Invalid hub lease')
         boot = self._boot_epoch()
-        with self._connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+        with self._write_connect() as db:
             now = time.time()
             cursor = db.execute(
                 "UPDATE hub_leader SET expires=? WHERE singleton=1 "
@@ -280,7 +289,7 @@ class HubRegistry:
         # now held by a successor with the same logical producer identity.
         if not owner or not isinstance(token, str) or not token:
             raise ValueError('Invalid hub lease')
-        with self._connect() as db:
+        with self._write_connect() as db:
             cursor = db.execute(
                 'DELETE FROM hub_leader WHERE singleton=1 '
                 'AND owner=? AND lease_token=?',
@@ -297,8 +306,7 @@ class HubRegistry:
         if (not isinstance(token, str) or not token
                 or not isinstance(subscription_token, str) or not subscription_token):
             raise ValueError('Hub completion requires leader and subscription fencing tokens')
-        with self._connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+        with self._write_connect() as db:
             # Both leader and subscription expiry are checked against the
             # instant the SQLite writer lock is held, not queue-entry time.
             now = time.time()
@@ -351,8 +359,7 @@ class HubRegistry:
             raise ValueError('Only validated Bybit historical candles may rearm on demand')
         key, encoded = self.identity(url, params)
         generation = uuid.uuid4().hex
-        with self._connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+        with self._write_connect() as db:
             # A subscription may expire while waiting on a fleet-wide writer.
             # Refresh its incarnation and TTL from transaction admission.
             now = time.time()
@@ -414,8 +421,7 @@ class HubRegistry:
                 or not 60 <= retention <= 86400
                 or type(batch) is not int or not 1 <= batch <= 1024):
             raise ValueError('Invalid Hub retention or cleanup batch')
-        with self._connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+        with self._write_connect() as db:
             cutoff = time.time() - retention
             cursor = db.execute(
                 'DELETE FROM hub_subscriptions WHERE k IN ('
@@ -706,7 +712,7 @@ class HubRegistry:
                 if self.identity(url, params)[0] != key or not generation:
                     raise ValueError('Subscription identity or generation differs from persisted data')
             except (ValueError, TypeError, UnicodeError):
-                with self._connect() as db:
+                with self._write_connect() as db:
                     db.execute('UPDATE hub_subscriptions SET last_error=?, next_due=? '
                                'WHERE k=? AND params=? AND subscription_token=?',
                                ('Invalid persisted public subscription',
@@ -771,7 +777,7 @@ class MarketDataHub:
         self._ws_publication_stats = dict(
             batches=0, events_seen=0, prepared=0, published=0,
             rejected_source=0, rejected_leader=0, rejected_store=0,
-            sqlite_busy=0, unexpected_errors=0,
+            sqlite_busy=0, sqlite_busy_batches=0, unexpected_errors=0,
             max_prepare_seconds=0.0, max_commit_seconds=0.0,
             max_batch_seconds=0.0,
         )
@@ -1007,7 +1013,13 @@ class MarketDataHub:
     def ws_publication_stats(self):
         """Aggregate WS admission and SQLite persistence; no market payloads."""
         with self._ws_publication_lock:
-            return dict(self._ws_publication_stats)
+            result = dict(self._ws_publication_stats)
+        shared = getattr(self.source, 'shared', None)
+        if isinstance(shared, PublicCache):
+            result['writer_gate'] = shared._guard.stats()
+            result['cache_lock_counters'] = {name: shared.stats[name] for name in
+                                             ('local_busy', 'sqlite_busy', 'read_local_busy')}
+        return result
 
     def publish_ws_events(self, events):
         """Publish genuine independent WS snapshots and classify failures.
@@ -1071,6 +1083,7 @@ class MarketDataHub:
                 s['rejected_leader'] += rejected_leader
                 s['rejected_store'] += len(valid) - successes - rejected_leader
                 s['sqlite_busy'] += busy
+                s['sqlite_busy_batches'] += int(busy > 0)
                 s['unexpected_errors'] += unexpected
                 s['max_prepare_seconds'] = round(max(
                     s['max_prepare_seconds'], prepare_seconds), 6)
@@ -1141,8 +1154,7 @@ class MarketDataHub:
         pending = sorted(pending)
         for offset in range(0,len(pending),64):
             jobs = pending[offset:offset+64]
-            with self.registry._connect() as db:
-                db.execute("BEGIN IMMEDIATE")
+            with self.registry._write_connect() as db:
                 try:
                     now_ms = int(market_now()*1000)
                 except ClockUnavailable:
@@ -1171,8 +1183,7 @@ class MarketDataHub:
             return 0
         try:
             self.source.shared._ensure_schema()
-            with self.registry._connect() as db:
-                db.execute("BEGIN IMMEDIATE")
+            with self.registry._write_connect() as db:
                 if PublicCache._denied(db,"api.bybit.com") is not None:
                     return 0
                 changed = renew_tickers(db,now=time.time(),owner=self.owner,

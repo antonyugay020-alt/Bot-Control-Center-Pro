@@ -11,6 +11,8 @@ from contextlib import contextmanager, ExitStack
 from functools import lru_cache
 from pathlib import Path
 
+from .public_writer import writer_gate
+
 
 class CacheBusy(RuntimeError):
     """SQLite contention, shared rate budget, or a competing request lease."""
@@ -30,9 +32,6 @@ class ProviderDenied(RuntimeError):
 
 
 class PublicCache:
-    _guards = {}
-    _guards_lock = threading.Lock()
-
     def __init__(self, path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,10 +43,7 @@ class PublicCache:
         self.split_history_lanes = False
         self.central_closed_history = False
         self.central_repair = False
-        with self._guards_lock:
-            self._guard = self._guards.setdefault(
-                str(self.path.resolve()), threading.RLock()
-            )
+        self._guard = writer_gate(self.path)
         self._connection = None
         # WAL readers must not queue behind this process's HTTP lease/cache
         # writer. A separate bounded connection retains the same SQL policy

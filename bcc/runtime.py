@@ -436,6 +436,9 @@ def run_loop(
                                 perf['deferred_refreshes'] += 1
                                 continue
                             raise DataUnavailable('Стакан устарел после фонового обновления')
+                        refresh_history = getattr(scheduler, 'refresh_closed_handoff', None)
+                        if callable(refresh_history):
+                            refresh_history(tick, lambda: store.read(include_charts=False))
                         data_blocked = process_tick(cfg, store, engine, tick, observations=observations)
                         if data_blocked:
                             retry_data_blocked = getattr(scheduler, 'retry_data_blocked', None)
