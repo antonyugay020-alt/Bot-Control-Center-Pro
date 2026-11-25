@@ -1,13 +1,14 @@
 """Bounded parallel public reads; accounting stays on the single worker thread."""
 
 import math
+import os
 import time
 from collections import OrderedDict
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 
 from .strategy_dispatch import StrategyDispatcher
-from .market import DataUnavailable
+from .market import DataUnavailable, SourceAccessDenied
 from .market_clock import market_now, quote_is_recent, book_is_fresh
 
 
@@ -27,6 +28,7 @@ class MarketTick:
     # Runtime must recheck the original exchange candle timestamp after an
     # asynchronous handoff, including each reuse alongside a fresh quote.
     live_history: bool = False
+    history_denied: bool = False
 
 
 class MarketScheduler:
@@ -60,6 +62,10 @@ class MarketScheduler:
         self.quote_jobs = {}
         self.quote_due = {}
         self.quote_cursor = 0
+        # Per-exposure first successful executable book: no arbitrary cap.
+        # Prevent an endlessly recycled quote backlog from starving a late
+        # position's initial independent quote/history handoff.
+        self._quoted_once = set()
         self.quote_period = min(period, .5)
         self._history_only = set()
         self._history_results = {}
@@ -78,6 +84,12 @@ class MarketScheduler:
         # source's 300s risk timestamp expires, even with eight history jobs
         # blocked behind cold scanner candles. This lane cannot mutate trades.
         self.risk_capacity = max(1, workers // 2)
+        # This capability is resolved before each collect admission; a standalone
+        # _fetch adapter retains its historical metadata contract.
+        self._risk_refresh_independent = False
+        self._closed_cohort = None
+        self._closed_sizes = {}
+        self._closed_handoffs = 0
 
     @staticmethod
     def _oldest_tier_first(priority, state):
@@ -116,8 +128,9 @@ class MarketScheduler:
         except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
             return None, str(exc)
 
-    def _fetch(self, symbol, required, positions, manage=True, urgent=False, mark_only=False, history_only=False):
+    def _fetch(self, symbol, required, positions, manage=True, urgent=False, mark_only=False, history_only=False, closed_only=False):
         history_error = ''
+        history_denied = False
         quote_error = ''
         book = None
         # Existing positions need executable prices for protection and
@@ -136,18 +149,34 @@ class MarketScheduler:
         bars = []
         if manage:
             try:
-                bars = self.source.candles(symbol, required)
+                # A held position's indicator history has priority over cold
+                # scanner discovery; it is *not* executable risk evidence.
+                # Third-party adapters without this explicit capability keep
+                # their original candles(symbol, required) contract.
+                position_history = getattr(self.source, 'position_candles', None)
+                closed_reader = getattr(self.source, "closed_candles", None)
+                if closed_only and callable(closed_reader):
+                    bars = closed_reader(symbol, required, priority=urgent)
+                elif urgent and callable(position_history):
+                    bars = position_history(symbol, required)
+                else:
+                    bars = self.source.candles(symbol, required)
             except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
                 history_error = str(exc)
+                history_denied = isinstance(exc, SourceAccessDenied)
         rates = []
         marks = {}
         margin_data = None
         # Refresh slow risk tiers on the independent history/funding lane.
         # This result is committed by the single financial worker together
         # with the next fresh executable WS book, never from this pool.
-        if history_only:
+        if history_only and not getattr(self, "_risk_refresh_independent", False):
             refresh_risk = getattr(self.source, "refresh_position_risk", None)
-            if callable(refresh_risk):
+            # A transport that explicitly declines native risk maintenance
+            # must not invoke its inherited Bybit risk/clock path indirectly.
+            # Legacy adapters without the capability retain their contract.
+            enabled = getattr(self.source, "risk_maintenance_enabled", lambda: True)
+            if callable(refresh_risk) and enabled():
                 try:
                     margin_data = refresh_risk(symbol)
                 except (DataUnavailable, ValueError, KeyError, TypeError):
@@ -178,7 +207,7 @@ class MarketScheduler:
                 book = None
                 quote_error = str(exc)
         return MarketTick(symbol, bars, book, rates, marks, history_error, quote_error,
-                          margin_data, live_history=True)
+                          margin_data, live_history=True, history_denied=history_denied)
 
     def _quote(self, symbol):
         try:
@@ -192,6 +221,99 @@ class MarketScheduler:
             return book, ''
         except (DataUnavailable, ValueError, KeyError, TypeError) as exc:
             return None, str(exc)
+
+    def _closed_symbols(self, state, symbols):
+        """One eligibility calculation for normal and cohort history paths."""
+        def has_intrabar(value):
+            if isinstance(value,dict):
+                return (value.get("trigger")=="intrabar"
+                        or any(has_intrabar(v) for v in value.values()))
+            return isinstance(value,(list,tuple)) and any(has_intrabar(v) for v in value)
+        if (os.environ.get("BCC_BYBIT_MAINTAINED_MARK_CANDIDATE") != "1"
+                or self.cfg.get("strategy") != "VELES"
+                or not callable(getattr(self.source,"closed_candles",None))
+                or has_intrabar(self.cfg)):
+            return set()
+        intrabar = {p.get("symbol") for p in
+                    (*state["positions"].values(),*state.get("pending",{}).values())
+                    if has_intrabar(p)}
+        return set(symbols)-intrabar
+
+    def _poll_closed_cohort(self, state, closed_symbols, priority_set):
+        reader = getattr(self.source,"cached_closed_cohort",None)
+        if (os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE")!="1"
+                or self.period==0 or not callable(reader)):
+            return
+        from .market_clock import ClockUnavailable
+        from .data_cache import CacheBusy,ProviderDenied
+        from .closed_cohort import ClosedCohort
+        if self._closed_cohort is None:
+            if not closed_symbols:
+                return
+            self._closed_cohort = ClosedCohort(reader,recoverable=(
+                DataUnavailable,ClockUnavailable,CacheBusy,ProviderDenied,OSError))
+        try:
+            boundary=int(market_now()//60)*60000
+        except ClockUnavailable:
+            boundary=None
+        # Requirements already computed by the normal admission path.
+        # Never recalculate all effective VELES configurations at quote cadence.
+        for symbol in tuple(self._closed_sizes):
+            if symbol not in closed_symbols:
+                self._closed_sizes.pop(symbol,None)
+        req = ({s:n for s,n in self._closed_sizes.items() if s in closed_symbols}
+               if boundary is not None else {})
+        fresh = self._closed_cohort.poll(req,boundary,time.monotonic())
+        # Only the first ready handoff of a new closed minute accelerates
+        # evaluation. Existing jobs stay single-flight and retain ownership.
+        for symbol in fresh:
+            if symbol in priority_set:
+                self.quote_due[symbol]=0.
+            else:
+                self.due[symbol]=0.
+                if symbol in self._scan_retries:
+                    self._scan_retries[symbol]=0.
+
+    def _apply_closed_cohort(self, completed, closed_symbols, state):
+        cohort=self._closed_cohort
+        if (cohort is None or
+                os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE")!="1"):
+            return 0
+        try:
+            boundary=int(market_now()//60)*60000
+        except ValueError:
+            return 0
+        if cohort.boundary != boundary:
+            return 0
+        applied=0
+        for symbol,tick,error in completed:
+            if (error is not None or tick is None or tick.risk_only
+                    or tick.history_denied or symbol not in closed_symbols):
+                continue
+            bars=cohort.ready.get(symbol)
+            if bars is None:
+                continue
+            if (not tick.bars or tick.history_error
+                    or tick.bars[-1]["t"] < bars[-1]["t"]):
+                # Recheck this actual handoff against active persisted
+                # settings (which can differ from the last admitted job).
+                required=max(100,int(self.history_size(self.cfg,symbol,state)))
+                self._closed_sizes[symbol]=required
+                if len(bars)<max(required,len(tick.bars)):
+                    continue
+                # Only indicator history is replaced; retain the separately
+                # admitted book, funding, risk metadata, and quote errors.
+                tick.bars=bars
+                tick.history_error=""
+                tick.live_history=True
+                history=self._history_results.get(symbol)
+                if history is not None and not history.history_denied:
+                    history.bars=bars
+                    history.history_error=""
+                    history.live_history=True
+                applied+=1
+        self._closed_handoffs+=applied
+        return applied
 
     def collect(self, state, timeout=0.2):
         symbols = list(
@@ -213,9 +335,19 @@ class MarketScheduler:
         if self._separate_quotes and callable(set_positions):
             set_positions(priority)
         priority_set = set(priority)
+        # Bound scheduler CPU to the size of the input inventory. These
+        # indexes are derived anew from the immutable owner state snapshot;
+        # no stale opened-at evidence can survive a change of positions.
+        priority_index = {symbol: i for i, symbol in enumerate(priority)}
+        opened_by_symbol = {}
+        for exposure in (*state["positions"].values(),
+                         *state.get("funding_archive", {}).values()):
+            opened_by_symbol.setdefault(exposure["symbol"], []).append(exposure["opened"])
+        self._quoted_once.intersection_update(priority_set)
         scan = [s for s in symbols if s not in priority_set]
         scan_set = set(scan)
         configured_set = set(self.cfg['symbols'])
+        closed_symbols = self._closed_symbols(state, configured_set | priority_set)
         for symbol in list(self._scan_retries):
             if symbol not in scan_set or symbol not in configured_set:
                 del self._scan_retries[symbol]
@@ -258,7 +390,12 @@ class MarketScheduler:
         if self.risk_pool is not None:
             self.risk_pool.collect()
         enabled = getattr(self.source,'risk_maintenance_enabled',lambda:True)
-        if callable(getattr(self.source,'refresh_position_risk',None)) and enabled():
+        # Never send the same held-position metadata refresh through the
+        # history pool when its dedicated position-risk pool is active.
+        self._risk_refresh_independent = (
+            callable(getattr(self.source,'refresh_position_risk',None)) and enabled()
+        )
+        if self._risk_refresh_independent:
             try:
                 utc = market_now()
             except ValueError:
@@ -276,6 +413,7 @@ class MarketScheduler:
                     self.risk_pool = StrategyDispatcher(workers=self.risk_capacity,
                         maximum_pending=self.risk_capacity,thread_name_prefix='position-risk')
                 self.risk_jobs[symbol] = self.risk_pool.submit(symbol,self._risk,symbol)
+        self._poll_closed_cohort(state, closed_symbols, priority_set)
         primary_drained = set()
         def drain():
             for symbol, job in list(self.jobs.items()):
@@ -306,7 +444,8 @@ class MarketScheduler:
                         self._history_results[symbol] = MarketTick(
                             symbol, tick.bars, None, tick.rates, tick.funding_marks,
                             tick.history_error, '', tick.margin_data,
-                            live_history=tick.live_history)
+                            live_history=tick.live_history,
+                            history_denied=getattr(tick,"history_denied",False))
                     else:
                         completed.append((symbol, tick, None))
                 except Exception as exc:
@@ -355,6 +494,7 @@ class MarketScheduler:
                     book, error = job.result()
                     if book is not None and book_is_fresh(book['at']):
                         self._quote_ready[symbol] = book['at']
+                        self._quoted_once.add(symbol)
                     else:
                         self._quote_ready.pop(symbol, None)
                     history = self._history_results.get(symbol)
@@ -363,7 +503,8 @@ class MarketScheduler:
                                       history.funding_marks if history else {},
                                       history.history_error if history else '', error,
                                       history.margin_data if history else None,
-                                      live_history=bool(history and history.live_history))
+                                      live_history=bool(history and history.live_history),
+                                      history_denied=bool(history and history.history_denied))
                     if history is not None:
                         # A refreshed margin snapshot is delivered once;
                         # replaying it on each quote would regress newer
@@ -396,15 +537,21 @@ class MarketScheduler:
             if self.quote_pool is None:
                 self.quote_pool = StrategyDispatcher(workers=self.quote_capacity,
                     maximum_pending=self.quote_capacity, thread_name_prefix='position-quotes')
-            for _ in range(len(priority)):
+            # First quote of every exposed symbol must be admitted before
+            # spending every fast-lane slot repeatedly refreshing symbols
+            # already serviced. No pre-existing position gets a free pass to
+            # EXECUTION: process_tick still revalidates book, mark and tiers.
+            missing_initial = [s for s in priority if s not in self._quoted_once]
+            next_due_regular = [priority[(self.quote_cursor+i) % len(priority)]
+                                for i in range(len(priority))]
+            for symbol in (*missing_initial, *next_due_regular):
                 if len(self.quote_jobs) + sum(lane for _, lane in self._retry_jobs.values()) >= self.quote_capacity:
                     break
-                symbol = priority[self.quote_cursor % len(priority)]
-                self.quote_cursor = (self.quote_cursor + 1) % len(priority)
                 if (symbol in self.quote_jobs or symbol in quote_delivered or symbol in self._retry_ticks
                         or self.quote_due.get(symbol, 0) > time.monotonic()):
                     continue
                 self.quote_jobs[symbol] = self.quote_pool.submit(symbol, self._quote, symbol)
+                self.quote_cursor = (priority_index[symbol]+1) % len(priority)
         # A zero-period batch must hand its final results to the worker before
         # beginning another round. Otherwise very fast symbols reoccupy slots
         # before the owner has processed the completed ticks.
@@ -432,23 +579,29 @@ class MarketScheduler:
             # its own independent executable book is fresh: signal-based
             # protection and recovery still need current candles. The owner
             # retains its portfolio-wide entry/DCA risk checks.
-            if history_only and not book_is_fresh(self._quote_ready.get(symbol, 0)):
+            # A native position_candles adapter has an independently
+            # prioritized history lane; it may refresh non-executable candles
+            # while the quote is stale. Legacy adapters only have candles()
+            # and require a fresh independently verified quote before starting
+            # history, preserving their original safety/ordering contract.
+            if (history_only and not callable(getattr(self.source, 'position_candles', None))
+                    and not book_is_fresh(self._quote_ready.get(symbol, 0))):
                 return False
-            opened = [
-                p["opened"]
-                for p in list(state["positions"].values())
-                + list(state.get("funding_archive", {}).values())
-                if p["symbol"] == symbol
-            ]
+            opened = opened_by_symbol.get(symbol, [])
+            closed_only = symbol in closed_symbols
+            required = self.history_size(self.cfg, symbol, state)
+            if closed_only:
+                self._closed_sizes[symbol]=max(100,int(required))
             self.jobs[symbol] = self.pool.submit(
                 symbol, self._fetch,
                 symbol,
-                self.history_size(self.cfg, symbol, state),
+                required,
                 opened,
                 symbol in self.cfg["symbols"] or symbol in priority_set,
                 symbol in priority_set,
                 risk_mode and symbol in priority_set and not history_only,
                 history_only,
+                *([True] if closed_only else []),
             )
             if history_only:
                 self._history_only.add(symbol)
@@ -533,6 +686,20 @@ class MarketScheduler:
             time.sleep(min(timeout, self.period))
         drain()
         drain_quotes()
+        # Newly arrived closed evidence can be delivered on the very next
+        # admitted executable quote, even while the original history/funding
+        # future is still occupied. No new order or duplicate trade tick.
+        self._poll_closed_cohort(state, closed_symbols, priority_set)
+        self._apply_closed_cohort(completed,closed_symbols,state)
+        if self._closed_cohort is not None:
+            cohort=self._closed_cohort
+            self.last_pressure.update(closed_cohort_ready=len(cohort.ready),
+                closed_cohort_boundary=cohort.boundary,
+                closed_cohort_eligible=len(closed_symbols),
+                closed_cohort_reads=cohort.reads,
+                closed_cohort_delivered=cohort.delivered,
+                closed_cohort_errors=cohort.errors,
+                closed_cohort_handoffs=self._closed_handoffs)
         self.last_pressure.update(quote_jobs=len(self.quote_jobs), quote_capacity=self.quote_capacity,
                                   history_jobs=len(self.jobs), history_capacity=self.capacity,
                                   deferred_refreshes=len(self._retry_ticks),risk_jobs=len(self.risk_jobs))
@@ -550,6 +717,8 @@ class MarketScheduler:
             job.cancel()
         for job in self.risk_jobs.values():
             job.cancel()
+        if self._closed_cohort is not None:
+            self._closed_cohort.close()
         self.pool.close(wait=True)
         if self.quote_pool is not None:
             self.quote_pool.close(wait=True)

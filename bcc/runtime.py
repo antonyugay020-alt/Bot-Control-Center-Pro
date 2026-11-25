@@ -224,6 +224,13 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
         margin_error = margin_status(state) if state.get("margin_model") == MODEL else ""
         if liquidating or liquidation_breach or margin_error:
             state["_entry_blocked"] = margin_error or "Сокращение риска; новые входы и DCA приостановлены"
+        # Only transient market evidence failure may defer consumption of
+        # a real current closed RSI cross. Never defer operator stops or
+        # liquidation controls.
+        state["_entry_data_blocked"] = bool(
+            symbol in cfg["symbols"] and not pending_manual
+            and not liquidating and not liquidation_breach
+            and (stale or margin_error or book.get("margin_error")))
         decision_now = market_now()
         live_history_expired = _expire_live_history(tick, decision_now) or live_history_expired
         # The scanner must revisit a candidate after genuine market evidence
@@ -252,6 +259,7 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
                 })
         state.pop("_books", None)
         state.pop("_entry_blocked", None)
+        state.pop("_entry_data_blocked", None)
         if tick.bars:
             state.setdefault("charts", {})[symbol] = tick.bars[-120:]
         update_equity_metrics(state)

@@ -335,14 +335,20 @@ class HubRegistry:
         key = hashlib.sha256(identity_text.encode()).hexdigest()
         return key, params_text
 
-    def subscribe(self, url, params, *, lifetime=60, priority=False):
+    def subscribe(self, url, params, *, lifetime=60, priority=False, force_due=False):
         if (type(lifetime) not in (int, float) or not math.isfinite(lifetime)
                 or not 0 < lifetime <= 3600):
             raise ValueError('Hub subscription lifetime must be finite and positive')
-        if type(priority) is not bool:
-            raise ValueError('Hub priority flag must be boolean')
+        if type(priority) is not bool or type(force_due) is not bool:
+            raise ValueError('Hub priority/request flag must be boolean')
         from .market import PublicData
         PublicData.validated_public_request(url, params)
+        if force_due and not (
+                url == 'https://api.bybit.com/v5/market/kline'
+                and type(params) is dict and params.get('category') == 'linear'
+                and params.get('interval') == '1'
+                and type(params.get('limit')) is int):
+            raise ValueError('Only validated Bybit historical candles may rearm on demand')
         key, encoded = self.identity(url, params)
         generation = uuid.uuid4().hex
         with self._connect() as db:
@@ -350,10 +356,19 @@ class HubRegistry:
             # A subscription may expire while waiting on a fleet-wide writer.
             # Refresh its incarnation and TTL from transaction admission.
             now = time.time()
+            # A new request after a parked (completed) snapshot must have a
+            # fresh subscription fencing token. Otherwise the older in-flight
+            # completion can overwrite this new demand with a 3600s deadline.
+            # Do NOT rotate for every concurrent caller when next_due=0:
+            # they already share one outstanding fetch and token churn could
+            # starve acknowledgements indefinitely. The whole decision is
+            # transactional with the next_due rearm.
             db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until,subscription_token)
               VALUES(?,?,?,?,0,?,?) ON CONFLICT(k) DO UPDATE SET
               active_until=max(hub_subscriptions.active_until,excluded.active_until),
-              subscription_token=CASE WHEN hub_subscriptions.active_until<=?
+              subscription_token=CASE
+                             WHEN (?=1 AND hub_subscriptions.next_due>?)
+                             OR hub_subscriptions.active_until<=?
                              OR hub_subscriptions.params<>excluded.params
                              OR hub_subscriptions.url<>excluded.url
                              THEN excluded.subscription_token
@@ -363,7 +378,7 @@ class HubRegistry:
                              ELSE max(hub_subscriptions.priority_until,excluded.priority_until) END,
               params=excluded.params,
               url=excluded.url,
-              next_due=CASE WHEN hub_subscriptions.active_until<=?
+              next_due=CASE WHEN ?=1 OR hub_subscriptions.active_until<=?
                             OR hub_subscriptions.params<>excluded.params
                             OR hub_subscriptions.url<>excluded.url
                             THEN 0 ELSE hub_subscriptions.next_due END,
@@ -373,8 +388,19 @@ class HubRegistry:
                               THEN '' ELSE hub_subscriptions.last_error END''',
               (key, url, encoded, now + lifetime,
                now + min(lifetime * 0.75, 90) if priority else 0,
-               generation, now, now, now, now))
+               generation, int(force_due), now, now, now,
+               int(force_due), now, now))
         return key
+
+    def request_once(self, url, params, *, lifetime=12, priority=False):
+        """Rearm a historical REST fetch only when a consumer asks again.
+
+        The producer parks the subscription after one successful snapshot.
+        This explicit demand uses the same lease and validated public route;
+        it cannot reopen an exhausted HTTP budget or a 403/451 policy fence.
+        """
+        return self.subscribe(url, params, lifetime=lifetime,
+                              priority=priority, force_due=True)
 
     def prune_expired(self, *, retention=3600, batch=256):
         """Bounded garbage collection of abandoned market subscriptions.
@@ -561,8 +587,10 @@ class HubRegistry:
             ).fetchone() is not None
 
     def due(self, limit=32, *, reserve_regular=0, exclude=(), include_priority=False,
-            include_generation=False, skip_ws_routes=()):
+            include_generation=False, skip_ws_routes=(), history_lane=None):
         # Urgent position marks first, reserve slots for scans.
+        if history_lane is not None and type(history_lane) is not bool:
+            raise ValueError("Invalid REST history lane selector")
 
         # Urgency belongs to a short renewable lease, not a permanent flag.
         if type(include_generation) is not bool:
@@ -616,11 +644,39 @@ class HubRegistry:
                 clauses.append("NOT (url=? AND CASE WHEN json_valid(params) "
                                "THEN (" + shape + ") ELSE 0 END)")
             skip_sql += ' AND ' + ' AND '.join(clauses)
+        if history_lane is not None:
+            # Filter BEFORE LIMIT, not after fetching the head of the
+            # combined queue. Only this fixed allowlisted route is separated.
+            op = "=" if history_lane else "<>"
+            skip_sql += " AND url" + op + "'https://api.bybit.com/v5/market/kline'"
+        # Rank actual financial-risk metadata before executable price/book,
+        # then held-position candles. Grouping book with risk as equal-priority
+        # lets an already-backlogged quote queue consume the one reserved
+        # physical lane when a NEW tier request arrives. That silently
+        # defeats the financial reserve. This is ordering only: provider
+        # quotas, leases and freshness checks remain authoritative.
+        urgent_order = (
+            " ORDER BY CASE "
+            "WHEN url IN ("
+            "'https://api.bybit.com/v5/market/risk-limit',"
+            "'https://api.bybit.com/v5/market/instruments-info'"
+            ") THEN 0 "
+            "WHEN url IN ("
+            "'https://api.bybit.com/v5/market/tickers',"
+            "'https://api.bybit.com/v5/market/orderbook'"
+            ") THEN 1 ELSE 2 END, next_due,k LIMIT ?"
+        )
         with self._connect() as db:
+            # All three selections must observe one WAL read snapshot.
+            # Otherwise a concurrent priority promotion / rearm between
+            # SELECTs can return the same key from both classes or through
+            # the urgent OFFSET. BEGIN (not IMMEDIATE) never takes the
+            # SQLite writer reservation; end the read before validation.
+            db.execute('BEGIN')
             now = time.time()
             urgent = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
-              ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, *skip_ws_routes, limit-reserve_regular)).fetchall()
+              urgent_order, (now, now, now, *exclude, *skip_ws_routes, limit-reserve_regular)).fetchall()
             regular = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
               WHERE active_until>? AND next_due<=? AND priority_until<=?''' + skip_sql +
               ' ORDER BY next_due,k LIMIT ?', (now, now, now, *exclude, *skip_ws_routes, limit-len(urgent))).fetchall()
@@ -628,7 +684,7 @@ class HubRegistry:
             if len(rows) < limit and len(urgent) == limit-reserve_regular:
                 more = db.execute('''SELECT k,url,params,subscription_token FROM hub_subscriptions
                   WHERE active_until>? AND next_due<=? AND priority_until>?''' + skip_sql +
-                  ' ORDER BY next_due,k LIMIT ? OFFSET ?',
+                  urgent_order + ' OFFSET ?',
                   (now,now,now,*exclude,*skip_ws_routes,limit-len(rows),len(urgent))).fetchall()
                 rows.extend((row, True) for row in more)
         # Older Hub databases can contain subscriptions admitted before the
@@ -679,6 +735,7 @@ class MarketDataHub:
         # A new pool per poll would constantly churn threads on large scans.
         self._pool = (ThreadPoolExecutor(max_workers=max_workers,
                           thread_name_prefix='hub-public-get') if max_workers > 1 else None)
+        self._history_pool = None
         self.registry = HubRegistry(cache_path)
         self.owner = f"{os.getpid()}:{uuid.uuid4().hex}"
         # Steady-state producer: never hold the entire batch hostage to the
@@ -690,13 +747,51 @@ class MarketDataHub:
         self._prune_due = 0.0
         self._ws_subscription_scan_due = 0.0
         self._ws_mark_scan_due = 0.0
+        self._ticker_demand_due = 0.0
+        self._derived_ticker_renewals = 0
         self._ws_quote_symbols = ()
         self._ws_book_symbols = ()
         self._ws_dispatcher = None
+        self._finalized_published = {}
+        self._repair_boundary = None
+        self._repair_seen = set()
+        self._repair_scheduled = 0
+        self._repair_completed = 0
+        # WS -> SQLite publication evidence. Aggregate only: no symbols,
+        # prices, account details, or exchange timestamp modifications.
+        self._ws_publication_lock = threading.Lock()
+        self._ws_publication_stats = dict(
+            batches=0, events_seen=0, prepared=0, published=0,
+            rejected_source=0, rejected_leader=0, rejected_store=0,
+            sqlite_busy=0, unexpected_errors=0,
+            max_prepare_seconds=0.0, max_commit_seconds=0.0,
+            max_batch_seconds=0.0,
+        )
         self.lease_renew_interval = 5.0
         self.source = source or PublicData()
         if self.source.shared is None:
             self.source.shared = PublicCache(cache_path)
+
+    def enable_split_history(self):
+        """Activate dedicated REST executors before admitting producer work."""
+        if self._history_pool is not None or self._inflight or not 3 <= self.max_workers <= 64:
+            raise ValueError("Split REST lanes require a new Hub with 3..64 workers")
+        self._history_pool = ThreadPoolExecutor(
+            max_workers=self.max_workers // 2, thread_name_prefix="hub-history-get")
+        self.source.shared.split_history_lanes = True
+
+    def rest_lane_health(self):
+        if self._history_pool is None:
+            return {"enabled": False}
+        from .hub_rest_lanes import KLINE_URL
+        rows = list(self._inflight.values())
+        count = sum(item[1] == KLINE_URL for item in rows)
+        return {"enabled": True,
+                "history_capacity": self.max_workers // 2,
+                "metadata_capacity": self.max_workers - self.max_workers // 2,
+                "history_inflight": count,
+                "metadata_inflight": len(rows) - count,
+                "ack_pending": sum(item[0].done() for item in rows)}
 
     def acquire_leadership(self, *, lifetime=120):
         """Single admission path for service readiness and every producer mode.
@@ -768,22 +863,43 @@ class MarketDataHub:
                     return False
                 value = {"_bcc_ws_polybook": True, **book}
                 ttl = .35
+            elif (kind == "tickers" and getattr(self.source.shared, "bybit_ws_source_deadlines", False)
+                  and callable(getattr(stream, "independent_observations_for_hub", None))):
+                from .ws_split_ticker import make_split_ticker, project_ticker
+                mark, quote = stream.independent_observations_for_hub(symbol)
+                value, _ = project_ticker(make_split_ticker(symbol, mark, quote), symbol=symbol)
+                if value is None:
+                    if not getattr(stream, 'maintained_enabled', False):
+                        return False
+                    value = make_split_ticker(symbol)  # revoke, never publish a price
+                ttl = 1.5
             elif kind == "tickers":
                 # Independently transport the exchange's real markPrice.
                 # Partial ticker deltas may refresh mark without changing
                 # bid/ask. Never synthesize a mark from an executable spread.
-                mark = None
-                mark_at = None
-                if hasattr(stream, "mark"):
+                mark = mark_at = bid = ask = at = None
+                connection_fence = None
+                atomic = getattr(stream, "snapshot_for_hub", None)
+                if callable(atomic):
+                    # Both independent exchange observations belong to one
+                    # bounded WS generation, including across reconnects.
+                    observed_mark, observed_quote, connection_fence = atomic(symbol)
+                    if observed_mark is not None:
+                        mark, mark_at = observed_mark
+                    if observed_quote is not None:
+                        bid, ask, at = observed_quote
+                else:
+                    # Compatible third-party adapters cannot carry marks
+                    # across publication without a generation fence.
+                    if hasattr(stream, "mark"):
+                        try:
+                            mark, mark_at = stream.mark(symbol)
+                        except StreamUnavailable:
+                            pass
                     try:
-                        mark, mark_at = stream.mark(symbol)
+                        bid, ask, at = stream.quote(symbol)
                     except StreamUnavailable:
                         pass
-                bid = ask = at = None
-                try:
-                    bid, ask, at = stream.quote(symbol)
-                except StreamUnavailable:
-                    pass
                 if mark is None and bid is None:
                     return False
                 if (mark is not None and
@@ -807,6 +923,7 @@ class MarketDataHub:
                     "retCode": 0, "retMsg": "OK",
                     "_bcc_ws_quote": bid is not None,
                     "_bcc_ws_mark": mark is not None,
+                    "_bcc_ws_connection_fence": connection_fence,
                     "_bcc_ws_mark_at": int(mark_at * 1000) if mark is not None else None,
                     "time": int((at if bid is not None else mark_at) * 1000),
                     "result": {"list": [row]},
@@ -815,19 +932,39 @@ class MarketDataHub:
                 # discarding otherwise fresh independent quote/mark clocks.
                 ttl = 1.5
             elif kind == "kline1":
-                candle = stream.get_candle(symbol)
-                stamp = candle.message_ms / 1000
-                if not -5 <= market_now() - stamp <= 10:
+                final_reader = getattr(stream, "get_confirmed_candles", None)
+                closed = (final_reader(symbol)
+                          if getattr(self.source.shared, "central_closed_history", False)
+                          and callable(final_reader) else [])
+                candle = None
+                try:
+                    current = stream.get_candle(symbol)
+                    if -5 <= market_now() - current.message_ms / 1000 <= 10:
+                        candle = current
+                except StreamUnavailable:
+                    pass
+                if candle is None and not closed:
                     return False
-                value = {
-                    "retCode": 0, "retMsg": "OK", "_bcc_ws_kline": True,
-                    "time": candle.message_ms,
-                    "result": {"list": [[
-                        str(candle.start_ms), str(candle.open), str(candle.high),
-                        str(candle.low), str(candle.close), str(candle.volume),
-                        "0",
-                    ]]},
-                }
+                if candle is None:
+                    # Historical evidence must not republish an expired
+                    # forming candle. Only the separate minute key is written.
+                    value = {"retCode": 0, "_bcc_ws_kline": True,
+                             "_bcc_ws_closed_only": True,
+                             "time": max(row["confirmed_ms"] for row in closed),
+                             "result": {"list": []}}
+                else:
+                    value = {
+                        "retCode": 0, "retMsg": "OK", "_bcc_ws_kline": True,
+                        "_bcc_ws_kline_confirmed": getattr(candle, "confirmed", False) is True,
+                        "time": candle.message_ms,
+                        "result": {"list": [[
+                            str(candle.start_ms), str(candle.open), str(candle.high),
+                            str(candle.low), str(candle.close), str(candle.volume),
+                            "0",
+                        ]]},
+                    }
+                if closed:
+                    value["_bcc_ws_finalized_minutes"] = closed
                 ttl = .75
             else:
                 book = stream.get_orderbook(symbol)
@@ -859,26 +996,80 @@ class MarketDataHub:
     def publish_ws_event(self, kind, symbol):
         return self.publish_ws_events([(kind, symbol)])[0]
 
+    def ws_publication_stats(self):
+        """Aggregate WS admission and SQLite persistence; no market payloads."""
+        with self._ws_publication_lock:
+            return dict(self._ws_publication_stats)
+
     def publish_ws_events(self, events):
-        """Read latest stream states, then publish one bounded SQLite cohort."""
+        """Publish genuine independent WS snapshots and classify failures.
+
+        Instrumentation cannot extend cache TTL, alter original exchange
+        timestamps, change subscription admission or bypass the leader lease.
+        """
         if type(events) not in (list, tuple) or len(events) > 64:
             raise ValueError("Invalid WS event batch")
-        # Bind preparation and commit to the same producer incarnation.
-        token = self._leader_token
-        prepared = [self._prepare_ws_event(kind, symbol) for kind, symbol in events]
-        valid = [(index, row) for index, row in enumerate(prepared) if row]
-        result = [False] * len(events)
-        if not valid or not token or token != self._leader_token:
-            return result
-        from .data_cache import CacheBusy
+        start = time.monotonic()
+        valid = []
+        results = [False] * len(events)
+        prepare_seconds = commit_seconds = 0.0
+        busy = unexpected = rejected_leader = 0
         try:
-            outcomes = self.source.shared.publish_websockets(
-                [row for _, row in valid], leader_owner=self.owner, leader_token=token)
-        except CacheBusy:
-            return result
-        for (index, _), outcome in zip(valid, outcomes):
-            result[index] = outcome
-        return result
+            token = self._leader_token
+            prepared = [self._prepare_ws_event(kind, symbol) for kind, symbol in events]
+            valid = [(index, row) for index, row in enumerate(prepared) if row]
+            prepare_seconds = time.monotonic() - start
+            if valid and (not token or token != self._leader_token):
+                rejected_leader = len(valid)
+            elif valid:
+                from .data_cache import CacheBusy
+                commit_start = time.monotonic()
+                try:
+                    outcomes = self.source.shared.publish_websockets(
+                        [row for _, row in valid], leader_owner=self.owner,
+                        leader_token=token)
+                except CacheBusy as exc:
+                    busy = len(valid)
+                    from .data_cache import CacheContention
+                    if (getattr(self.source.shared, "central_closed_history", False)
+                            and isinstance(exc, CacheContention) and self._ws_dispatcher is not None):
+                        # Re-read current exchange evidence on retry. Never
+                        # replay stale payloads or extend original prices.
+                        for index, _ in valid:
+                            self._ws_dispatcher.notify(*events[index])
+                else:
+                    for (index, record), outcome in zip(valid, outcomes):
+                        results[index] = outcome
+                        rows = record["value"].get("_bcc_ws_finalized_minutes")
+                        if outcome and rows:
+                            self._finalized_published[events[index][1]] = tuple(
+                                (row["t"], row["confirmed_ms"]) for row in rows)
+                finally:
+                    commit_seconds = time.monotonic() - commit_start
+            return results
+        except BaseException:
+            unexpected = 1
+            raise
+        finally:
+            successes = sum(outcome is True for outcome in results)
+            with self._ws_publication_lock:
+                s = self._ws_publication_stats
+                s['batches'] += 1
+                s['events_seen'] += len(events)
+                s['prepared'] += len(valid)
+                s['published'] += successes
+                if not unexpected:
+                    s['rejected_source'] += len(events) - len(valid)
+                s['rejected_leader'] += rejected_leader
+                s['rejected_store'] += len(valid) - successes - rejected_leader
+                s['sqlite_busy'] += busy
+                s['unexpected_errors'] += unexpected
+                s['max_prepare_seconds'] = round(max(
+                    s['max_prepare_seconds'], prepare_seconds), 6)
+                s['max_commit_seconds'] = round(max(
+                    s['max_commit_seconds'], commit_seconds), 6)
+                s['max_batch_seconds'] = round(max(
+                    s['max_batch_seconds'], time.monotonic() - start), 6)
 
     def _websocket_queue_exclusions(self):
         routes = []
@@ -897,6 +1088,83 @@ class MarketDataHub:
     def set_ws_dispatcher(self, dispatcher):
         self._ws_dispatcher = dispatcher
         self._ws_subscription_scan_due = 0.
+
+    def _schedule_minute_repairs(self, symbols):
+        """One proactive, canonical REST request per missing closed minute.
+
+        The normal REST history pool executes the request with its original
+        provider budget, denial and HTTP ownership checks. No direct network
+        operation is performed on the WS subscription/control thread.
+        """
+        from .market_clock import ClockUnavailable, market_now
+        from .hub_minute_repair import schedule
+        try:
+            now_ms = int(market_now()*1000)
+        except ClockUnavailable:
+            return  # No verified minute; leave all outstanding demand intact.
+        boundary = now_ms//60000*60000
+        if now_ms-boundary < 1500:
+            return
+        if self._repair_boundary != boundary:
+            self._repair_boundary = boundary
+            self._repair_seen.clear()
+        pending = sorted(set(symbols)-self._repair_seen)
+        if pending:
+            from .data_cache import CacheContention
+            try:
+                self.source.shared._ensure_schema()
+            except CacheContention:
+                return  # Retry subscription scan; no market evidence admitted.
+        for offset in range(0,len(pending),64):
+            jobs = pending[offset:offset+64]
+            with self.registry._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                try:
+                    now_ms = int(market_now()*1000)
+                except ClockUnavailable:
+                    db.rollback()
+                    return
+                if now_ms//60000*60000 != boundary:
+                    db.rollback()
+                    return
+                # Refusals are never bypassed, including by scheduling.
+                from .data_cache import PublicCache
+                if PublicCache._denied(db,"api.bybit.com") is not None:
+                    return
+                added = schedule(db,jobs,boundary-60000,time.time(),now_ms,
+                    owner=self.owner,token=self._leader_token,boot=self.registry._boot_epoch())
+                if added is None:
+                    return
+                db.commit()
+            self._repair_seen.update(jobs)
+            self._repair_scheduled += len(added)
+
+    def _renew_ticker_demand_from_history(self):
+        """Lease-fenced batch preparation of marks for already active history."""
+        from .ws_ticker_demand import renew_tickers
+        from .data_cache import PublicCache, CacheBusy
+        if self._leader_token is None:
+            return 0
+        try:
+            self.source.shared._ensure_schema()
+            with self.registry._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                if PublicCache._denied(db,"api.bybit.com") is not None:
+                    return 0
+                changed = renew_tickers(db,now=time.time(),owner=self.owner,
+                    token=self._leader_token,boot=self.registry._boot_epoch(),
+                    identity=self.registry.identity)
+                if changed is None:
+                    return 0
+                db.commit()
+            self._derived_ticker_renewals += changed
+            return changed
+        except CacheBusy:
+            return 0
+        except sqlite3.OperationalError as exc:
+            if any(word in str(exc).lower() for word in ("locked","busy")):
+                return 0
+            raise
 
     def subscribe_active_websockets(self):
         """Pre-register every demanded symbol on the shared WS producers."""
@@ -922,13 +1190,21 @@ class MarketDataHub:
         if now < self._ws_subscription_scan_due:
             return
         self._ws_subscription_scan_due = now + 1.0
+        if (ticker is not None and os.environ.get("BCC_BYBIT_SHARDED_TICKERS_CANDIDATE")=="1"
+                and now>=self._ticker_demand_due):
+            self._ticker_demand_due = now + 10.
+            self._renew_ticker_demand_from_history()
         prioritize_marks = getattr(ticker, "set_priority_symbols", None)
-        if self._ws_dispatcher is not None or callable(prioritize_marks):
+        prioritize_books = getattr(orderbook, "set_priority_symbols", None)
+        if (self._ws_dispatcher is not None or callable(prioritize_marks)
+                or callable(prioritize_books)):
             active, priority = self.registry.stream_demand()
             if self._ws_dispatcher is not None:
                 self._ws_dispatcher.configure(active, priority)
             if callable(prioritize_marks):
                 prioritize_marks([symbol for kind, symbol in priority if kind == "tickers"])
+            if callable(prioritize_books):
+                prioritize_books([symbol for kind, symbol in priority if kind == "depth50"])
         ticker = getattr(self.source, "_quote_stream", None)
         orderbook = getattr(self.source, "_orderbook_stream", None)
         kline = getattr(self.source, "_kline_stream", None)
@@ -994,8 +1270,25 @@ class MarketDataHub:
                     kline.sync_symbols(valid_klines)
                 else:
                     kline.subscribe(valid_klines)
+                # A quiet symbol may send its final message just before the
+                # conservative local closing boundary. Revisit uncommitted
+                # final evidence during the existing subscription scan.
+                reader = getattr(kline, "get_confirmed_candles", None)
+                if (getattr(self.source.shared, "central_closed_history", False)
+                        and self._ws_dispatcher is not None and callable(reader)):
+                    active = set(valid_klines)
+                    for old in tuple(self._finalized_published):
+                        if old not in active:
+                            self._finalized_published.pop(old, None)
+                    for symbol in valid_klines:
+                        rows = reader(symbol)
+                        identity = tuple((row["t"], row["confirmed_ms"]) for row in rows)
+                        if identity and identity != self._finalized_published.get(symbol):
+                            self._ws_dispatcher.notify("kline1", symbol)
             except (ValueError, StreamUnavailable):
                 pass
+            if getattr(self.source.shared,"central_repair",False):
+                self._schedule_minute_repairs(valid_klines)
         if binance is not None:
             try:
                 binance.subscribe(sorted(self.registry.active_binance_symbols()))
@@ -1021,10 +1314,29 @@ class MarketDataHub:
         """
         context = getattr(self.source, '_thread', None)
         previous = getattr(context, 'position_mark', False) if context is not None else False
+        # The Hub queue has two urgent classes, not one HTTP privilege.
+        # Held-position kline history may outrank cold scans in scheduling,
+        # but it MUST NOT consume PublicCache's reserved Bybit financial
+        # mark/risk request budget. A history request is never a mark.
+        financial_priority = bool(
+            urgent and url != 'https://api.bybit.com/v5/market/kline'
+        )
         if context is not None:
-            context.position_mark = bool(urgent)
+            context.position_mark = financial_priority
         try:
-            return self.source.get(url, params=params)
+            result = self.source.get(url, params=params)
+            if (getattr(self.source.shared,"central_repair",False)
+                    and url=="https://api.bybit.com/v5/market/kline"
+                    and type(params) is dict and params.get("interval")=="1"
+                    and params.get("limit")==1 and type(params.get("end")) is int
+                    and (params["end"]+1)%60000==0):
+                from .market_clock import market_now
+                from .hub_minute_repair import rest_minute
+                if rest_minute(result,params["symbol"],params["end"]-59999,
+                               int(market_now()*1000)) is not None:
+                    with self._ws_publication_lock:
+                        self._repair_completed += 1
+            return result
         finally:
             if context is not None:
                 context.position_mark = previous
@@ -1049,7 +1361,23 @@ class MarketDataHub:
         return "lost_leader"
 
     def _refresh_delay(self, url, params, *, failed=False):
+        # A complete historical GET is a one-shot response to a real caller,
+        # not a perpetual one-second poll. Re-arm only from a NEW client
+        # request_once(). Failed requests retain the ordinary bounded retry
+        # while the client is still waiting and the lease is active.
+        if (not failed and url == 'https://api.bybit.com/v5/market/kline'
+                and type(params) is dict and params.get('category') == 'linear'
+                and params.get('interval') == '1'):
+            return 3600.
         delay = 2. if failed else 120. if '/risk-limit' in url else .25 if 'orderbook' in url or '/book' in url else 1.
+        cap = delay
+        if not failed and self._history_pool is not None:
+            # Only an existing cache row proves a long metadata deadline.
+            # Missing rows keep the original short retry interval.
+            if '/instruments-info' in url:
+                cap = 3600.
+            elif '/funding/history' in url:
+                cap = 60.
         remaining = getattr(getattr(self.source,'shared',None),'remaining_ttl',None)
         if failed or not callable(remaining):
             return delay
@@ -1061,7 +1389,7 @@ class MarketDataHub:
                 return delay  # Legacy/custom adapters may not publish a row.
             # Rechecking cached risk data must not postpone its real renewal
             # for another whole poll interval after that cache has expired.
-            return max(.05,min(delay,ttl+.025))
+            return max(.05,min(cap,ttl+.025))
         except (CacheBusy,ProviderDenied):
             return min(delay,2.)
 
@@ -1188,7 +1516,7 @@ class MarketDataHub:
             keeper.join(timeout=2)
         return results
 
-    def poll_nonblocking(self):
+    def poll_nonblocking(self, *, market_ready=True):
         """Run one short producer scheduling turn without awaiting slow HTTP.
 
         A slow regular request must not delay urgent marks on free workers.
@@ -1197,7 +1525,7 @@ class MarketDataHub:
         Only the Hub service uses this method; run_once stays synchronous for
         deterministic offline tests and existing integrations.
         """
-        if self._pool is None:
+        if self._pool is None and market_ready:
             return self.run_once()
         now = time.monotonic()
         if now >= self._leader_check_due:
@@ -1214,17 +1542,22 @@ class MarketDataHub:
             # always be cancelled; its single-flight cache lease is separate.
             return []
 
+        # Keep the leadership lease alive during a clock outage. Do not
+        # admit new market work, acknowledge old futures, or invent a time
+        # boundary. Completed HTTP jobs remain accounted for until recovery.
+        if not market_ready:
+            return []
         self._maintain_registry()
         self.subscribe_active_websockets()
         results = []
         for key, (future, url, is_urgent, launched_token, generation, params) in list(self._inflight.items()):
             if not future.done():
                 continue
-            del self._inflight[key]
             # A task launched under an earlier lease must not acknowledge
             # subscriptions after the producer loses and regains leadership.
             # Keep it accounted for until completion to bound HTTP concurrency.
             if launched_token != self._leader_token:
+                del self._inflight[key]
                 continue
             try:
                 error = future.result()
@@ -1234,11 +1567,20 @@ class MarketDataHub:
                 key, self._refresh_delay(url,params,failed=error is not None), str(error) if error is not None else "",
                 token=launched_token, generation=generation,
             )
+            # A busy writer must not forget a finished HTTP request before
+            # acknowledging its original generation. Retain the future if
+            # _acknowledge raises; the next poll retries only the SQL ACK.
+            del self._inflight[key]
             if outcome == "lost_leader":
                 self._leader_held = False
                 return results
             if outcome == "acknowledged":
                 results.append((key, error is None))
+
+        if self._history_pool is not None:
+            from .hub_rest_lanes import admit_rest_lanes
+            admit_rest_lanes(self)
+            return results
 
         free = self.max_workers - len(self._inflight)
         if free <= 0:
@@ -1263,19 +1605,38 @@ class MarketDataHub:
         urgent_inflight = len(self._inflight) - regular_inflight
         urgent_available = any(item[3] for item in available)
         regular_available = any(not item[3] for item in available)
+        # Three independent obligations must coexist under mixed load:
+        # (1) financial mark/risk work, (2) two background candle lanes on
+        # a six-worker Hub, (3) a free slot for the NEXT financial request.
+        # The original cap of four urgent + two regular filled all six;
+        # adding a physical reserve later left only ONE regular lane.
+        # Hold urgent admissions at 6-2-1=3 while regular work is waiting.
+        # With a two-worker pool no spare slot is mathematically possible:
+        # share one financial + one regular instead.
+        urgent_mix_limit = max(
+            1, self.max_workers - regular_reserve
+            - int(self.max_workers > 2)
+        )
         for key, url, params, is_urgent, generation in available:
             if free <= 0:
                 break
             if (is_urgent and regular_available
                     and regular_inflight < regular_reserve
-                    and urgent_inflight >= self.max_workers - regular_reserve):
+                    and urgent_inflight >= urgent_mix_limit):
                 continue
             if (not is_urgent and regular_inflight >= regular_reserve
                     and urgent_available):
                 continue
-            # Even with no urgent work right now, reserve one physical slot
-            # for the NEXT position mark. A SQL reservation alone cannot
-            # pre-empt an already executing 8-second public HTTP request.
+            # The queue may mark held-position candle history urgent, but
+            # that is NOT financial mark/tier authority. Slow candle HTTP
+            # must not fill the last producer slot before an independent
+            # risk-tier or executable-market request arrives. Preserve one
+            # physical slot for those requests when a parallel pool exists.
+            # This does not stop single-worker Hub progress.
+            financial_urgent = (is_urgent and
+                url != 'https://api.bybit.com/v5/market/kline')
+            if self.max_workers > 2 and free == 1 and not financial_urgent:
+                continue
             if not is_urgent and regular_inflight >= self.max_workers - 1:
                 continue
             def fetch(request_url=url, request_params=params, urgent=is_urgent):
@@ -1292,6 +1653,8 @@ class MarketDataHub:
         return results
 
     def close(self):
+        if self._history_pool is not None:
+            self._history_pool.shutdown(wait=True, cancel_futures=True)
         if self._pool is not None:
             self._pool.shutdown(wait=True, cancel_futures=True)
         if self._leader_token:

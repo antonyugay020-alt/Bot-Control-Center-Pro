@@ -711,14 +711,18 @@ def validate(cfg):
     if type(cfg.get("stop_after_deals")) is not bool:
         raise ValueError("Завершение после сделок")
     symbols = cfg.get("symbols")
-    if not isinstance(symbols, list) or not 1 <= len(symbols) <= 5000:
-        raise ValueError("Выберите от 1 до 5000 торговых пар")
+    # Symbol count is a resource/admission problem, not a strategy schema
+    # limit. Actual exchange inventory, fair scheduling and source freshness
+    # decide what can be serviced; never silently truncate an operator list.
+    if not isinstance(symbols, list) or not symbols:
+        raise ValueError("Выберите хотя бы одну торговую пару")
     if any(not isinstance(x, str) for x in symbols):
         raise ValueError("Торговые пары должны быть строками")
-    seen, repeated = set(), []
+    seen, repeated, duplicate_set = set(), [], set()
     for symbol in symbols:
-        if symbol in seen and symbol not in repeated:
+        if symbol in seen and symbol not in duplicate_set:
             repeated.append(symbol)
+            duplicate_set.add(symbol)
         seen.add(symbol)
     if repeated:
         raise ValueError("Повторяющиеся торговые пары: " + ", ".join(repeated[:10]))

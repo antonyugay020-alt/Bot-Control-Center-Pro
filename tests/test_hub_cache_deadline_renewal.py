@@ -52,7 +52,11 @@ def test_each_hub_mode_rechecks_at_real_expiry_and_then_obtains_new_metadata(tmp
         assert run()==[(key,True)] and not calls
         with hub.registry._connect() as db:
             due=db.execute('SELECT next_due FROM hub_subscriptions WHERE k=?',(key,)).fetchone()[0]
-        assert 6.7<due-time.time()<7.1
+        with source.shared.read_db() as db:
+            expires=db.execute('SELECT until FROM cache WHERE k=?',(key,)).fetchone()[0]
+        # Test the actual absolute cache deadline instead of time already
+        # consumed by cold startup and Windows scheduling.
+        assert expires-.1 <= due <= expires+.5
         assert source.shared.read_fresh(url,PARAMS,'api.bybit.com')['time']==old
         with source.shared.db() as db:db.execute('UPDATE cache SET until=0 WHERE k=?',(key,))
         with hub.registry._connect() as db:db.execute('UPDATE hub_subscriptions SET next_due=0 WHERE k=?',(key,))

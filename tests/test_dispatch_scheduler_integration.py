@@ -87,3 +87,54 @@ def test_zero_period_does_not_resubmit_fast_symbol_during_slow_sibling():
     finally:
         release_slow.set()
         scheduler.close()
+
+
+def test_history_lane_respects_explicit_risk_transport_capability():
+    """No fallback may override an explicit opt-out; native and legacy stay enabled."""
+    class Source:
+        def __init__(self, enabled):
+            self.enabled = enabled
+            self.calls = []
+
+        def candles(self, symbol, required):
+            return [{"symbol": symbol}]
+
+        def funding(self, symbol):
+            return []
+
+        def refresh_position_risk(self, symbol):
+            self.calls.append(symbol)
+            return {"symbol": symbol, "risk_at": 1.}
+
+        def risk_maintenance_enabled(self):
+            return self.enabled
+
+    for enabled, independent, expected in ((False, False, 0),
+                                            (True, False, 1),
+                                            (True, True, 0)):
+        source = Source(enabled)
+        sched = MarketScheduler(source, {"symbols": ["BTCUSDT"]},
+                                lambda *a: 20, workers=1)
+        try:
+            sched._risk_refresh_independent = independent
+            tick = sched._fetch("BTCUSDT", 20, [0], urgent=True, history_only=True)
+            assert tick.bars and not tick.history_error
+            assert len(source.calls) == expected
+            assert (tick.margin_data is not None) == bool(expected)
+        finally:
+            sched.close()
+
+    # Third-party adapters that do not define the capability retain the
+    # original explicit risk-reader behavior.
+    source = Source(True)
+    source.risk_maintenance_enabled = lambda: True
+    class Legacy:
+        candles = source.candles
+        funding = source.funding
+        refresh_position_risk = source.refresh_position_risk
+    sched = MarketScheduler(Legacy(), {"symbols": ["BTCUSDT"]}, lambda *a: 20, workers=1)
+    try:
+        tick = sched._fetch("BTCUSDT",20,[0],urgent=True,history_only=True)
+        assert source.calls == ["BTCUSDT"] and tick.margin_data["symbol"] == "BTCUSDT"
+    finally:
+        sched.close()

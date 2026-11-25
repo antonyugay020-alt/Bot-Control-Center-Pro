@@ -5,6 +5,7 @@ long-lived WS topics, while existing-position mark requests remain urgent.
 """
 from types import SimpleNamespace
 from pathlib import Path
+import os
 
 import pytest
 
@@ -23,9 +24,22 @@ RISK = "https://api.bybit.com/v5/market/risk-limit"
 class SharedView:
     def __init__(self, path):
         self.path = Path(path)
+        self._kline_reads = {}
 
     def read_fresh(self, url, params, host):
-        # Synthetic cache only. Real producer policies are tested separately.
+        # Synthetic cache only. A historical REST get now skips Hub writes
+        # when a shared snapshot already exists, so model the *actual*
+        # missing-history path with one miss followed by producer delivery.
+        # Exact WS 10-row tails remain continuously streamed, not REST.
+        rest_kline = (url == KLINE and
+                      (params.get("limit") != 10 or
+                       os.environ.get("BCC_BYBIT_WS_KLINES") != "1"))
+        if rest_kline:
+            key = tuple(sorted(params.items()))
+            n = self._kline_reads.get(key, 0) + 1
+            self._kline_reads[key] = n
+            if n % 2:
+                return None
         return dict(retCode=0, _bcc_ws_quote=True, _bcc_ws_mark=True,
                     _bcc_ws_book=True, _bcc_ws_kline=True)
 

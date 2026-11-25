@@ -248,8 +248,9 @@ def test_held_mark_recovers_ahead_of_background_without_relaxing_either_clock():
     assert socket.sent[-1]['args']==['tickers.ZZZUSDT']
     assert stream.refresh_stale_marks(['AAAUSDT','ZZZUSDT'])==0
     timer[0]+=.6
-    assert stream.refresh_stale_marks(['AAAUSDT','ZZZUSDT'])==2
-    assert socket.sent[-1]['args']==['tickers.ZZZUSDT','tickers.AAAUSDT']
+    assert stream.refresh_stale_marks(['AAAUSDT','ZZZUSDT'])==1
+    assert socket.sent[-1]['args']==['tickers.AAAUSDT']
+    assert stream.refresh_pressure()['pending_snapshot_topics']==2
     timer[0]+=.9  # Recovery requests alone never make an old mark fresh.
     with pytest.raises(StreamUnavailable):stream.mark('ZZZUSDT')
     with pytest.raises(StreamUnavailable):stream.quote('ZZZUSDT')

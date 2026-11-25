@@ -39,6 +39,11 @@ class PublicCache:
         self._ready = False
         self._setup_lock = threading.Lock()
         self._next_cleanup = 0
+        # Explicit isolated candidate only; legacy publishers keep their TTL.
+        self.bybit_ws_source_deadlines = False
+        self.split_history_lanes = False
+        self.central_closed_history = False
+        self.central_repair = False
         with self._guards_lock:
             self._guard = self._guards.setdefault(
                 str(self.path.resolve()), threading.RLock()
@@ -63,6 +68,7 @@ class PublicCache:
             "read_connections": 0,
             "read_operations": 0,
             "read_local_busy": 0,
+            "finalized_minutes_published": 0,
         }
 
     @staticmethod
@@ -379,8 +385,22 @@ class PublicCache:
 
     @staticmethod
     def _accepted_payload(host, value):
-        return not (host=='api.bybit.com' and isinstance(value,dict)
-                    and 'retCode' in value and value['retCode']!=0)
+        if host=='api.bybit.com' and isinstance(value,dict):
+            if 'retCode' in value and value['retCode']!=0:
+                return False
+            # A wall-clock adjustment or delayed reader may not prolong a
+            # deadline-marked WS envelope beyond its original exchange age.
+            if value.get('_bcc_ws_source_deadline') is True:
+                from .ws_source_deadline import remaining_bybit_ws_seconds
+                return remaining_bybit_ws_seconds(value) > 0
+        return True
+
+    @staticmethod
+    def _project_payload(host, value):
+        if host == 'api.bybit.com' and isinstance(value, dict) and value.get('_bcc_ws_split_ticker') is True:
+            from .ws_split_ticker import project_ticker
+            return project_ticker(value)[0]
+        return value if PublicCache._accepted_payload(host, value) else None
 
     @staticmethod
     def _cached(db, key, host, now):
@@ -393,8 +413,11 @@ class PublicCache:
         row = db.execute(
             "SELECT value,until FROM cache WHERE k=? AND host=?", (key, host)
         ).fetchone()
-        if row and row[1] > now and PublicCache._accepted_payload(host,json.loads(row[0])):
-            return row[0]
+        if row and row[1] > now:
+            raw = json.loads(row[0])
+            projected = PublicCache._project_payload(host, raw)
+            if projected is not None:
+                return row[0] if projected is raw else json.dumps(projected, allow_nan=False)
         cooldown = db.execute(
             "SELECT until FROM cooldown WHERE host=?", (host,)
         ).fetchone()
@@ -418,16 +441,23 @@ class PublicCache:
                 (key, host, time.time()),
             ).fetchone()
         value = json.loads(row[0]) if row else None
-        return value if self._accepted_payload(host,value) else None
+        return self._project_payload(host, value)
 
-    def read_fresh_many(self, requests, host):
+    def read_fresh_many(self, requests, host, *, include_rest_marks=False):
         """One read snapshot for a portfolio; no HTTP, leases or budget debit."""
+        if type(include_rest_marks) is not bool or (include_rest_marks and host != 'api.bybit.com'):
+            raise ValueError('Invalid REST mark snapshot request')
         from .market import PublicData
         keys = []
         for url, params in requests:
             if PublicData.validated_public_request(url, params) != host:
                 raise ValueError("mixed cache hosts")
             keys.append(hashlib.sha256(json.dumps([url, params], sort_keys=True).encode()).hexdigest())
+        if include_rest_marks:
+            from .rest_mark_fallback import KEY, enabled
+            if not enabled():
+                raise ValueError('REST mark fallback is not enabled')
+            keys.append(KEY)
         if not keys:
             return []
         self._ensure_schema()
@@ -450,7 +480,44 @@ class PublicCache:
             finally:
                 db.rollback()
         values = [json.loads(rows[key]) if key in rows else None for key in keys]
-        return [value if self._accepted_payload(host,value) else None for value in values]
+        return [self._project_payload(host, value) for value in values]
+
+    def read_closed_cohort(self, requests):
+        """One read snapshot across all missing finalized portfolio minutes."""
+        from .closed_cohort import read_tails
+        from .market_clock import market_now
+        self._ensure_schema()
+        with self.read_db() as db:
+            db.execute("BEGIN")
+            try:
+                status = self._denied(db, "api.bybit.com")
+                if status is not None:
+                    raise ProviderDenied("api.bybit.com", status)
+                return read_tails(db, requests, time.time(), int(market_now()*1000))
+            finally:
+                db.rollback()
+
+    def read_closed_minutes(self, symbol, starts, *, include_rest=False):
+        """Read exact finalized minutes under the existing provider fence."""
+        from .closed_minutes import read, HOST
+        from .market_clock import market_now
+        self._ensure_schema()
+        with self.read_db() as db:
+            db.execute("BEGIN")
+            status = self._denied(db, HOST)
+            if status is not None:
+                raise ProviderDenied(HOST, status)
+            now, now_ms = time.time(), int(market_now()*1000)
+            rows = read(db, symbol, starts, now, now_ms)
+            if include_rest:
+                from .hub_minute_repair import cached_repair
+                found = {row["t"] for row in rows}
+                for start in starts:
+                    if start not in found:
+                        repaired = cached_repair(db,symbol,start,now,now_ms)
+                        if repaired is not None:
+                            rows.append(repaired)
+            return sorted(rows,key=lambda row:row["t"])
 
     def remaining_ttl(self, url, params, host):
         """Read the actual residence deadline; a cache hit never renews it."""
@@ -517,8 +584,11 @@ class PublicCache:
                   "_bcc_ws_book" if url.endswith("/orderbook") else
                   "_bcc_ws_kline" if url.endswith("/kline") else
                   "_bcc_ws_quote")
+        from .ws_split_ticker import empty_split_ticker
+        revoke = (bybit and url.endswith("/tickers")
+                  and empty_split_ticker(value, params["symbol"]))
         if (type(value) is not dict or
-                (value.get(marker) is not True and not (
+                (not revoke and value.get(marker) is not True and not (
                     bybit and url.endswith("/tickers") and
                     value.get("_bcc_ws_mark") is True))):
             raise ValueError("Unverified WS payload provenance")
@@ -557,7 +627,48 @@ class PublicCache:
                 or type(leader_owner) is not str or not leader_owner
                 or type(leader_token) is not str or not leader_token):
             raise ValueError("Invalid WS publication batch")
-        encoded = [self._websocket_record(**record) for record in records]
+        if any(isinstance(record.get('value'), dict)
+               and record['value'].get('_bcc_ws_split_ticker') is True
+               and (not self.bybit_ws_source_deadlines
+                    or record.get('url') != 'https://api.bybit.com/v5/market/tickers'
+                    or record.get('host') != 'api.bybit.com') for record in records):
+            raise ValueError('Split ticker requires admitted candidate publisher')
+        # Finalized history is prevalidated outside the shared writer and
+        # committed only with the original active kline subscription. It is
+        # NOT a new public route or HTTP lease.
+        from .closed_minutes import prepare as prepare_closed, publish as publish_closed
+        from .market_clock import market_now
+        encoded, finalized = [], []
+        for record in records:
+            value = record["value"]
+            closed = value.get("_bcc_ws_finalized_minutes") if isinstance(value, dict) else None
+            only = value.get("_bcc_ws_closed_only", False) if isinstance(value, dict) else False
+            if closed is not None or only:
+                if (not self.central_closed_history or record["url"] !=
+                        "https://api.bybit.com/v5/market/kline"
+                        or record["host"] != "api.bybit.com"
+                        or type(only) is not bool or value.get("_bcc_ws_kline") is not True):
+                    raise ValueError("Unadmitted finalized minute publication")
+                # Drop evidence that aged beyond the bounded historical
+                # window while waiting in the publication queue. Other
+                # market rows in this cohort must not fail because of it.
+                prepared = []
+                if type(closed) is not list or len(closed) > 3:
+                    raise ValueError("Invalid finalized minute batch")
+                for row in closed:
+                    try:
+                        prepared.extend(prepare_closed([row], record["params"]["symbol"],
+                                                       int(market_now()*1000)))
+                    except ValueError:
+                        continue
+                payload = dict(value)
+                payload.pop("_bcc_ws_finalized_minutes", None)
+                payload.pop("_bcc_ws_closed_only", None)
+                encoded.append(self._websocket_record(**dict(record, value=payload)))
+                finalized.append((prepared, only))
+            else:
+                encoded.append(self._websocket_record(**record))
+                finalized.append(([], False))
         if not encoded:
             return []
         self._ensure_schema()
@@ -575,23 +686,115 @@ class PublicCache:
                 db.rollback()
                 return [False] * len(encoded)
             outcomes = []
-            for key, url, params, host, value, ttl in encoded:
-                subscribed = db.execute(
-                    "SELECT 1 FROM hub_subscriptions WHERE k=? "
-                    "AND active_until>? AND url=? AND params=?",
-                    (key, now, url, params),
-                ).fetchone()
-                allowed = subscribed is not None and self._denied(db, host) is None
+            finalized_count = 0
+            # Same transaction, same lease and denial checks as before.
+            # One indexed subscription read per batch instead of per row.
+            if self.central_closed_history:
+                keys = list(dict.fromkeys(row[0] for row in encoded))
+                admitted_keys = set(db.execute(
+                    "SELECT k,url,params FROM hub_subscriptions WHERE active_until>? AND k IN ("
+                    + ",".join("?" for _ in keys) + ")", (now, *keys)).fetchall())
+                denied = {host: self._denied(db, host) for host in {row[3] for row in encoded}}
+            for (key, url, params, host, value, ttl), (closed, only) in zip(encoded, finalized):
+                if self.central_closed_history:
+                    allowed = (key, url, params) in admitted_keys and denied[host] is None
+                else:
+                    subscribed = db.execute(
+                        "SELECT 1 FROM hub_subscriptions WHERE k=? "
+                        "AND active_until>? AND url=? AND params=?",
+                        (key, now, url, params),
+                    ).fetchone()
+                    allowed = subscribed is not None and self._denied(db, host) is None
                 outcomes.append(allowed)
                 if allowed:
+                    if closed:
+                        finalized_count += publish_closed(db, closed, now)
+                    if only:
+                        outcomes[-1] = bool(closed)
+                        continue
+                    # A fresh bid/ask-only WS event must not destroy a still
+                    # valid genuine mark previously published on the SAME
+                    # socket incarnation. Both observations retain their
+                    # independent ORIGINAL exchange timestamps; no synthetic
+                    # value or cache freshness extension grants authority.
+                    split_ticker = (self.bybit_ws_source_deadlines and host == "api.bybit.com"
+                                    and url == "https://api.bybit.com/v5/market/tickers")
+                    if split_ticker:
+                        from .ws_split_ticker import project_ticker, empty_split_ticker
+                        raw = json.loads(value)
+                        symbol = json.loads(params)["symbol"]
+                        if empty_split_ticker(raw, symbol):
+                            db.execute("DELETE FROM cache WHERE k=? AND host=?", (key, host))
+                            continue
+                        candidate, ttl = project_ticker(raw, symbol=symbol)
+                        if candidate is None:
+                            outcomes[-1] = False
+                            continue
+                        value = json.dumps(candidate, allow_nan=False)
+                    elif url == "https://api.bybit.com/v5/market/tickers":
+                        candidate = json.loads(value)
+                        fence = candidate.get("_bcc_ws_connection_fence")
+                        if (candidate.get("_bcc_ws_quote") is True
+                                and candidate.get("_bcc_ws_mark") is False
+                                and type(fence) is str and len(fence) == 32):
+                            old = db.execute(
+                                "SELECT value FROM cache WHERE k=? AND host=? AND until>?",
+                                (key, host, now),
+                            ).fetchone()
+                            if old is not None:
+                                prior = json.loads(old[0])
+                                from .market_clock import book_is_fresh
+                                stamp = prior.get("_bcc_ws_mark_at")
+                                rows = prior.get("result", {}).get("list", [])
+                                if (prior.get("_bcc_ws_mark") is True
+                                        and prior.get("_bcc_ws_connection_fence") == fence
+                                        and type(stamp) is int and stamp > 0
+                                        and book_is_fresh(stamp / 1000)
+                                        and isinstance(rows, list) and len(rows) == 1
+                                        and isinstance(rows[0], dict)
+                                        and rows[0].get("symbol") == json.loads(params)["symbol"]):
+                                    try:
+                                        old_mark = float(rows[0]["markPrice"])
+                                    except (KeyError, TypeError, ValueError, OverflowError):
+                                        old_mark = float("nan")
+                                    if math.isfinite(old_mark) and old_mark > 0:
+                                        candidate["_bcc_ws_mark"] = True
+                                        candidate["_bcc_ws_mark_at"] = stamp
+                                        candidate["result"]["list"][0]["markPrice"] = str(old_mark)
+                                        value = json.dumps(candidate, allow_nan=False)
+                    if (self.bybit_ws_source_deadlines and host == "api.bybit.com"
+                            and url.endswith("/orderbook")):
+                        from .ws_source_deadline import remaining_bybit_ws_seconds
+                        candidate = json.loads(value)
+                        ttl = remaining_bybit_ws_seconds(candidate)
+                        if ttl <= 0:
+                            outcomes[-1] = False
+                            continue
+                        candidate['_bcc_ws_source_deadline'] = True
+                        value = json.dumps(candidate, allow_nan=False)
                     db.execute(
                         "INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
                         (key, value, now + ttl, host),
                     )
             db.commit()
+            self.stats["finalized_minutes_published"] += finalized_count
         return outcomes
 
-    def begin(self, url, params, host, *, priority=False, websocket=False):
+    def _mark_leader_valid(self, db, fence, now):
+        boot = self._boot_epoch()
+        return bool(db.execute(
+            "SELECT 1 FROM hub_leader WHERE singleton=1 AND owner=? AND lease_token=? "
+            "AND expires>? AND (boot_epoch=0 OR ?=0 OR abs(boot_epoch-?)<=60)",
+            (*fence, now, boot, boot)).fetchone())
+
+    def begin(self, url, params, host, *, priority=False, websocket=False, mark_leader=None):
+        if mark_leader is not None:
+            from .rest_mark_fallback import enabled, URL, HOST
+            if (not enabled() or websocket or url != URL or host != HOST
+                    or params != {'category':'linear'}
+                    or type(mark_leader) is not tuple or len(mark_leader)!=2
+                    or not all(type(v) is str and v for v in mark_leader)):
+                raise ValueError('Invalid leader-fenced bulk REST mark request')
         if type(priority) is not bool or type(websocket) is not bool:
             raise ValueError('Invalid public request reservation')
         if websocket:
@@ -620,18 +823,38 @@ class PublicCache:
         ).hexdigest()
         self._ensure_schema()
         owner = uuid.uuid4().hex
-        with self.db() as db:
-            # Cache hits are read-only. Only a miss reserves the writer for the
-            # atomic lease and host budget, then releases it before HTTP/JSON.
-            value = self._cached(db, key, host, time.time())
+        if self.split_history_lanes and mark_leader is None:
+            # Reuse a single read snapshot of the provider policy and cache
+            # row without occupying the local WS publication writer guard.
+            # Misses still recheck BOTH inside BEGIN IMMEDIATE below.
+            with self.read_db() as reader:
+                reader.execute("BEGIN")
+                value = self._cached(reader, key, host, time.time())
             if value is not None:
                 return key, None, json.loads(value)
+        with self.db() as db:
+            if not self.split_history_lanes and mark_leader is None:
+                value = self._cached(db, key, host, time.time())
+                if value is not None:
+                    return key, None, json.loads(value)
             db.execute("BEGIN IMMEDIATE")
             now = time.time()
-            value = self._cached(db, key, host, now)
-            if value is not None:
-                db.commit()
-                return key, None, json.loads(value)
+            if mark_leader is not None:
+                # Refresh a still-readable snapshot without expiring it,
+                # but never bypass the quota, cooldown, refusal or owner lease.
+                status = self._denied(db,host)
+                if status is not None:
+                    raise ProviderDenied(host,status)
+                if not self._mark_leader_valid(db,mark_leader,now):
+                    raise CacheBusy('REST mark refresh requires current Hub leadership')
+                cooldown = db.execute("SELECT until FROM cooldown WHERE host=?", (host,)).fetchone()
+                if cooldown and cooldown[0]>now:
+                    raise CacheBusy("Общий лимит запросов " + host)
+            else:
+                value = self._cached(db, key, host, now)
+                if value is not None:
+                    db.commit()
+                    return key, None, json.loads(value)
             lease = db.execute("SELECT until FROM lease WHERE k=?", (key,)).fetchone()
             if lease and lease[0] > now:
                 raise CacheBusy("Данные уже запрашиваются другим ботом")
@@ -745,7 +968,7 @@ class PublicCache:
             db.commit()
 
     def finish(self, key, owner, host, value=None, ttl=0, cooldown=0,
-               denial_status=None):
+               denial_status=None, *, mark_leader=None):
         """Return True only when this lease published its value to shared cache.
 
         A replaced lease or provider denial may discard a 200 HTTP response;
@@ -753,8 +976,24 @@ class PublicCache:
         """
         if owner is None:
             return False
-        if not self._accepted_payload(host,value):
+        if ((isinstance(value, dict) and value.get('_bcc_ws_split_ticker') is True)
+                or not self._accepted_payload(host,value)):
             value = None
+        # The dedicated compact key can only be produced by a successful
+        # budgeted bulk HTTP lease, with the same Hub generation at commit.
+        compact = None
+        if mark_leader is not None:
+            from .rest_mark_fallback import enabled, URL, HOST, build_snapshot
+            from .market_clock import book_is_fresh
+            expected = hashlib.sha256(json.dumps([URL,{'category':'linear'}],
+                                      sort_keys=True).encode()).hexdigest()
+            if (not enabled() or key!=expected or host!=HOST
+                    or type(mark_leader) is not tuple or len(mark_leader)!=2
+                    or not all(type(v) is str and v for v in mark_leader)):
+                raise ValueError('Invalid REST mark publication fence')
+            compact = build_snapshot(value,book_is_fresh)
+            if compact is None:
+                value = None
         # Serialization may be expensive for a long candle history. It must not
         # run while blocking every other bot's short write transaction.
         encoded = (
@@ -774,13 +1013,29 @@ class PublicCache:
                 # A second in-flight GET may complete after another request
                 # from the same host was rejected. Never publish that older
                 # response into the shared cache while the policy fence holds.
-                if encoded is not None and self._denied(db, host) is None:
-                    db.execute(
-                        "INSERT OR REPLACE INTO cache(k,value,until,host) "
-                        "VALUES(?,?,?,?)",
-                        (key, encoded, time.time() + ttl, host),
-                    )
-                    published = True
+                if (encoded is not None and self._denied(db, host) is None
+                        and (mark_leader is None
+                             or self._mark_leader_valid(db,mark_leader,time.time()))):
+                    # An aged response at the actual commit cannot replace
+                    # the previous still valid snapshot.
+                    publishable = True
+                    if compact is not None:
+                        from .rest_mark_fallback import KEY
+                        old = db.execute("SELECT value FROM cache WHERE k=? AND host=?",
+                                         (KEY,host)).fetchone()
+                        old_stamp = json.loads(old[0]).get("time",0) if old else 0
+                        publishable = (book_is_fresh(compact['time']/1000)
+                                       and (type(old_stamp) is not int or compact["time"] > old_stamp))
+                    if publishable:
+                        db.execute(
+                            "INSERT OR REPLACE INTO cache(k,value,until,host) "
+                            "VALUES(?,?,?,?)",
+                            (key, encoded, time.time() + ttl, host),
+                        )
+                        if compact is not None:
+                            db.execute("INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
+                                (KEY,json.dumps(compact,allow_nan=False),time.time()+3.,host))
+                        published = True
                 if cooldown:
                     db.execute(
                         "INSERT INTO cooldown VALUES(?,?) ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)",
@@ -790,8 +1045,19 @@ class PublicCache:
                     self._store_denial(db, host, cooldown, denial_status)
                 db.execute("DELETE FROM lease WHERE k=? AND owner=?", (key, owner))
                 if time.monotonic() >= self._next_cleanup:
-                    db.execute("DELETE FROM cache WHERE until<?", (time.time() - 120,))
-                    db.execute("DELETE FROM lease WHERE until<?", (time.time(),))
-                    self._next_cleanup = time.monotonic() + 30
+                    if self.split_history_lanes:
+                        # Bound stale-history garbage collection in the
+                        # shared writer transaction; defer the next chunk.
+                        n = db.execute("DELETE FROM cache WHERE k IN (SELECT k FROM cache "
+                                       "WHERE until<? ORDER BY until LIMIT 128)",
+                                       (time.time()-120,)).rowcount
+                        m = db.execute("DELETE FROM lease WHERE k IN (SELECT k FROM lease "
+                                       "WHERE until<? ORDER BY until LIMIT 128)",
+                                       (time.time(),)).rowcount
+                        self._next_cleanup = time.monotonic() + (.5 if max(n,m)==128 else 30.)
+                    else:
+                        db.execute("DELETE FROM cache WHERE until<?", (time.time() - 120,))
+                        db.execute("DELETE FROM lease WHERE until<?", (time.time(),))
+                        self._next_cleanup = time.monotonic() + 30
                 db.commit()
         return published

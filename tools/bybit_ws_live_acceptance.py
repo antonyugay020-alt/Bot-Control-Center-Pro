@@ -49,6 +49,16 @@ def _sample_pair(source, symbol, row):
         ('https://api.bybit.com/v5/market/tickers',
          {'category':'linear','symbol':symbol}),
     ], 'api.bybit.com')
+    # Only provenance/timing metadata, never prices, book sizes or credentials.
+    # When a bounded read fails the next report can distinguish a missing
+    # book from a quote-only replacement of a once-verified mark.
+    row['snapshot_flags'] = {
+        'book_cached': value is not None,
+        'ticker_cached': ticker is not None,
+        'mark_provenance': ticker.get('_bcc_ws_mark') is True if isinstance(ticker, dict) else False,
+        'quote_provenance': ticker.get('_bcc_ws_quote') is True if isinstance(ticker, dict) else False,
+        'generation_present': bool(ticker.get('_bcc_ws_connection_fence')) if isinstance(ticker, dict) else False,
+    }
     if value is None or ticker is None:
         raise DataUnavailable('Independent WS book/mark cache snapshot incomplete')
     _record_book(row, symbol, value)
@@ -74,33 +84,50 @@ def _record_book(row, symbol, value):
 
 def probe(source, symbol, *, require_mark=False, initial=False):
     started = time.monotonic()
-    row = {"symbol": symbol, "status": "FAIL"}
+    row = {"symbol": symbol, "status": "FAIL", "stage_seconds": {}}
+    # Measure each stage even on a successful but over-budget sample.
+    # Monotonic timings only: never collect prices, auth, or private caches.
+    def measure(name, operation):
+        before = time.monotonic()
+        try:
+            return operation()
+        finally:
+            durations = row["stage_seconds"]
+            durations[name] = round(
+                durations.get(name, 0) + time.monotonic() - before, 4
+            )
+
+    stage = 'initial_book_get'
     try:
         # Every process consuming raw cache observations needs its own vetted
         # UTC reference. The producer's clock is not inherited across a spawn.
-        clock.ensure()
+        measure('clock_ensure', clock.ensure)
         params = {"category": "linear", "symbol": symbol, "limit": 50}
-        value = source.get(URL, params)
+        value = measure('book_get', lambda: source.get(URL, params))
+        stage = 'independent_mark_get'
         if require_mark:
             deadline = (time.monotonic() + 4.0 if initial
                         else started + STEADY_READ_BUDGET)
             while True:
                 try:
-                    source._ws_position_mark(symbol)
+                    measure('mark_get', lambda: source._ws_position_mark(symbol))
                     break
                 except SourceAccessDenied:
                     raise
-                except DataUnavailable:
+                except DataUnavailable as exc:
+                    row['last_mark_failure'] = str(exc)[:160]
                     if time.monotonic() >= deadline or source.stop_event.is_set():
                         raise
                     time.sleep(min(.1, max(0., deadline - time.monotonic())))
             attempts = 0
+            stage = 'coherent_cache_pair'
             while True:
                 candidate = {}
                 attempts += 1
                 try:
-                    _sample_pair(source, symbol, candidate)
+                    measure('coherent_pair_read', lambda: _sample_pair(source, symbol, candidate))
                     row.update(candidate)
+                    row.pop('last_mark_failure', None)
                     break
                 except ProviderDenied as exc:
                     raise SourceAccessDenied(exc.host, exc.http_status) from exc
@@ -119,8 +146,12 @@ def probe(source, symbol, *, require_mark=False, initial=False):
             _record_book(row, symbol, value)
         row["status"] = "PASS"
     except Exception as exc:
+        row["failed_stage"] = stage
         row["error"] = f"{type(exc).__name__}: {exc}"[:400]
     row["received_in_seconds"] = round(time.monotonic() - started, 3)
+    # Includes retry waits and thread preemption not spent in measured calls.
+    row['unattributed_seconds'] = round(max(0.,
+        row['received_in_seconds'] - sum(row['stage_seconds'].values())), 4)
     return row
 
 

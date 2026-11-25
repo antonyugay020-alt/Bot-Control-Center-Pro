@@ -169,3 +169,104 @@ def test_fast_position_book_does_not_invent_risk_mark(monkeypatch):
         assert book["bids"] and book["asks"]
     finally:
         source.close()
+
+
+@pytest.mark.parametrize("warmup", [False, True])
+def test_quote_only_cache_waits_for_actual_mark_publication(tmp_path, monkeypatch, warmup):
+    """Real SQLite Hub -> mark consumer: first partial row is not terminal."""
+    c = Clock()
+    stream = BybitQuoteStream(max_age=2, wall=lambda: c.wall, monotonic=lambda: c.mono)
+    stream.subscribe("BTCUSDT")
+    generation = stream.connect()
+    producer = PublicData(quote_stream=stream)
+    path = tmp_path / "market_cache.sqlite"
+    hub = MarketDataHub(path, source=producer)
+    reader = None
+    try:
+        hub.registry.subscribe(TICKER, PARAMS)
+        assert hub.acquire_leadership()
+        assert feed(stream, c, generation, "snapshot", bid1Price="100", ask1Price="101")
+        assert hub.publish_ws_event("tickers", "BTCUSDT")
+        monkeypatch.setenv("BCC_PUBLIC_CACHE", str(path))
+        monkeypatch.setenv("BCC_MARKET_HUB_MODE", "client")
+        monkeypatch.setenv("BCC_BYBIT_WS_QUOTES", "1")
+        reader = PublicData()
+        monkeypatch.setattr(reader.session, "get", lambda *a, **k: pytest.fail("REST forbidden"))
+        first = reader.shared.read_fresh(TICKER, PARAMS, "api.bybit.com")
+        assert first["_bcc_ws_quote"] is True and first["_bcc_ws_mark"] is not True
+        calls = []
+        def deliver_on_wait(delay):
+            calls.append(delay)
+            assert len(calls) == 1, "consumer did not accept genuine mark publication"
+            c.wall = time.time()
+            c.mono = time.monotonic()
+            assert feed(stream, c, generation, "delta", markPrice="100.7")
+            assert hub.publish_ws_event("tickers", "BTCUSDT")
+            return False
+        monkeypatch.setattr(reader.stop_event, "wait", deliver_on_wait)
+        reader._thread.mark_subscription_warmup = warmup
+        observed = reader._ws_position_mark("BTCUSDT")
+        assert calls == [.05]
+        assert observed["bid"] == observed["ask"] == 100.7
+        assert observed["at"] == int(c.wall * 1000) / 1000
+        assert not reader._thread.mark_intent
+    finally:
+        if reader is not None:
+            reader.close()
+        hub.close()
+        producer.close()
+
+
+@pytest.mark.parametrize("outcome", ["timeout", "cancel", "denied", "unverified"])
+def test_partial_mark_wait_remains_bounded_and_fail_closed(tmp_path, monkeypatch, outcome):
+    from bcc.data_cache import ProviderDenied
+    from bcc.market import SourceAccessDenied
+    from bcc import market as market_module
+    from types import SimpleNamespace
+    from bcc.market_hub import HubRegistry
+
+    monkeypatch.setenv("BCC_MARKET_HUB_MODE", "client")
+    monkeypatch.setenv("BCC_BYBIT_WS_QUOTES", "1")
+    monkeypatch.delenv("BCC_PUBLIC_CACHE", raising=False)
+    reader = PublicData()
+    now = [1000.]
+    reads = []
+    waits = []
+    class PartialCache:
+        path = tmp_path / "isolated.sqlite"
+        def read_fresh(self, *args):
+            reads.append(args)
+            if outcome == "denied" and len(reads) > 1:
+                raise ProviderDenied("api.bybit.com", 403)
+            return dict(retCode=0, _bcc_ws_quote=outcome != "unverified",
+                        _bcc_ws_mark=False)
+        def close(self):
+            pass
+    class Registry:
+        def subscribe(self, url, params, **kwargs):
+            return HubRegistry.identity(url, params)[0]
+    reader.shared = PartialCache()
+    reader._hub_registry = Registry()
+    monkeypatch.setattr(market_module, "time", SimpleNamespace(
+        monotonic=lambda: now[0], time=time.time, sleep=time.sleep))
+    def wait(delay):
+        waits.append(delay)
+        now[0] += delay
+        if outcome == "cancel":
+            reader.stop_event.set()
+        return reader.stop_event.is_set()
+    monkeypatch.setattr(reader.stop_event, "wait", wait)
+    monkeypatch.setattr(reader.session, "get", lambda *a, **k: pytest.fail("REST forbidden"))
+    try:
+        with pytest.raises(SourceAccessDenied if outcome == "denied" else DataUnavailable):
+            reader._ws_position_mark("BTCUSDT")
+        if outcome == "timeout":
+            assert .8 <= now[0] - 1000. <= .86
+            assert 16 <= len(waits) <= 17
+        elif outcome in ("cancel", "denied"):
+            assert waits == [.05]
+        else:
+            assert waits == []
+        assert not reader._thread.mark_intent
+    finally:
+        reader.close()

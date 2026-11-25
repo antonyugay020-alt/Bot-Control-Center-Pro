@@ -196,21 +196,51 @@ def populate(t, rows, keys=None):
     item = t.item(t.currentRow(), 0)
     selected_key = item.data(Qt.ItemDataRole.UserRole) if item else None
     sorting = t.isSortingEnabled()
+    # Most market refreshes keep the SAME position/order identities and only
+    # change PnL or status. Rebuilding every QTableWidgetItem every 2 seconds
+    # turns thousands of live positions into a GUI allocation/sort bottleneck.
+    # Reuse existing cells by stable account keys, independent of visible sort.
+    # A changed identity set still takes the original full-rebuild path.
+    reused = False
+    positions = {}
+    if keys is not None and len(keys) == t.rowCount() and len(set(keys)) == len(keys):
+        for r in range(t.rowCount()):
+            first = t.item(r, 0)
+            key = first.data(Qt.ItemDataRole.UserRole) if first is not None else None
+            if key is None or key in positions:
+                break
+            positions[key] = r
+        if len(positions) == len(keys) and all(key in positions for key in keys):
+            reused = True
     t.setSortingEnabled(False)
-    t.clearSelection()
-    t.setCurrentCell(-1, -1)
-    t.clearContents()
-    t.setRowCount(len(rows))
-    for i, row in enumerate(rows):
-        for j, value in enumerate(row):
-            item = SortItem(str(value))
-            if keys is not None:
-                item.setData(Qt.ItemDataRole.UserRole, keys[i])
-            t.setItem(i, j, item)
+    if reused:
+        for key, row in zip(keys, rows):
+            i = positions[key]
+            for j, value in enumerate(row):
+                label = str(value)
+                cell = t.item(i, j)
+                if cell is None:
+                    cell = SortItem(label)
+                    cell.setData(Qt.ItemDataRole.UserRole, key)
+                    t.setItem(i, j, cell)
+                elif cell.text() != label:
+                    cell.setText(label)
+    else:
+        t.clearSelection()
+        t.setCurrentCell(-1, -1)
+        t.clearContents()
+        t.setRowCount(len(rows))
+        for i, row in enumerate(rows):
+            for j, value in enumerate(row):
+                item = SortItem(str(value))
+                if keys is not None:
+                    item.setData(Qt.ItemDataRole.UserRole, keys[i])
+                t.setItem(i, j, item)
     t.setSortingEnabled(sorting)
     if selected_key is not None:
         for i in range(t.rowCount()):
-            if t.item(i, 0).data(Qt.ItemDataRole.UserRole) == selected_key:
+            first = t.item(i, 0)
+            if first is not None and first.data(Qt.ItemDataRole.UserRole) == selected_key:
                 t.selectRow(i)
                 break
 

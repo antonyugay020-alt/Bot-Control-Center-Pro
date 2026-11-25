@@ -64,3 +64,59 @@ class EventHandoffTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_shared_hub_capacity_tracks_large_active_inventory_without_silent_drop():
+    # 12k symbols * ticker/depth = 24k active keys, even when thousands
+    # are held positions. No arbitrary 8192-event default may truncate them.
+    queue = MarketEventQueue()
+    active = {('depth50', f'S{i}USDT') for i in range(12000)}
+    active.update(('tickers', f'S{i}USDT') for i in range(12000))
+    priority = {('depth50', f'S{i}USDT') for i in range(1000)}
+    priority.update(('tickers', f'S{i}USDT') for i in range(1000))
+    queue.configure(active, priority)
+    assert queue.stats()['event_capacity'] == len(active)
+    assert queue.stats()['active_over_capacity'] == 0
+    for item in sorted(active):
+        assert queue.notify(*item)
+    assert queue.stats()['pending'] == len(active)
+    assert queue.stats()['dropped_notifications'] == 0
+    # Critical exposure messages are served before most discovery frames.
+    first = [queue.take(timeout=0) for _ in range(25)]
+    assert sum(item in priority for item in first) >= 23
+    assert queue.stats()['pending'] == len(active) - 25
+
+
+def test_shared_hub_capacity_shrinks_when_demand_retires():
+    queue = MarketEventQueue()
+    active = {('depth50', f'S{i}USDT') for i in range(15000)}
+    queue.configure(active)
+    assert queue.stats()['event_capacity'] == 15000
+    assert all(queue.notify(*item) for item in active)
+    retained = {('depth50', f'S{i}USDT') for i in range(50)}
+    queue.configure(retained)
+    stats = queue.stats()
+    assert stats['event_capacity'] == 8192
+    assert stats['pending'] == len(retained)
+    assert stats['filtered_inactive'] == 15000-50
+
+
+def test_explicit_small_queue_capacity_still_evicts_background_before_risk():
+    queue = MarketEventQueue(capacity=16)
+    scans = {('depth50', f'S{i}USDT') for i in range(16)}
+    hot = ('tickers', 'HELDUSDT')
+    queue.configure(scans | {hot}, {hot})
+    assert queue.stats()['event_capacity'] == 16
+    for item in scans: assert queue.notify(*item)
+    assert queue.notify(*hot)
+    assert queue.stats()['evicted_background'] == 1
+    assert queue.take(timeout=0) == hot
+
+
+def test_over_capacity_is_exposed_not_misreported_as_lossless():
+    queue = MarketEventQueue()
+    demand = {('tickers', f'S{i}USDT') for i in range(100010)}
+    queue.configure(demand)
+    status = queue.stats()
+    assert status['event_capacity'] == 100000
+    assert status['active_over_capacity'] == 10

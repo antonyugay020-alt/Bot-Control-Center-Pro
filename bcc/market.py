@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import re
+import sqlite3
 import threading
 import time
 from datetime import datetime, timezone
@@ -13,7 +14,7 @@ from urllib.parse import urlparse
 import requests
 
 from .data_cache import CacheBusy, CacheContention, ProviderDenied, PublicCache
-from .market_clock import book_is_fresh, clock, market_now, observed_quote, utc_bounds
+from .market_clock import book_is_fresh, clock, market_now, observed_quote, quote_is_recent, utc_bounds
 
 
 class DataUnavailable(RuntimeError):
@@ -388,6 +389,17 @@ class PublicData:
                 time.sleep(.05)
 
     def _position_critical_request(self, url, params):
+        # A held position's history may outrank cold scans in the Hub only.
+        # A distinct thread-local flag keeps it separate from financial
+        # mark/tier protection and its reserved HTTP admission budget.
+        if (getattr(self._thread, 'position_history', False)
+                and url == 'https://api.bybit.com/v5/market/kline'
+                and type(params) is dict
+                and params.get('category') == 'linear'
+                and bool(params.get('symbol'))
+                and params.get('interval') == '1'
+                and type(params.get('limit')) is int):
+            return True
         # An existing position requires BOTH instrument metadata and the
         # executable book. Reserving only the book request is not sufficient:
         # orderbook() fetches metadata first and may be unable to reach the
@@ -605,8 +617,31 @@ class PublicData:
         return {"symbol": symbol, "price": str(price),
                 "_bcc_ws_binance": True, "_ws_timestamp": stamp}
 
+    def refresh_rest_marks(self, owner, token):
+        """Only the elected Hub requests the bulk mark snapshot."""
+        from .rest_mark_fallback import enabled, URL
+        if (not enabled() or self.shared is None or self._quote_stream is None
+                or os.environ.get("BCC_MARKET_HUB_MODE")=="client"):
+            raise DataUnavailable("REST mark fallback requires the elected WS Hub")
+        clock.bounds()
+        previous = getattr(self._thread,"position_mark",False)
+        previous_leader = getattr(self._thread,"rest_mark_leader",None)
+        self._thread.position_mark = True
+        self._thread.rest_mark_leader = (owner,token)
+        try:
+            return self.get(URL,{"category":"linear"},ttl=1.)
+        finally:
+            self._thread.rest_mark_leader = previous_leader
+            self._thread.position_mark = previous
+
     def get(self, url, params=None, ttl=0):
         began = time.monotonic()
+        from .rest_mark_fallback import client_enabled
+        mark_leader = getattr(self._thread,"rest_mark_leader",None)
+        hybrid_mark = (client_enabled() and getattr(self._thread,"mark_intent",False)
+                       and url=="https://api.bybit.com/v5/market/tickers"
+                       and type(params) is dict and set(params)=={"category","symbol"}
+                       and params.get("category")=="linear")
 
         def received(data, via):
             self._thread.last_read = dict(
@@ -665,6 +700,18 @@ class PublicData:
             and params.get("interval") == "1"
             and params.get("limit") == 10
         )
+        # WS-only 10-row tails are continuously delivered by the subscribed
+        # socket. All OTHER 1m kline requests are finite REST history jobs:
+        # one successful snapshot should not be polled until a new worker
+        # explicitly asks again. These still use the normal Hub and quotas.
+        rest_history_demand = (
+            url == "https://api.bybit.com/v5/market/kline"
+            and type(params) is dict
+            and params.get("category") == "linear"
+            and params.get("interval") == "1"
+            and type(params.get("limit")) is int
+            and not ws_kline_tail
+        )
         # Explicit producer-side WebSocket transport for symbol-specific Bybit
         # quotes. Workers never receive the stream or exchange connections.
         if (self._quote_stream is not None
@@ -695,6 +742,21 @@ class PublicData:
         if os.environ.get("BCC_MARKET_HUB_MODE") == "client":
             if self.shared is None:
                 raise DataUnavailable("Market Data Hub requires BCC_PUBLIC_CACHE")
+            if rest_history_demand:
+                # A completed REST history snapshot may still be fresh in the
+                # shared cache. Read it BEFORE re-arming the one-shot Hub
+                # subscription: every repeated caller must not create a
+                # fresh provider HTTP request just to reuse the same data.
+                # Only true cache misses register new demand. Existing
+                # denial/cooldown and source-time checks remain authoritative.
+                try:
+                    already_fresh = self.shared.read_fresh(url, params, host)
+                except ProviderDenied as exc:
+                    raise SourceAccessDenied(exc.host, exc.http_status) from exc
+                except CacheBusy:
+                    already_fresh = None  # The usual bounded read below retries.
+                if already_fresh is not None:
+                    return received(already_fresh, "market_hub")
             from .market_hub import HubRegistry
             subscription_key = HubRegistry.identity(url, params)[0]
             # Existing exposure keeps an independent long-lived urgent
@@ -703,12 +765,12 @@ class PublicData:
             # On large portfolios those idle subscriptions generated a
             # continuous resubscription storm and crowded real position marks.
             urgent = self._position_critical_request(url, params)
-            transient_demand = (not urgent and type(params) is dict and (
-                (url == "https://api.bybit.com/v5/market/tickers"
+            transient_demand = (type(params) is dict and (
+                (not urgent and url == "https://api.bybit.com/v5/market/tickers"
                  and os.environ.get("BCC_BYBIT_WS_QUOTES") == "1"
                  and set(params) == {"category", "symbol"}
                  and params.get("category") == "linear")
-                or (url == "https://api.bybit.com/v5/market/orderbook"
+                or (not urgent and url == "https://api.bybit.com/v5/market/orderbook"
                     and os.environ.get("BCC_BYBIT_WS_BOOKS") == "1"
                     and set(params) == {"category", "symbol", "limit"}
                     and params.get("category") == "linear"
@@ -719,38 +781,72 @@ class PublicData:
                     and params.get("category") == "linear"
                     and params.get("interval") == "1")
             ))
-            # History scans are demand-driven too. Keeping each one-shot REST
-            # backfill alive for a minute made the Hub repeatedly refetch it
-            # every second after the scanner had already moved on, amplifying
-            # exchange rate limits. Twelve seconds exceeds the eight-second
-            # client wait; continuing demand renews the lease every four.
-            lifetime = 12 if transient_demand else 60
-            renewal = 4 if transient_demand else 20
+            # All one-shot history requests, including a held position, keep
+            # short renewable leases. A minute-long priority lease would
+            # repeatedly refetch absent consumers and exhaust Bybit quota.
+            # Twelve seconds exceeds the bounded client wait.
+            stable_closed_tail = ws_kline_tail and getattr(self._thread, 'closed_history', False)
+            # Keep a closed-bar consumer subscribed across the next minute.
+            # This is transport demand only, not a change of candle age.
+            stable_ticker = (
+                os.environ.get("BCC_BYBIT_SHARDED_TICKERS_CANDIDATE")=="1"
+                and os.environ.get("BCC_BYBIT_WS_QUOTES")=="1"
+                and url=="https://api.bybit.com/v5/market/tickers"
+                and type(params) is dict and set(params)=={"category","symbol"}
+                and params.get("category")=="linear")
+            persistent_demand = stable_closed_tail or stable_ticker
+            lifetime = 90 if persistent_demand else 12 if transient_demand else 60
+            renewal = 30 if persistent_demand else 4 if transient_demand else 20
             with self._lock:
                 if self._hub_registry is None:
                     self._hub_registry = HubRegistry(self.shared.path)
                 now_mono = time.monotonic()
-                if (now_mono >= self._hub_renew_at.get(subscription_key, 0)
+                if (rest_history_demand
+                    or now_mono >= self._hub_renew_at.get(subscription_key, 0)
                     or (urgent and now_mono >= self._hub_priority_until.get(subscription_key, 0))):
                     try:
-                        self._hub_registry.subscribe(
-                            url, params, lifetime=lifetime, priority=urgent
-                        )
+                        demand_once = getattr(self._hub_registry, 'request_once', None)
+                        if rest_history_demand and callable(demand_once):
+                            demand_once(url, params, lifetime=lifetime, priority=urgent)
+                        else:
+                            # Legacy fixture/custom registry compatibility:
+                            # ordinary subscribe retains the previous API.
+                            self._hub_registry.subscribe(
+                                url, params, lifetime=lifetime, priority=urgent
+                            )
                     except (OSError, CacheBusy) as exc:
                         raise DataUnavailable("Market Data Hub subscription unavailable: " + str(exc)) from exc
                     self._hub_renew_at[subscription_key] = now_mono + renewal
                     if urgent:
                         # Renew before the short-lived urgent lease expires.
-                        self._hub_priority_until[subscription_key] = now_mono + 5
+                        self._hub_priority_until[subscription_key] = now_mono + (30 if stable_ticker else 5)
             # This is a bounded queue wait, NOT permission to use an expired
             # market snapshot. In an overloaded system the client fails closed.
             deadline = time.monotonic() + (
-                (4.0 if getattr(self._thread, "mark_subscription_warmup", False) else 0.8)
-                if getattr(self._thread, "mark_intent", False) else 8.0
+                # Bounded WS-tail wait for existing exposure. A genuine WS
+                # miss can then use a separately admitted REST history read.
+                # Do not extend the candle timestamp or bypass policy fences.
+                0.8 if ws_kline_tail and (getattr(self._thread, "position_history", False)
+                                         or getattr(self._thread, "closed_history", False))
+                else (4.0 if getattr(self._thread, "mark_subscription_warmup", False)
+                      else 0.8) if getattr(self._thread, "mark_intent", False)
+                else 8.0
             )
             while not self.stop_event.is_set():
                 try:
-                    cached = self.shared.read_fresh(url, params, host)
+                    if hybrid_mark:
+                        cached, bulk = self.shared.read_fresh_many(
+                            [(url,params)],host,include_rest_marks=True)
+                        mark = self._hybrid_mark(params["symbol"],cached,
+                                                 self._rest_mark_index(bulk))
+                        if mark is not None:
+                            # Internal mark-only result. Never return it to
+                            # executable ticker or orderbook readers.
+                            return received({"_bcc_hybrid_collateral":mark},
+                                            "market_hub_mark")
+                        cached = None
+                    else:
+                        cached = self.shared.read_fresh(url, params, host)
                 except ProviderDenied as exc:
                     raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as exc:
@@ -774,6 +870,19 @@ class PublicData:
                                 "_bcc_ws_mark" if getattr(self._thread, "mark_intent", False)
                                 else "_bcc_ws_quote"
                             ) is not True):
+                        # A split ticker can contain an authentic executable
+                        # quote while its independently timed mark is missing.
+                        # This is a field-level cache miss, not a terminal
+                        # transport failure: keep the existing mark deadline
+                        # and wait for a real producer publication. Never
+                        # return the quote as collateral or fall back to REST.
+                        if (getattr(self._thread, "mark_intent", False)
+                                and cached.get("_bcc_ws_quote") is True
+                                and cached.get("_bcc_ws_mark") is not True):
+                            if time.monotonic() >= deadline:
+                                raise DataUnavailable("Market Data Hub: WebSocket markPrice не подтверждён")
+                            self.stop_event.wait(.05)
+                            continue
                         raise DataUnavailable("Market Data Hub: WebSocket тикер не подтверждён")
                     if (url == "https://api.binance.com/api/v3/ticker/price"
                             and os.environ.get("BCC_BINANCE_WS_PRICE") == "1"
@@ -806,6 +915,8 @@ class PublicData:
                     and 0 <= now - self.cache[key][0] <= ttl):
                 return received(self.cache[key][1], "memory_cache")
         if now < self.cooldowns.get(host, 0):
+            if mark_leader is not None:
+                raise DataUnavailable("REST mark refresh: provider cooldown")
             # A local exchange cooldown must deny NEW requests, not a fresh
             # shared cache hit. Use a read-only lookup so a miss cannot
             # reserve a new provider request behind the cooldown.
@@ -845,12 +956,18 @@ class PublicData:
                         host == 'api.bybit.com'
                         and self._position_critical_request(url, params)
                     )
-                    shared_key, owner, cached = self.shared.begin(
-                        url, params, host, priority=is_position_critical)
+                    if mark_leader is None:
+                        shared_key, owner, cached = self.shared.begin(
+                            url, params, host, priority=is_position_critical)
+                    else:
+                        shared_key, owner, cached = self.shared.begin(
+                            url, params, host, priority=is_position_critical, mark_leader=mark_leader)
                     break
                 except ProviderDenied as exc:
                     raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as e:
+                    if mark_leader is not None:
+                        raise DataUnavailable(str(e)) from e
                     if isinstance(e, CacheContention):
                         deadline = min(lease_deadline, lock_deadline)
                     elif str(e) == "Данные уже запрашиваются другим ботом":
@@ -873,7 +990,7 @@ class PublicData:
             # before this method sees the final status. No redirect is safe to
             # follow automatically, including a redirect within the same host.
             response = self.session.get(
-                url, params=params, timeout=(3, 8), allow_redirects=False
+                url, params=params, timeout=(1,2) if mark_leader is not None else (3, 8), allow_redirects=False
             )
             if 300 <= response.status_code < 400:
                 # 3xx is not an HTTPError in requests; accepting a JSON body
@@ -907,6 +1024,8 @@ class PublicData:
             if response.status_code in (418, 429):
                 self._record_rate_cooldown(shared_key,owner,host,self._rate_delay(response,default=90))
             response.raise_for_status()
+            if mark_leader is not None and response.status_code!=200:
+                raise ValueError("REST mark snapshot requires HTTP 200")
             try:
                 data = response.json()
             except ValueError as e:
@@ -951,7 +1070,38 @@ class PublicData:
                 )
             )
             )
-            published = self._finish_shared(shared_key, owner, host, data, cache_ttl)
+            # A minute-aligned historical range explicitly excludes the
+            # forming candle. Its immutable closed rows can be shared across
+            # workers for the minute, instead of repeating a REST backfill
+            # every second. Never extend live / unbounded history, quotes,
+            # mark-price or risk timestamps. Consumers still verify finality.
+            # V16 canonical one-minute repair accepts only the actual
+            # requested linear symbol, exact closed row and exchange time.
+            if (getattr(self.shared,"central_repair",False)
+                    and url == "https://api.bybit.com/v5/market/kline"
+                    and type(params) is dict and params.get("interval")=="1"
+                    and params.get("limit")==1 and type(params.get("end")) is int
+                    and (params["end"]+1)%60000==0
+                    and 0<=market_now()*1000-(params["end"]+1)<180000):
+                from .hub_minute_repair import rest_minute
+                if rest_minute(data,params["symbol"],params["end"]-59999,
+                               int(market_now()*1000)) is None:
+                    self._finish_shared(shared_key,owner,host)
+                    raise DataUnavailable("Bybit: закрытая минута не подтверждена")
+                if os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE")=="1":
+                    # An immutable exact closed minute remains recoverable
+                    # across a missed consumer cycle. No live price/risk TTL
+                    # is changed, and the consumer checks the exact boundary.
+                    cache_ttl = max(cache_ttl,180.)
+            if self._complete_closed_window(url, params, data):
+                # The cache key is the explicit end boundary, not a moving
+                # "latest" alias. Historical fetches remain quota fenced.
+                cache_ttl = max(cache_ttl, 60.)
+            if mark_leader is None:
+                published = self._finish_shared(shared_key, owner, host, data, cache_ttl)
+            else:
+                published = self._finish_shared(shared_key, owner, host, data, cache_ttl,
+                                                mark_leader=mark_leader)
         # Another in-flight request can receive a 403/451 while this HTTP
         # request is completing. Its host-wide denial takes precedence over
         # this otherwise successful response, even if our lease was valid.
@@ -1122,6 +1272,270 @@ class PublicData:
             self.cache[("bars", symbol)] = (time.time(), bars)
         return bars
 
+    @staticmethod
+    def _complete_closed_window(url, params, data):
+        """Only a complete exact historical range may use the longer TTL."""
+        if (url != "https://api.bybit.com/v5/market/kline"
+                or type(params) is not dict or params.get("interval") != "1"
+                or type(params.get("end")) is not int or (params["end"]+1)%60000
+                or type(params.get("limit")) is not int or params["limit"]<1
+                or not isinstance(data,dict) or type(data.get("time")) is not int
+                or data["time"]<params["end"]+1):
+            return False
+        try:
+            rows=data["result"]["list"]
+            count=params["limit"]
+            if type(rows) is not list or len(rows)!=count:
+                return False
+            boundary=params["end"]+1
+            stamps=sorted(int(row[0]) for row in rows)
+            if stamps!=list(range(boundary-count*60000,boundary,60000)):
+                return False
+            for row in rows:
+                op,hi,lo,cl,vol=map(float,row[1:6])
+                if (not all(math.isfinite(v) for v in (op,hi,lo,cl,vol))
+                        or min(op,hi,lo,cl)<=0 or vol<0
+                        or lo>min(op,cl) or hi<max(op,cl)):
+                    return False
+            return True
+        except (KeyError,TypeError,ValueError,IndexError,OverflowError):
+            return False
+
+    def _renew_closed_minute_stream(self, symbol, priority):
+        """Keep warm and cold closed-bar symbols subscribed across boundaries."""
+        from .market_hub import HubRegistry
+        url = "https://api.bybit.com/v5/market/kline"
+        params = dict(category="linear", symbol=symbol, interval="1", limit=10)
+        subscription_key = HubRegistry.identity(url, params)[0]
+        with self._lock:
+            try:
+                if self._hub_registry is None:
+                    self._hub_registry = HubRegistry(self.shared.path)
+            except (sqlite3.Error, OSError, CacheBusy) as exc:
+                raise DataUnavailable("Реестр закрытых свечей недоступен: " + str(exc)) from exc
+            now = time.monotonic()
+            if (now >= self._hub_renew_at.get(subscription_key, 0)
+                    or (priority and now >= self._hub_priority_until.get(subscription_key, 0))):
+                try:
+                    self._hub_registry.subscribe(url, params, lifetime=90, priority=priority)
+                except (sqlite3.Error, OSError, CacheBusy) as exc:
+                    raise DataUnavailable("Не обновлена подписка закрытых свечей: " + str(exc)) from exc
+                self._hub_renew_at[subscription_key] = now + 30
+                if priority:
+                    self._hub_priority_until[subscription_key] = now + 30
+
+    def cached_closed_cohort(self, requirements):
+        """Advance warm verified history from a single shared read snapshot.
+
+        Only the background cohort reader calls this method. It performs no
+        HTTP, no subscription writes, and no executable-price or account
+        mutation. The existing history lane owns cold starts and lease renewal.
+        """
+        if (os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE") != "1"
+                or os.environ.get("BCC_MARKET_HUB_MODE") != "client"
+                or os.environ.get("BCC_BYBIT_CLOSED_HISTORY_CANDIDATE") != "1"
+                or os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE") != "1"
+                or os.environ.get("BCC_BYBIT_WS_KLINES") != "1"
+                or not isinstance(self.shared, PublicCache)):
+            return {}
+        from .closed_cohort import plan, extend
+        from .indicators import aggregate
+        with self._lock:
+            prior = {symbol: self.cache.get(("closed_bars",symbol),(0,[]))[1]
+                     for symbol in requirements}
+        if not any(prior.values()):
+            return {}
+        # A warm window was established with a quorum. Do not do a blocking
+        # cold clock probe on this cache-only plane, and never use OS fallback.
+        clock.bounds()
+        boundary = int(market_now()//60)*60000
+        self._assert_provider_allowed("api.bybit.com")
+        sizes = {s:max(100,int(n)) for s,n in requirements.items()}
+        requests = {}
+        for symbol, previous in prior.items():
+            missing = plan(previous,sizes[symbol],boundary)
+            if missing is not None:
+                requests[symbol] = missing
+        if not requests:
+            return {}
+        try:
+            tails = self.shared.read_closed_cohort(requests)
+        except ProviderDenied as exc:
+            raise SourceAccessDenied(exc.host,exc.http_status) from exc
+        result = {}
+        for symbol in requests:
+            bars = extend(prior[symbol],max(sizes[symbol],len(prior[symbol])),
+                          boundary,tails.get(symbol,{}))
+            if bars is not None:
+                aggregate(bars,1,boundary,"bar_close")
+                result[symbol] = bars
+        self._assert_provider_allowed("api.bybit.com")
+        if int(market_now()//60)*60000 != boundary:
+            return {}
+        with self._lock:
+            for symbol,bars in list(result.items()):
+                key = ("closed_bars",symbol)
+                previous = self.cache.get(key,(0,[]))[1]
+                if previous and previous[-1]["t"] > bars[-1]["t"]:
+                    del result[symbol]
+                    continue
+                if (previous and previous[-1]["t"] == bars[-1]["t"]
+                        and len(previous)>=len(bars)):
+                    result[symbol] = previous
+                    continue
+                self.cache[key] = (time.time(),bars)
+        return result
+
+    def closed_candles(self, symbol, required=500, *, priority=False):
+        """Actual finalized minute rows, shared by all closed-only strategies.
+
+        Never promote a previously observed forming candle to a closed row.
+        A WS confirmation or a REST response after its actual closing boundary
+        is required. The same current closed history is reusable within that
+        minute; every provider denial and candle boundary is still checked.
+        """
+        from .indicators import aggregate
+        clock.ensure()
+        self._assert_provider_allowed("api.bybit.com")
+        required = max(100, int(required))
+        boundary = int(market_now() // 60) * 60000
+        key = ("closed_bars", symbol)
+        with self._lock:
+            previous = self.cache.get(key, (0, []))[1]
+        found = {b["t"]: b for b in previous if b["t"] < boundary}
+        central = (os.environ.get("BCC_BYBIT_CLOSED_HISTORY_CANDIDATE") == "1"
+                   and os.environ.get("BCC_MARKET_HUB_MODE") == "client"
+                   and os.environ.get("BCC_BYBIT_WS_KLINES") == "1"
+                   and isinstance(self.shared, PublicCache))
+        if central:
+            self._renew_closed_minute_stream(symbol, priority)
+
+        def complete():
+            bars = [found[t] for t in sorted(found)][-required:]
+            if (len(bars) < required or bars[-1]["t"] != boundary - 60000
+                    or any(b["t"] - a["t"] != 60000 for a,b in zip(bars,bars[1:]))):
+                return None
+            aggregate(bars, 1, boundary, "bar_close")
+            return bars
+
+        def absorb(data, *, ws=False):
+            stamp = data.get("time")
+            if type(stamp) is not int or stamp < boundary:
+                return
+            if ws and (data.get("_bcc_ws_kline") is not True
+                       or data.get("_bcc_ws_kline_confirmed") is not True):
+                return
+            for row in data["result"]["list"]:
+                start = int(row[0])
+                if start < 0 or start % 60000 or start + 60000 > min(boundary, stamp):
+                    continue
+                found[start] = dict(t=start, open=float(row[1]), high=float(row[2]),
+                                    low=float(row[3]), close=float(row[4]), volume=float(row[5]))
+
+        prior_priority = getattr(self._thread, "position_history", False)
+        prior_closed = getattr(self._thread, "closed_history", False)
+        self._thread.position_history = priority
+        self._thread.closed_history = True
+        try:
+            bars = complete()
+            if bars is None and previous and central:
+                # Read the exact most recent finalized minutes from one
+                # shared snapshot, not the mutable current-candle tail.
+                starts = list(range(max(boundary-180000, previous[-1]["t"]+60000),
+                                    boundary, 60000))
+                if starts:
+                    # Give the centralized confirmation a short chance to
+                    # arrive right at the boundary, rather than flooding REST
+                    # immediately. No extra wait later in the minute.
+                    grace = min(.8, max(0., 2. - (market_now() - boundary/1000)))
+                    deadline = time.monotonic() + (grace if len(starts) == 1 else 0.)
+                    while True:
+                        try:
+                            for row in self.shared.read_closed_minutes(symbol, starts,
+                                    include_rest=os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1"):
+                                found[row["t"]] = {k:row[k] for k in
+                                    ("t","open","high","low","close","volume")}
+                        except ProviderDenied as exc:
+                            raise SourceAccessDenied(exc.host, exc.http_status) from exc
+                        except CacheContention:
+                            pass  # bounded REST repair remains policy-admitted
+                        except CacheBusy as exc:
+                            raise DataUnavailable("Кэш закрытых свечей недоступен: " + str(exc)) from exc
+                        bars = complete()
+                        if bars is not None or time.monotonic() >= deadline or self.stop_event.wait(.05):
+                            break
+            elif bars is None and previous:
+                try:
+                    absorb(self.bybit("kline", {"symbol":symbol,"interval":"1","limit":10}), ws=True)
+                except WebSocketKlineUnavailable:
+                    pass
+                bars = complete()
+            if bars is None:
+                # Request the exact CLOSED range. Use a stable endpoint key
+                # so multiple accounts coalesce their immutable history.
+                # Warm history needs only the missing tail, cold history
+                # can page back through the same existing public quota.
+                remaining = required
+                if len(previous) >= required and boundary - previous[-1]["t"] <= 90 * 60000:
+                    if central:
+                        # All consumers of the same missing minute share
+                        # one exact REST identity, even with different RSI
+                        # history lengths. Request only the missing tail.
+                        remaining = max(1, (boundary - previous[-1]["t"])//60000 - 1)
+                    else:
+                        remaining = min(required,100)
+                end = boundary - 1
+                for _ in range((remaining + 999)//1000):
+                    limit = min(1000,remaining)
+                    data = self.bybit("kline", {"symbol":symbol,"interval":"1","limit":limit,"end":end})
+                    if (central and limit==1 and
+                            os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1"
+                            and 0<=market_now()*1000-(end+1)<180000):
+                        from .hub_minute_repair import rest_minute
+                        if rest_minute(data,symbol,end-59999,int(market_now()*1000)) is None:
+                            raise DataUnavailable("Bybit: закрытая минута не подтверждена")
+                    rows = data["result"]["list"]
+                    if not rows:
+                        break
+                    absorb(data)
+                    remaining -= len(rows)
+                    end = min(int(row[0]) for row in rows)-1
+                    if remaining <= 0:
+                        break
+                bars = complete()
+            if bars is None:
+                raise DataUnavailable("Не подтверждена полная история закрытых свечей")
+            # Do not return yesterday's current closed bar after crossing
+            # a minute boundary while waiting on an upstream backfill.
+            self._assert_provider_allowed("api.bybit.com")
+            if int(market_now() // 60) * 60000 != boundary:
+                raise DataUnavailable("Новая минута: требуется подтверждение закрытой свечи")
+            with self._lock:
+                previous = self.cache.get(key,(0,[]))[1]
+                if not previous or previous[-1]["t"] < bars[-1]["t"] or (
+                        previous[-1]["t"] == bars[-1]["t"] and len(previous)<len(bars)):
+                    self.cache[key] = (time.time(), bars)
+                elif previous[-1]["t"] == bars[-1]["t"]:
+                    bars = previous[-required:]
+            return bars
+        finally:
+            self._thread.position_history = prior_priority
+            self._thread.closed_history = prior_closed
+
+    def position_candles(self, symbol, required=500):
+        """Prioritize authentic history for an already held PAPER position.
+
+        This scopes a Hub queue hint to the caller's thread and candle
+        requests only. HTTP quotas, provider denials, risk-tier timestamps,
+        executable mark-price fences and history continuity are unchanged.
+        """
+        previous = getattr(self._thread, 'position_history', False)
+        self._thread.position_history = True
+        try:
+            return self.candles(symbol, required)
+        finally:
+            self._thread.position_history = previous
+
     def position_orderbook(self, symbol):
         """Mark an existing PAPER position before slower strategy discovery.
 
@@ -1287,7 +1701,29 @@ class PublicData:
             )
         finally:
             self._thread.mark_intent = previous
+        from .rest_mark_fallback import client_enabled
+        if client_enabled() and isinstance(value,dict) and "_bcc_hybrid_collateral" in value:
+            mark = value["_bcc_hybrid_collateral"]
+            if quote_is_recent(mark,maximum=3):
+                return mark
+            raise DataUnavailable("Bybit hybrid markPrice stale")
         return self._decode_ws_position_mark(symbol, value)
+
+    @staticmethod
+    def _rest_mark_index(value):
+        from .rest_mark_fallback import index_snapshot,client_enabled
+        return index_snapshot(value,book_is_fresh) if client_enabled() else {}
+
+    def _hybrid_mark(self,symbol,ws,rest_marks):
+        if isinstance(ws,dict):
+            try:
+                return self._decode_ws_position_mark(symbol,ws)
+            except DataUnavailable:
+                pass
+        mark = rest_marks.get(symbol)
+        if mark is not None and book_is_fresh(mark["at"]):
+            return observed_quote(mark)
+        return None
 
     @staticmethod
     def _decode_ws_position_mark(symbol, value):
@@ -1305,7 +1741,19 @@ class PublicData:
             raise DataUnavailable("Bybit WebSocket markPrice invalid") from exc
         if not math.isfinite(mark) or mark <= 0 or not book_is_fresh(at):
             raise DataUnavailable("Bybit WebSocket markPrice stale")
-        return observed_quote({"bid": mark, "ask": mark, "at": at})
+        from .ws_maintained_marks import maintained_metadata
+        try:
+            meta = maintained_metadata(value)
+        except ValueError as exc:
+            raise DataUnavailable("Invalid maintained WS mark provenance") from exc
+        quote = {"bid": mark, "ask": mark, "at": at}
+        if meta is not None:
+            from .ws_split_ticker import valid_fence
+            if not valid_fence(value.get("_bcc_ws_mark_fence")):
+                raise DataUnavailable("Invalid maintained WS mark origin")
+            quote.update(mark_basis="snapshot_delta", mark_explicit_at=meta[0]/1000,
+                         mark_cs=meta[1], mark_chain=meta[2])
+        return observed_quote(quote)
 
     def set_position_symbols(self, symbols):
         """Account-owned exposure inventory, supplied by the serial scheduler."""
@@ -1344,9 +1792,29 @@ class PublicData:
             return None
         try:
             clock.bounds()
+            mark = None
             with self.shared.priority_reads():
-                value = self.shared.read_fresh('https://api.bybit.com/v5/market/orderbook',
-                    {'category':'linear','symbol':symbol,'limit':50}, 'api.bybit.com')
+                depth = ('https://api.bybit.com/v5/market/orderbook',
+                         {'category':'linear','symbol':symbol,'limit':50})
+                # Read candidate collateral and depth in one admitted snapshot
+                # after the scheduler handoff, not before waiting on the owner.
+                if isinstance(previous.get('margin_data'), dict):
+                    from .rest_mark_fallback import client_enabled
+                    requests = [depth, ('https://api.bybit.com/v5/market/tickers',
+                                        {'category':'linear','symbol':symbol})]
+                    if client_enabled():
+                        value,ticker,bulk = self.shared.read_fresh_many(
+                            requests,'api.bybit.com',include_rest_marks=True)
+                        mark = self._hybrid_mark(symbol,ticker,self._rest_mark_index(bulk))
+                    else:
+                        value,ticker = self.shared.read_fresh_many(requests,'api.bybit.com')
+                        if isinstance(ticker, dict):
+                            try:
+                                mark = self._decode_ws_position_mark(symbol, ticker)
+                            except DataUnavailable:
+                                pass
+                else:
+                    value = self.shared.read_fresh(*depth, 'api.bybit.com')
         except ProviderDenied as exc:
             raise SourceAccessDenied(exc.host, exc.http_status) from exc
         except CacheBusy as exc:
@@ -1364,9 +1832,15 @@ class PublicData:
                 if any((a[0]<=b[0] if descending else a[0]>=b[0]) for a,b in zip(levels,levels[1:])):
                     return None
             executable_quote({'bids':bids,'asks':asks})
-            return dict(previous,bids=bids,asks=asks,at=stamp,response_at=stamp,
-                        engine_at=None,update_id=data.get('u'),sequence=data.get('seq'),
-                        transport={'via':'market_hub_cache','received_pc':time.time()})
+            refreshed = dict(previous,bids=bids,asks=asks,at=stamp,response_at=stamp,
+                             engine_at=None,update_id=data.get('u'),sequence=data.get('seq'),
+                             transport={'via':'market_hub_cache','received_pc':time.time()})
+            if mark is not None:
+                old_mark = previous['margin_data'].get('quote')
+                if not quote_is_recent(old_mark, maximum=3) or mark['at'] >= old_mark['at']:
+                    refreshed['margin_data'] = dict(previous['margin_data'], quote=mark)
+                    refreshed['margin_marks'] = {**previous.get('margin_marks', {}), symbol:mark}
+            return refreshed
         except (DataUnavailable,ValueError,TypeError,KeyError,IndexError,OverflowError):
             return None
 
@@ -1392,25 +1866,29 @@ class PublicData:
             if cached is not None and cached[0] == symbols and now < cached[1]:
                 return cached[2], cached[3]
             url = "https://api.bybit.com/v5/market/tickers"
+            from .rest_mark_fallback import client_enabled
+            rest_marks = {}
             try:
-                values = self.shared.read_fresh_many(
-                    [(url, {"category": "linear", "symbol": symbol}) for symbol in symbols]
+                requests = ([(url, {"category": "linear", "symbol": symbol}) for symbol in symbols]
                     + [("https://api.bybit.com/v5/market/orderbook",
-                        {"category": "linear", "symbol": symbol, "limit": 50}) for symbol in symbols],
-                    "api.bybit.com",
-                )
+                        {"category": "linear", "symbol": symbol, "limit": 50}) for symbol in symbols])
+                if client_enabled():
+                    values = self.shared.read_fresh_many(requests,"api.bybit.com",
+                                                         include_rest_marks=True)
+                    rest_marks = self._rest_mark_index(values.pop())
+                else:
+                    values = self.shared.read_fresh_many(requests,"api.bybit.com")
             except ProviderDenied as exc:
                 raise SourceAccessDenied(exc.host, exc.http_status) from exc
             except CacheBusy as exc:
                 raise DataUnavailable("Portfolio WS cache unavailable: " + str(exc)) from exc
             marks, quotes = {}, {}
             for symbol, value in zip(symbols, values[:len(symbols)]):
+                mark = self._hybrid_mark(symbol,value,rest_marks)
+                if mark is not None:
+                    marks[symbol] = mark
                 if not isinstance(value, dict):
                     continue
-                try:
-                    marks[symbol] = self._decode_ws_position_mark(symbol, value)
-                except DataUnavailable:
-                    pass
                 if value.get("_bcc_ws_quote") is True:
                     try:
                         rows = value["result"]["list"]

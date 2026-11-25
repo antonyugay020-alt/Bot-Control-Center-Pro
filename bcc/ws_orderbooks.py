@@ -13,7 +13,8 @@ import math
 import threading
 import time
 from dataclasses import dataclass
-from .ws_dispatch import ReconnectBackoff, request_snapshots
+from .ws_dispatch import ReconnectBackoff, request_snapshots, MAX_REFRESH_TOPICS_PER_SCAN
+from .ws_recovery import SnapshotRecovery
 
 from .ws_quotes import StreamUnavailable
 
@@ -50,13 +51,37 @@ class BybitOrderbookWS:
         self._symbols = set()
         self._books = {}
         self._refresh_due = {}
+        self._snapshot_recovery = SnapshotRecovery()
+        self._priority_symbols = frozenset()
+        self._refresh_backlog = 0
+        self._verified_book_events = 0
+        self._verified_book_snapshots = 0
+        self._refresh_topics_sent = 0
+        self._refresh_batches_sent = 0
+        self._refresh_send_failures = 0
+        self._connections_opened = 0
 
     def sync_symbols(self, symbols):
         from .ws_dispatch import synchronize_bybit_symbols
         return synchronize_bybit_symbols(
             self, symbols, subscribed=self._symbols, topic="orderbook.50",
-            caches=("_books", "_refresh_due"), subscribe=self.subscribe, error_type=StreamUnavailable,
+            caches=("_books", "_refresh_due", "_snapshot_recovery"), subscribe=self.subscribe, error_type=StreamUnavailable,
         )
+
+    def set_priority_symbols(self, symbols):
+        """Trust only active Hub-held exposure, never a provider frame."""
+        if not isinstance(symbols, (list, tuple, set)) or any(
+                type(symbol) is not str or not _VALID.fullmatch(symbol)
+                for symbol in symbols):
+            raise ValueError("invalid priority book symbols")
+        with self._lock:
+            selected = frozenset(symbols)
+            now = self._mono()
+            for symbol in selected - self._priority_symbols:
+                if symbol in self._symbols:
+                    self._refresh_due[symbol] = min(
+                        self._refresh_due.get(symbol, now + .5), now + .5)
+            self._priority_symbols = selected
 
     def subscribe(self, symbols):
         if type(symbols) is str:
@@ -96,6 +121,8 @@ class BybitOrderbookWS:
         self._socket = None
         self._books.clear()
         self._refresh_due.clear()
+        self._snapshot_recovery.clear()
+        self._refresh_backlog = 0
 
     def disconnect(self, *, generation=None):
         with self._lock:
@@ -108,6 +135,7 @@ class BybitOrderbookWS:
             if self._stop.is_set():
                 raise StreamUnavailable("orderbook transport stopped")
             self._invalidate()
+            self._connections_opened += 1
             self._connected = True
             self._socket = socket
             self._refresh_due = {symbol: self._mono() + 3.0 for symbol in self._symbols}
@@ -198,6 +226,10 @@ class BybitOrderbookWS:
                     new.received_mono + 1.0,
                 )
             self._books[symbol] = new
+            self._verified_book_events += 1
+            if kind == "snapshot":
+                self._verified_book_snapshots += 1
+                self._snapshot_recovery.observe_snapshot(symbol, (new.ts,))
         if self.on_update is not None:
             try:
                 self.on_update("depth50", symbol)
@@ -216,28 +248,55 @@ class BybitOrderbookWS:
             now, wall = self._mono(), self._wall()
             lead_age = min(1.0, self._max_age / 2)
             stale = []
-            for symbol in sorted(set(symbols) & self._symbols):
+            deferred = 0
+            for symbol in sorted(
+                set(symbols) & self._symbols,
+                key=lambda s: (s not in self._priority_symbols,
+                               self._refresh_due.get(s, 0), s),
+            ):
                 book = self._books.get(symbol)
                 fresh = (book is not None and book.generation == self._generation
                          and 0 <= now - book.received_mono < lead_age
                          and -.5 <= wall - book.ts < lead_age)
+                if self._snapshot_recovery.waiting(symbol, now):
+                    continue
                 if fresh or now < self._refresh_due.get(symbol, 0):
                     continue
+                if len(stale) >= MAX_REFRESH_TOPICS_PER_SCAN:
+                    deferred += 1
+                    continue
                 stale.append(symbol)
+                self._snapshot_recovery.begin(symbol, now, (book.ts if book is not None else -1,))
                 self._refresh_due[symbol] = now + 1.0
+            self._refresh_backlog = deferred
             if not stale:
                 return 0
             socket = self._socket
             try:
                 request_snapshots(socket, "orderbook.50", stale,
                                   batch_size=self.MAX_SUB_PER_MSG)
+                self._refresh_topics_sent += len(stale)
+                self._refresh_batches_sent += (len(stale) + self.MAX_SUB_PER_MSG - 1) // self.MAX_SUB_PER_MSG
             except Exception as exc:
+                self._refresh_send_failures += 1
                 self._invalidate()
                 try:
                     socket.close()
                 finally:
                     raise StreamUnavailable("orderbook refresh failed") from exc
             return len(stale)
+
+    def refresh_pressure(self):
+        with self._lock:
+            return dict(deferred_symbols=self._refresh_backlog,
+                        per_scan_budget=MAX_REFRESH_TOPICS_PER_SCAN,
+                        genuine_book_events=self._verified_book_events,
+                        genuine_book_snapshots=self._verified_book_snapshots,
+                        snapshot_topics_requested=self._refresh_topics_sent,
+                        snapshot_batches_requested=self._refresh_batches_sent,
+                        snapshot_send_failures=self._refresh_send_failures,
+                        connections_opened=self._connections_opened,
+                        **self._snapshot_recovery.stats())
 
     def get_orderbook(self, symbol):
         with self._lock:

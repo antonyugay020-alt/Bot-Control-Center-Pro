@@ -6,7 +6,8 @@ from copy import deepcopy
 
 from .config import coin_section, effective, merge, section_margin_budget
 from .indicators import evaluate
-from .margin import MODEL, entry_reason, pending_reserve
+from .margin import (MODEL, MarginUnavailable, entry_reason, margin_status,
+                     pending_reserve, snapshot as margin_snapshot)
 from .liquidation import is_liquidating, status as liquidation_status
 from .shared_risk import allocation_reason
 from .trading import (
@@ -464,7 +465,30 @@ class Veles:
                 continue
             sec_over = over.get("sections", {}).get(section["id"], {})
             spec = sec_over.get("entry", over.get("entry", section["entry"]))
-            result = signal(state, key + ":entry", spec, bars, now_ms)
+            entry_clock = key + ":entry"
+            prior_clock = deepcopy(state["clocks"].get(entry_clock))
+            result = signal(state, entry_clock, spec, bars, now_ms)
+
+            def preserve_current_rsi():
+                # Do not retain an executable signal or an intrabar delta.
+                # The next decision recomputes the crossing from the actual
+                # latest closed candles; an old crossing cannot be replayed.
+                if (cfg["strategy"] == "VELES" and result.matched
+                        and simple_rsi_boundary(spec) is not None):
+                    if prior_clock is None:
+                        state["clocks"].pop(entry_clock, None)
+                    else:
+                        state["clocks"][entry_clock] = prior_clock
+
+            def missing_margin_evidence():
+                if state.get("margin_model") != MODEL:
+                    return False
+                try:
+                    margin_snapshot(state, symbol)
+                    return bool(margin_status(state))
+                except MarginUnavailable:
+                    return True
+
             # A previous section closed on this exact RSI boundary. Do not
             # wait for the independent entry timeframe to cross it again.
             handoff = key in handoff_targets
@@ -475,9 +499,14 @@ class Veles:
                 else "Ожидание условий входа"
             )
             if state.get("_entry_blocked"):
-                diagnostics.append(
-                    {"section": section["label"], "reason": state["_entry_blocked"]}
-                )
+                temporary = bool(state.get("_entry_data_blocked"))
+                if temporary:
+                    preserve_current_rsi()
+                diagnostics.append({
+                    "section": section["label"], "reason": state["_entry_blocked"],
+                    "conditions": result.observations, "signal_matched": bool(result.matched),
+                    "data_blocked": temporary,
+                })
                 continue
             if (result.matched or handoff or bootstrap) and daily_ok(cfg, state, symbol, settings, now_ms):
                 margin = capital_margin(cfg, state, settings)
@@ -487,9 +516,14 @@ class Veles:
                     state, symbol, section["side"], settings, margin, order_plan
                 )
                 if margin_reason:
-                    diagnostics.append(
-                        {"section": section["label"], "reason": margin_reason}
-                    )
+                    temporary = missing_margin_evidence()
+                    if temporary:
+                        preserve_current_rsi()
+                    diagnostics.append({
+                        "section": section["label"], "reason": margin_reason,
+                        "conditions": result.observations, "signal_matched": bool(result.matched),
+                        "data_blocked": temporary,
+                    })
                     continue
                 exit_signal = deepcopy(
                     sec_over.get("exit", over.get("exit", section["exit"]))
@@ -552,6 +586,8 @@ class Veles:
                         state["positions"][key]["exit_signal"] = exit_signal
                         if bootstrap:
                             state["strategy"].setdefault("veles_bootstrapped", {})[symbol] = True
+                    elif missing_margin_evidence():
+                        preserve_current_rsi()
             elif result.matched:
                 why = "Дневной лимит убытка"
             if (not result.matched and not handoff and not bootstrap

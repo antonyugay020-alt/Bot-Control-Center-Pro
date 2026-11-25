@@ -1,6 +1,8 @@
 """Minute WS tail integration must preserve REST historical backfill routes."""
 import time
 
+import pytest
+
 from bcc.market import PublicData
 from bcc.market_hub import HubRegistry, MarketDataHub
 
@@ -36,8 +38,21 @@ class FakeKlineStream:
         return FakeCandle()
 
 
-def test_kline_event_publishes_tail_without_using_rest(tmp_path):
-    source = PublicData(kline_stream=FakeKlineStream())
+@pytest.mark.parametrize("confirmation,expected", [
+    (None, False), (False, False), (True, True), ("true", False), (1, False),
+])
+def test_kline_event_publishes_tail_without_using_rest(tmp_path, confirmation, expected):
+    stream = FakeKlineStream()
+    def get_candle(symbol):
+        assert symbol == "BTCUSDT"
+        candle = FakeCandle()
+        if confirmation is not None:
+            candle.confirmed = confirmation
+        if expected:
+            candle.start_ms -= 60000
+        return candle
+    stream.get_candle = get_candle
+    source = PublicData(kline_stream=stream)
     hub = MarketDataHub(tmp_path / "hub.sqlite", source=source)
     try:
         hub.registry.subscribe(URL, TAIL)
@@ -48,6 +63,7 @@ def test_kline_event_publishes_tail_without_using_rest(tmp_path):
         assert hub.publish_ws_event("kline1", "BTCUSDT")
         data = source.shared.read_fresh(URL, TAIL, "api.bybit.com")
         assert data["_bcc_ws_kline"] is True
+        assert data["_bcc_ws_kline_confirmed"] is expected
         assert data["result"]["list"][0][4] == "100.5"
         assert source.shared.read_fresh(URL, HISTORY, "api.bybit.com") is None
         due = hub.registry.due(10, skip_ws_routes=hub._websocket_queue_exclusions())

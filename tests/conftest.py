@@ -14,6 +14,30 @@ from bcc.hub_supervisor import _matches
 
 
 @pytest.fixture(autouse=True)
+def isolate_shared_market_clock():
+    """Keep a verified clock from one scenario out of unrelated replay tests.
+
+    Only test-owned singleton state is reset: production market-clock expiry,
+    book freshness, independent quorum and fail-closed checks are unchanged.
+    Do not replace the singleton object; consumers import it by reference.
+    Tests that explicitly patch this object still exercise their own reference.
+    """
+    from bcc.market_clock import clock
+
+    def reset():
+        with clock._lock:
+            clock._reference = None
+            clock._attempted = None
+            clock.evidence = None
+
+    reset()
+    try:
+        yield
+    finally:
+        reset()
+
+
+@pytest.fixture(autouse=True)
 def forbid_uncontrolled_live_hub(monkeypatch):
     """Offline regression cannot silently become an exchange-connectivity test.
 

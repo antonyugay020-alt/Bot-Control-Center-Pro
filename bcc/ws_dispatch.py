@@ -15,6 +15,10 @@ import time
 URGENT = frozenset({"polybook", "depth50"})
 REGULAR = frozenset({"tickers", "binance_trade", "kline1"})
 
+# Per-scan control-message burst budget, NOT a coin or position limit.
+# Deferred symbols retain their due timestamps for the next scan.
+MAX_REFRESH_TOPICS_PER_SCAN = 128
+
 
 def request_snapshots(socket, topic, symbols, *, batch_size=10):
     """Ask the established public socket for new exchange snapshots in batches."""
@@ -86,6 +90,13 @@ class MarketEventQueue:
                 or type(urgent_burst) is not int or not 1 <= urgent_burst <= 64):
             raise ValueError("invalid market-event queue limits")
         self.capacity = capacity
+        # A caller-specified small capacity is a deliberate resource/fairness
+        # budget (and is exercised by overload tests). The default shared-Hub
+        # queue must grow with VALIDATED active subscriptions rather than
+        # silently dropping thousands of configured market keys at 8192.
+        self._adaptive_capacity = capacity == 8192
+        self._base_capacity = capacity
+        self._demand_excess = 0
         self.urgent_burst = urgent_burst
         self._cv = threading.Condition()
         self._urgent = collections.deque()
@@ -112,6 +123,13 @@ class MarketEventQueue:
                 or not item[1] for item in active)):
             raise ValueError("invalid stream demand")
         with self._cv:
+            if self._adaptive_capacity:
+                # Up to the existing 100k-event constructor ceiling. This
+                # bounds resident memory; it is NOT a claim that an exchange
+                # can deliver 100k independent fresh subscriptions. Report
+                # any excess explicitly rather than silently calling it OK.
+                self.capacity = max(self._base_capacity, min(100000, len(active)))
+            self._demand_excess = max(0, len(active) - self.capacity)
             self._active, self._priority = active, priority
             retained = self._pending & active
             self._filtered += len(self._pending - retained)
@@ -194,6 +212,47 @@ class MarketEventQueue:
             result.append(item)
         return result
 
+    def take_mark_balanced_batch(self, *, limit=64, timeout=.1):
+        """Reserve up to a quarter of the batch for actual ticker updates.
+
+        Keep the original FIFO age within each mark class and retain the
+        normal fair dispatcher for all remaining slots. No additional
+        notification, price synthesis, or unbounded priority queue.
+        """
+        if type(limit) is not int or not 4 <= limit <= 64:
+            raise ValueError("invalid balanced market batch limit")
+        if type(timeout) not in (int,float) or not 0 <= timeout <= 5:
+            raise ValueError("invalid market batch timeout")
+        result = []
+        with self._cv:
+            if not self._pending:
+                self._cv.wait(timeout=timeout)
+            if not self._pending:
+                return []
+            reserved = limit//4
+            for queue in (self._critical, self._regular):
+                # Enumerate a snapshot because deque.remove mutates it.
+                for item in tuple(queue):
+                    if len(result)>=reserved:
+                        break
+                    if item[0]!="tickers":
+                        continue
+                    queue.remove(item)
+                    self._pending.remove(item)
+                    waited = time.monotonic()-self._enqueued.pop(item)
+                    self._max_wait = max(self._max_wait,waited)
+                    if item in self._priority:
+                        self._max_critical_wait = max(self._max_critical_wait,waited)
+                    result.append(item)
+                if len(result)>=reserved:
+                    break
+        while len(result)<limit:
+            item = self.take(timeout=0)
+            if item is None:
+                break
+            result.append(item)
+        return result
+
     def stats(self):
         with self._cv:
             fronts = [queue[0] for queue in (self._critical, self._urgent, self._regular) if queue]
@@ -201,6 +260,8 @@ class MarketEventQueue:
             return {
                 "active_keys": len(self._active) if self._active is not None else None,
                 "priority_keys": len(self._priority),
+                "event_capacity": self.capacity,
+                "active_over_capacity": self._demand_excess,
                 "pending": len(self._pending), "critical": len(self._critical),
                 "urgent": len(self._urgent), "regular": len(self._regular),
                 "dropped_notifications": self._dropped,
