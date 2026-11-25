@@ -104,6 +104,7 @@ class ShardedBybitQuoteStream:
     def __init__(self, *, wall=time.time, monotonic=time.monotonic, on_update=None,
                  pair_factory=StablePair):
         self._lock = threading.RLock()
+        self._control = threading.RLock()
         self._stop = threading.Event()
         self._demand = set()
         self._priority = set()
@@ -122,9 +123,10 @@ class ShardedBybitQuoteStream:
 
     def sync_symbols(self, symbols):
         selected = DualBybitQuoteStream._validate(symbols)
-        with self._lock:
-            removed = len(self._demand-selected)
-            self._demand = selected
+        with self._control:
+            with self._lock:
+                removed = len(self._demand-selected)
+                self._demand = selected
             for pair, names in zip(self._pairs,self._groups(selected)):
                 try:
                     pair.sync_symbols(names)
@@ -136,17 +138,21 @@ class ShardedBybitQuoteStream:
 
     def subscribe_many(self, symbols):
         selected = DualBybitQuoteStream._validate(symbols)
-        with self._lock:
-            if not selected <= self._demand:
-                self.sync_symbols(sorted(self._demand|selected))
+        with self._control:
+            with self._lock:
+                wanted = self._demand|selected
+                changed = wanted != self._demand
+            if changed:
+                self.sync_symbols(sorted(wanted))
 
     def subscribe(self, symbol):
         self.subscribe_many([symbol])
 
     def set_priority_symbols(self, symbols):
         selected = DualBybitQuoteStream._validate(symbols)
-        with self._lock:
-            self._priority = selected
+        with self._control:
+            with self._lock:
+                self._priority = selected
             for pair,names in zip(self._pairs,self._groups(selected)):
                 pair.set_priority_symbols(names)
 
@@ -154,13 +160,17 @@ class ShardedBybitQuoteStream:
         with self._lock:
             if symbol not in self._demand:
                 return None,None
-            return self._pairs[self._index(symbol)].independent_observations_for_hub(symbol)
+        evidence = self._pairs[self._index(symbol)].independent_observations_for_hub(symbol)
+        with self._lock:
+            return evidence if symbol in self._demand else (None,None)
 
     def snapshot_for_hub(self, symbol):
         with self._lock:
             if symbol not in self._demand:
                 return None,None,None
-            return self._pairs[self._index(symbol)].snapshot_for_hub(symbol)
+        evidence = self._pairs[self._index(symbol)].snapshot_for_hub(symbol)
+        with self._lock:
+            return evidence if symbol in self._demand else (None,None,None)
 
     def mark(self, symbol):
         mark,_ = self.independent_observations_for_hub(symbol)
@@ -176,9 +186,11 @@ class ShardedBybitQuoteStream:
 
     def refresh_stale_marks(self, symbols):
         selected = DualBybitQuoteStream._validate(symbols)
-        with self._lock:
+        with self._control:
+            with self._lock:
+                active = selected & self._demand
             count = 0
-            for pair,names in zip(self._pairs,self._groups(selected & self._demand)):
+            for pair,names in zip(self._pairs,self._groups(active)):
                 try:
                     count += pair.refresh_stale_marks(names)
                 except StreamUnavailable:
@@ -186,31 +198,29 @@ class ShardedBybitQuoteStream:
             return count
 
     def refresh_pressure(self):
-        with self._lock:
-            rows = [p.refresh_pressure() for p in self._pairs]
-            return dict(per_scan_budget=SHARDS*RECOVERY_TOPICS_PER_SHARD,
-                deferred_symbols=sum(r['deferred_symbols'] for r in rows),
-                shadow_new_topics=sum(r['shadow_new_topics'] for r in rows),
-                primary=_sum_counts([r['primary'] for r in rows]),
-                recovery=_sum_counts([r['recovery'] for r in rows]))
+        rows = [p.refresh_pressure() for p in self._pairs]
+        return dict(per_scan_budget=SHARDS*RECOVERY_TOPICS_PER_SHARD,
+            deferred_symbols=sum(r['deferred_symbols'] for r in rows),
+            shadow_new_topics=sum(r['shadow_new_topics'] for r in rows),
+            primary=_sum_counts([r['primary'] for r in rows]),
+            recovery=_sum_counts([r['recovery'] for r in rows]))
 
     def transport_health(self):
-        with self._lock:
-            rows = [p.transport_health() for p in self._pairs]
-            result = dict(mode='persistent_sharded_redundancy', shard_count=SHARDS,
-                mark_union=_sum_counts([r['mark_union'] for r in rows]),
-                maintained=_sum_counts([r['maintained'] for r in rows]),
-                maintained_recovery=_sum_counts([r['maintained_recovery'] for r in rows]),
-                redundancy=_sum_counts([r['redundancy'] for r in rows]),
-                refresh=self.refresh_pressure(), shards=[dict(index=i,
-                    union=r['mark_union'], redundancy=r['redundancy'],
-                    primary=r['primary'], recovery=r['recovery']) for i,r in enumerate(rows)])
-            for lane in ('primary','recovery'):
-                stats = [r[lane] for r in rows]
-                result[lane] = dict(_sum_counts(stats),
-                    connection='connected' if all(r['connection']=='connected' for r in stats) else 'partial',
-                    explicit_mark_max_age_seconds=max(r['explicit_mark_max_age_seconds'] for r in stats))
-            return result
+        rows = [p.transport_health() for p in self._pairs]
+        result = dict(mode='persistent_sharded_redundancy', shard_count=SHARDS,
+            mark_union=_sum_counts([r['mark_union'] for r in rows]),
+            maintained=_sum_counts([r['maintained'] for r in rows]),
+            maintained_recovery=_sum_counts([r['maintained_recovery'] for r in rows]),
+            redundancy=_sum_counts([r['redundancy'] for r in rows]),
+            refresh=self.refresh_pressure(), shards=[dict(index=i,
+                union=r['mark_union'], redundancy=r['redundancy'],
+                primary=r['primary'], recovery=r['recovery']) for i,r in enumerate(rows)])
+        for lane in ('primary','recovery'):
+            stats = [r[lane] for r in rows]
+            result[lane] = dict(_sum_counts(stats),
+                connection='connected' if all(r['connection']=='connected' for r in stats) else 'partial',
+                explicit_mark_max_age_seconds=max(r['explicit_mark_max_age_seconds'] for r in stats))
+        return result
 
     def run(self, *, websocket_app_factory=None):
         if self._stop.is_set():

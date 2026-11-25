@@ -77,8 +77,14 @@ def test_real_50_ticker_pairs_keep_both_lanes_and_never_reset_healthy_symbols(fl
     assert all(stream.independent_observations_for_hub(s)[0] is None for s in names)
     assert stream.refresh_stale_marks(names)==0
     now[0]+=2.1
-    assert stream.refresh_stale_marks(names)<=16
+    first=stream.refresh_stale_marks(names)
+    assert 0<first<=16
+    second=stream.refresh_stale_marks(names)
+    assert 0<=second<=16
+    for _ in range(16):
+        assert stream.refresh_stale_marks(names)<=16
     assert stream.refresh_stale_marks(names)==0
+    assert sum(p._recovery_attempts for p in stream._pairs)<=50
 
 
 def test_real_hub_derives_demand_and_publishes_reserve_mark(fleet,tmp_path):

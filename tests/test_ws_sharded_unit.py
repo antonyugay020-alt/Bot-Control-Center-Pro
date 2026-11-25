@@ -182,3 +182,29 @@ def test_fenced_leadership_and_preserve_explicit_existing_longer_demand(db):
     assert renew(db,boot=2000) is None
     assert renew(db)==0
     assert db.execute('SELECT active_until,next_due,priority_until,subscription_token FROM hub_subscriptions WHERE url=?',(TICKER,)).fetchone()==(190,77,175,'old')
+
+
+def test_slow_control_command_does_not_block_reading_another_shard():
+    s=ShardedBybitQuoteStream(pair_factory=Pair)
+    names=[f'C{i}USDT' for i in range(25)]
+    s.sync_symbols(names)
+    slow=s._pairs[0]
+    symbol=next(n for n in names if s._index(n)==1)
+    mark=(100.,123.,'a'*32,123000,1,1)
+    s._pairs[1].mark_value[symbol]=mark
+    entered,release,done=threading.Event(),threading.Event(),threading.Event()
+    original=slow.sync_symbols
+    def blocked(names):
+        entered.set()
+        assert release.wait(3)
+        original(names)
+    slow.sync_symbols=blocked
+    control=threading.Thread(target=lambda:s.sync_symbols(names))
+    result=[]
+    reader=threading.Thread(target=lambda:(result.append(s.independent_observations_for_hub(symbol)[0]),done.set()))
+    try:
+        control.start();assert entered.wait(1)
+        reader.start();assert done.wait(1)
+        assert result==[mark]
+    finally:
+        release.set();control.join(3);reader.join(3);s.stop()

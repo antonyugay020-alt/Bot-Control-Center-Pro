@@ -600,9 +600,9 @@
     "tests/test_closed_cohort_unit.py": "11496f67e7dcf126f0cef66b4e0e284df1159c9b6b6a9ff1f3b8256777cda70c",
     "bcc/ws_recovery_maintained.py": "9e5c3eecb1dfbd0de0ff8f56423f7dc3e25e65cdcd6e310c8ca5b23ab3649f39",
     "tests/test_ws_mark_delivery.py": "0fba3f276413241cfd5a60fd73def8430fb5c3b6710f74e0af70627a545cb3a2",
-    "bcc/ws_sharded_quotes.py": "dc564fa66e12e012317edb1c3cf79fb6a9ca59ffa9d8d4364aa3961ea5e11222",
+    "bcc/ws_sharded_quotes.py": "9b868fce3f14c4dd8939bb2e111e6b0d68d3b7644f3556473bec520a3c0db6bc",
     "bcc/ws_ticker_demand.py": "4f2e367a90b4608ae944ed3e581dc190ada8ef00abd403d55ac38bb3d8db090d",
-    "tests/test_ws_sharded_unit.py": "7749c54e2b9aebd145df1c0fa9fed7a69caa0f86f8eea55a1813b4f6b3ed61d7",
-    "tests/test_ws_sharded_integration.py": "6f1ef052f708bf32c2758859079b1abf3039b11cd1e2e82e4980555651fe5beb"
+    "tests/test_ws_sharded_unit.py": "00b4320c43e71984ee18f1769ce8101d84b60f21702d44c08f6d6d89a1670636",
+    "tests/test_ws_sharded_integration.py": "49754d1cd9c84db5dd6753ea8a5bac9b2fc2b657460f79e2ca1789afd25ec2d1"
   }
 }
