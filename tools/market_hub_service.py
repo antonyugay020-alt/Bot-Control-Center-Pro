@@ -75,15 +75,23 @@ def main():
             # transaction for each one to three live market notifications.
             # A saturated queue drains immediately; the low-load wait is
             # bounded to 20ms, far below the original source age fences.
-            if os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1":
-                # Bounded coalescing even under a busy depth feed. A key
-                # denotes the latest observation, not a queued tick payload.
+            mark_balanced = os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1"
+            if mark_balanced:
+                # Reduce shared WAL writer contention under the measured
+                # depth/ticker flood. Saturated batches retain 40ms cadence;
+                # ordinary batches coalesce latest-source notifications for
+                # at most 100ms. Every age is still checked at commit/read.
+                delay = .040 if ws_updates.stats()["pending"]>64 else .100
+                if stop.wait(delay):
+                    break
+            elif os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1":
                 if stop.wait(.040):
                     break
             elif ws_updates.stats()["pending"] < 64:
                 if stop.wait(.020):
                     break
-            batch = ws_updates.take_batch(timeout=.1)
+            batch = (ws_updates.take_mark_balanced_batch(timeout=.1) if mark_balanced
+                     else ws_updates.take_batch(timeout=.1))
             if os.environ.get("BCC_BYBIT_CENTRAL_REPAIR_CANDIDATE")=="1":
                 batch = list(dict.fromkeys(batch))
             if not batch:
@@ -115,7 +123,8 @@ def main():
             if os.environ.get('BCC_BYBIT_DUAL_WS_CANDIDATE') == '1':
                 from bcc.ws_dual_quotes import DualBybitQuoteStream
                 quote_stream = DualBybitQuoteStream(wall=market_now, on_update=on_update,
-                    maintained=os.environ.get('BCC_BYBIT_MAINTAINED_MARK_CANDIDATE') == '1')
+                    maintained=os.environ.get('BCC_BYBIT_MAINTAINED_MARK_CANDIDATE') == '1',
+                    maintained_recovery=os.environ.get('BCC_BYBIT_MARK_DELIVERY_CANDIDATE') == '1')
             else:
                 from bcc.ws_quotes import BybitQuoteStream
                 quote_stream = BybitQuoteStream(wall=market_now, on_update=on_update)
@@ -277,6 +286,10 @@ def main():
                               "queue": queue_stats,
                               "publication": hub.ws_publication_stats(),
                               "rest_lanes": hub.rest_lane_health(),
+                              "mark_delivery": {
+                                  "enabled": os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1",
+                                  "balanced_batch": os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1",
+                              },
                               "clock": {
                                   "ready": market_ready,
                                   "outages": clock_outages,

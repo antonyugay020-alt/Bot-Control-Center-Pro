@@ -212,6 +212,47 @@ class MarketEventQueue:
             result.append(item)
         return result
 
+    def take_mark_balanced_batch(self, *, limit=64, timeout=.1):
+        """Reserve up to a quarter of the batch for actual ticker updates.
+
+        Keep the original FIFO age within each mark class and retain the
+        normal fair dispatcher for all remaining slots. No additional
+        notification, price synthesis, or unbounded priority queue.
+        """
+        if type(limit) is not int or not 4 <= limit <= 64:
+            raise ValueError("invalid balanced market batch limit")
+        if type(timeout) not in (int,float) or not 0 <= timeout <= 5:
+            raise ValueError("invalid market batch timeout")
+        result = []
+        with self._cv:
+            if not self._pending:
+                self._cv.wait(timeout=timeout)
+            if not self._pending:
+                return []
+            reserved = limit//4
+            for queue in (self._critical, self._regular):
+                # Enumerate a snapshot because deque.remove mutates it.
+                for item in tuple(queue):
+                    if len(result)>=reserved:
+                        break
+                    if item[0]!="tickers":
+                        continue
+                    queue.remove(item)
+                    self._pending.remove(item)
+                    waited = time.monotonic()-self._enqueued.pop(item)
+                    self._max_wait = max(self._max_wait,waited)
+                    if item in self._priority:
+                        self._max_critical_wait = max(self._max_critical_wait,waited)
+                    result.append(item)
+                if len(result)>=reserved:
+                    break
+        while len(result)<limit:
+            item = self.take(timeout=0)
+            if item is None:
+                break
+            result.append(item)
+        return result
+
     def stats(self):
         with self._cv:
             fronts = [queue[0] for queue in (self._critical, self._urgent, self._regular) if queue]

@@ -16,17 +16,24 @@ from .ws_symbols import USDT_SYMBOL
 class DualBybitQuoteStream:
     """Two persistent sockets; only the secondary may request refresh snapshots."""
 
-    def __init__(self, *, wall=time.time, monotonic=time.monotonic, on_update=None, maintained=False):
+    def __init__(self, *, wall=time.time, monotonic=time.monotonic, on_update=None, maintained=False, maintained_recovery=False):
         self._wall = wall
         self._mono = monotonic
         self._lock = threading.RLock()
         self._stop = threading.Event()
         if type(maintained) is not bool:
             raise ValueError('invalid maintained-mark candidate')
+        if type(maintained_recovery) is not bool or (maintained_recovery and not maintained):
+            raise ValueError("maintained recovery requires maintained primary")
         self.maintained_enabled = maintained
+        self.maintained_recovery_enabled = maintained_recovery
         primary_type = MaintainedQuoteStream if maintained else BybitQuoteStream
         self._primary = primary_type(wall=wall, monotonic=monotonic, on_update=on_update)
-        self._recovery = RecoveryQuoteStream(wall=wall, monotonic=monotonic, on_update=on_update, mark_only_recovery=True)
+        recovery_type = RecoveryQuoteStream
+        if maintained_recovery:
+            from .ws_recovery_maintained import MaintainedRecoveryQuoteStream
+            recovery_type = MaintainedRecoveryQuoteStream
+        self._recovery = recovery_type(wall=wall, monotonic=monotonic, on_update=on_update, mark_only_recovery=True)
         self._demand = set()
         self._primary_added = {}
         self._recovery_demand = set()
@@ -116,11 +123,12 @@ class DualBybitQuoteStream:
                         continue
                     fence = child._connection_fence
                     row = child._marks.get(symbol)
-                    if self.maintained_enabled and child is self._primary:
+                    if ((self.maintained_enabled and child is self._primary)
+                            or (self.maintained_recovery_enabled and child is self._recovery)):
                         confirmed = child.maintained_mark(symbol)
                         if confirmed is not None:
                             marks.append(confirmed)
-                        row = None  # broken primary chain is not an explicit fallback
+                        row = None  # broken chain is not an explicit fallback
                     if (row is not None and row[3] == child._generation
                             and 0 <= child._mono() - row[2] < 3.
                             and remaining(row[1], 3.) > 0):
@@ -225,10 +233,18 @@ class DualBybitQuoteStream:
                                 explicit_mark_symbols=len(ages),
                                 explicit_mark_age_over_3s=sum(age > 3. for age in ages),
                                 explicit_mark_max_age_seconds=round(max(ages, default=0.), 6))
-            return dict(mode='stable_primary_independent_recovery',
+            result = dict(mode='stable_primary_independent_recovery',
                         primary=lane(self._primary), recovery=lane(self._recovery),
                         maintained=self._primary.maintained_health() if self.maintained_enabled else None,
                         refresh=self.refresh_pressure())
+            if self.maintained_recovery_enabled:
+                result["maintained_recovery"] = self._recovery.maintained_health()
+                marks = {s for s in self._demand
+                         if self.independent_observations_for_hub(s)[0] is not None}
+                result["mark_union"] = dict(active=len(self._demand), fresh=len(marks),
+                    priority=len(self._priority & self._demand),
+                    priority_fresh=len(marks & self._priority))
+            return result
 
     def run(self, *, websocket_app_factory=None):
         """Own both child lifecycles. Failure of either loop ends this candidate."""

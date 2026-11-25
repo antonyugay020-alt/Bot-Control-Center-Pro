@@ -120,7 +120,7 @@
     "bcc/wizard_stepper.py": "e7efa4d0d8c6ee88abd3bc1fad98abb93dbfb283c11cb6ed95a3d87ef714f4ef",
     "bcc/worker.py": "9eb144841bfcf9ad5bb0517e7bf7452890f57f76077728235525eb9537277119",
     "bcc/ws_binance.py": "0bc9113c6791f8d602feda02968a540a060fa290dfc6ddd92f34f65c1381141b",
-    "bcc/ws_dispatch.py": "0e9f4759074adffa6a00fb1a0b6a39071c314526fb1b25f34ddcf89ca4d2f927",
+    "bcc/ws_dispatch.py": "c2ddedc9121e7be896261db10fcc130bc306de48120e39b6939a53c3b58c6fad",
     "bcc/ws_klines.py": "31c91be4bf76cab14b737173550018a4d8627dc35240029dec1e3a2b1ddb23e7",
     "bcc/ws_orderbooks.py": "f4ef0a022b58b242ececfa8aec50822d232fdc5850f1e321c15512ac33fa05d5",
     "bcc/ws_polymarket.py": "02cb7000d4f89c1296e896775e7fcfaf0f06ba6fffd434691ff81075eb55bf19",
@@ -549,7 +549,7 @@
     "tools/export_test_report.py": "09f85e9ae97cf7bf0ba689d3a5f3603a6e915a37ae5fb2f78c735503574d9b4b",
     "tools/manual_qa_9047.py": "7d756590b86b042cfdb2c4603579f4482fd7800df0e5f84315797684172438e4",
     "tools/manual_qa_current.py": "4c5351feb2c33703dcb9b9afa75bd6ed1a3c13c5482e769189d30ee487fd53e8",
-    "tools/market_hub_service.py": "7a471b075ad2350e199db85d076174183c42ad8267adedace720dbd6fa2039b8",
+    "tools/market_hub_service.py": "d3b2854a7a94c78bea36d61871f28a570081e25a94d482d7e4f9f1066ab42460",
     "tools/process_guard.py": "ea2d2c5addc3b55508c77ef22330e9fdecfa27485ac1e3a67b7833e818c8a1b4",
     "tools/qa_budgets.py": "366489c1b00637ca45ee1eb20840c9235648488c404c6fe418501e0d2d025694",
     "tools/qa_locale.py": "a46a7105622cb23629465e7051ce0b3492fdc7bc7f67f3ba88cd144e1d79fa9a",
@@ -570,7 +570,7 @@
     "tests/test_ws_publication_diagnostics.py": "89b2a8cdf9bc559aa8f7c0f4bf3f8873e968c385d6a0180d638f57a40ad75dd6",
     "bcc/ws_recovery.py": "94df9d12da4ac53754fc8589ffc98b3a4717d52093831d61ed9cd00143d03ccb",
     "tests/test_ws_snapshot_response_gate.py": "7f814061372555f2e9a317f9a15364bbb7f53c709acdd638df5c2b0a635de86c",
-    "bcc/ws_dual_quotes.py": "387265622aa3dc7b01076b8ef3092bfa43da0457b0168fa07e1615564519a2ba",
+    "bcc/ws_dual_quotes.py": "42345b78e43e16c5d6ea49393128f887f7dafc682010e0269058c32784fc8357",
     "bcc/ws_recovery_quotes.py": "2ba3d17cc07ba78b47935e0d647836b2e13f6a43a12012322901c89297908936",
     "bcc/ws_source_deadline.py": "64ead1787c44ddee0a8fa622c2c0ad16fd058192b2e849f77de0dc488a06829b",
     "tests/test_ws_dual_quotes.py": "c66bbc474ba05e37a496fb644fb6ef6be8827578c032d200332177fd24fa95c2",
@@ -597,6 +597,8 @@
     "tests/test_hub_clock_outage.py": "b3fec96db6c0f2c853e944aefec02894c3088cddbeed172d5309b4b4fc5ab623",
     "bcc/closed_cohort.py": "75547f6a1a4f555ff7b37684880a8523704aa1c044e2d9da1c37ecf35f2b9482",
     "tests/test_portfolio_closed_cohort.py": "58533a43cf3a09521fd7274b98a255575c7a65f64e87245346ba0ce98ca7a8a5",
-    "tests/test_closed_cohort_unit.py": "11496f67e7dcf126f0cef66b4e0e284df1159c9b6b6a9ff1f3b8256777cda70c"
+    "tests/test_closed_cohort_unit.py": "11496f67e7dcf126f0cef66b4e0e284df1159c9b6b6a9ff1f3b8256777cda70c",
+    "bcc/ws_recovery_maintained.py": "25aefe3643920a5a4cfb7c68cafb9387e47ea6f74e7d80fb98d9e34b0e55c8e4",
+    "tests/test_ws_mark_delivery.py": "8a0aef03e438d2bbab09aa42237422e7344e36228fe1173c6d57ce84cfd77830"
   }
 }
