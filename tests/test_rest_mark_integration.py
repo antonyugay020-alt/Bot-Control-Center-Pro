@@ -3,7 +3,7 @@ import time
 import pytest
 
 from bcc import market_clock, market, ws_split_ticker
-from bcc.data_cache import PublicCache, CacheBusy, ProviderDenied
+from bcc.data_cache import PublicCache, CacheBusy, CacheContention, ProviderDenied
 from bcc.market_hub import HubRegistry
 from bcc.rest_mark_fallback import URL, HOST
 from bcc.ws_split_ticker import make_split_ticker
@@ -40,6 +40,8 @@ def publish(cache,fence,snapshot):
 def test_refresh_uses_existing_lease_and_budget_and_keeps_old_snapshot(setup):
     now,cache,registry,fence,snapshot=setup
     assert publish(cache,fence,snapshot)
+    # Dedicated collateral publications never rewrite the raw bulk row.
+    assert cache.read_fresh(URL,PARAMS,HOST) is None
     before=cache.read_fresh_many([],HOST,include_rest_marks=True)[0]
     key,owner,_=cache.begin(URL,PARAMS,HOST,priority=True,mark_leader=fence)
     assert cache.read_fresh_many([],HOST,include_rest_marks=True)[0]==before
@@ -127,8 +129,17 @@ def test_rest_refresh_path_uses_public_http_and_original_timestamp(setup,monkeyp
         def session(self):return Session()
     source=Source(quote_stream=object())
     source.shared=cache
+    original_begin=cache.begin
+    reservations=[]
+    def begin(*args, **kwargs):
+        reservations.append(1)
+        if len(reservations)==1:
+            raise CacheContention('transient SQLite writer contention')
+        return original_begin(*args, **kwargs)
+    monkeypatch.setattr(cache,'begin',begin)
     try:
         source.refresh_rest_marks(*fence)
+        assert len(reservations)==2
         assert len(calls)==1 and calls[0][0]==URL
         assert calls[0][1]==dict(params=PARAMS,timeout=(1,2),allow_redirects=False)
         first=cache.read_fresh_many([],HOST,include_rest_marks=True)[0]
@@ -151,3 +162,18 @@ def test_rest_refresh_path_uses_public_http_and_original_timestamp(setup,monkeyp
     finally:
         source.shared=None
         source.close()
+
+
+def test_dedicated_mark_writer_preserves_existing_ordinary_bulk_row(setup):
+    now,cache,registry,fence,snapshot=setup
+    key,owner,_=cache.begin(URL,PARAMS,HOST)
+    raw=snapshot()
+    assert cache.finish(key,owner,HOST,raw,ttl=60.)
+    with cache.read_db() as db:
+        before=db.execute("SELECT value,until FROM cache WHERE k=?", (key,)).fetchone()
+    now[0]+=.2
+    assert publish(cache,fence,snapshot)
+    with cache.read_db() as db:
+        after=db.execute("SELECT value,until FROM cache WHERE k=?", (key,)).fetchone()
+    assert before==after
+    assert cache.read_fresh_many([],HOST,include_rest_marks=True)[0]['time']==round(now[0]*1000)

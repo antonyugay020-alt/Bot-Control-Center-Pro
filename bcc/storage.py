@@ -23,9 +23,22 @@ def json_bytes(value):
 
 
 def load_json(path):
+    path = Path(path)
+    # Windows may briefly deny opening a heartbeat while its owner performs
+    # atomic replacement. Retry only that transient sharing violation; never
+    # substitute an older receipt or accept malformed JSON.
+    deadline = time.monotonic() + .25
+    while True:
+        try:
+            raw = path.read_text(encoding="utf-8-sig")
+            break
+        except PermissionError as exc:
+            if (path.name != "process.json" or getattr(exc, "winerror", None) not in (5, 32, 33)
+                    or time.monotonic() >= deadline):
+                raise
+            time.sleep(.025)
     return json.loads(
-        Path(path).read_text(encoding="utf-8-sig"),
-        parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)),
+        raw, parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)),
     )
 
 

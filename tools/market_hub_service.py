@@ -187,7 +187,8 @@ def main():
                 hub.source.refresh_rest_marks(hub.owner,token)
                 return True
             rest_pump = RestMarkPump(fetch_missing_marks,recoverable=(
-                DataUnavailable,CacheBusy,ProviderDenied,ClockUnavailable,OSError,sqlite3.OperationalError))
+                DataUnavailable,CacheBusy,ProviderDenied,ClockUnavailable,OSError,sqlite3.OperationalError),
+                period=.65)
             print("Official Bybit bulk REST collateral fallback enabled",flush=True)
         for label, stream in (('tickers', quote_stream), ('depth50', book_stream),
                               ('kline1', kline_stream), ('polybook', poly_stream),

@@ -4,6 +4,7 @@ The API time describes the response snapshot, not a per-symbol WS event.
 Preserve it across publication/read, and never renew it from local receipt.
 """
 import hashlib
+import json
 import math
 import os
 import time
@@ -81,9 +82,29 @@ def index_snapshot(value, fresh):
             and (price := _price(raw)) is not None}
 
 
+def publish_compact(db, compact, encoded, fresh):
+    """Inside the caller's admitted writer transaction; only the mark key.
+
+    An ordinary bulk ticker response has a separate cache contract. Do not
+    overwrite that raw row or churn the WAL with its unused order-book fields.
+    The caller owns the provider, lease, budget and Hub-generation fences.
+    """
+    old = db.execute("SELECT value FROM cache WHERE k=? AND host=?", (KEY, HOST)).fetchone()
+    old_stamp = json.loads(old[0]).get("time", 0) if old else 0
+    if (not fresh(compact['time'] / 1000)
+            or (type(old_stamp) is int and compact['time'] <= old_stamp)):
+        return False
+    db.execute("INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
+               (KEY, encoded, time.time() + 3., HOST))
+    return True
+
+
 class RestMarkPump:
     """One background job, no bursts or overlap, no work without admission."""
-    def __init__(self, fetch, *, recoverable=(), monotonic=time.monotonic):
+    def __init__(self, fetch, *, recoverable=(), monotonic=time.monotonic, period=1.):
+        if type(period) not in (float, int) or not .5 <= period <= 1.:
+            raise ValueError('Invalid bulk mark polling period')
+        self.period = float(period)
         self.fetch = fetch
         self.recoverable = recoverable
         self.monotonic = monotonic
@@ -91,14 +112,20 @@ class RestMarkPump:
         self.job = None
         self.next_due = 0.
         self.started = self.skipped = self.completed = self.errors = 0
+        self.last_started = None
+        self.max_start_gap = 0.
+        self.error_types = {}
 
     def poll(self, ready):
         if self.job is not None and self.job.done():
             job, self.job = self.job, None
             try:
                 outcome = job.result()
-            except self.recoverable:
+            except self.recoverable as exc:
                 self.errors += 1
+                # Classify only, never log exchange payloads or request secrets.
+                name = type(exc.__cause__ or exc).__name__
+                self.error_types[name] = self.error_types.get(name, 0) + 1
             else:
                 if outcome:
                     self.completed += 1
@@ -106,13 +133,18 @@ class RestMarkPump:
                     self.skipped += 1
         now = self.monotonic()
         if ready and self.job is None and now >= self.next_due:
-            self.next_due = now + 1.
+            self.next_due = now + self.period
+            if self.last_started is not None:
+                self.max_start_gap = max(self.max_start_gap, now - self.last_started)
+            self.last_started = now
             self.started += 1
             self.job = self.pool.submit(self.fetch)
 
     def stats(self):
         return dict(started=self.started, skipped=self.skipped, completed=self.completed,
-                    errors=self.errors, pending=self.job is not None)
+                    errors=self.errors, pending=self.job is not None,
+                    period_seconds=self.period, max_start_gap_seconds=round(self.max_start_gap, 6),
+                    error_types=dict(self.error_types))
 
     def close(self):
         self.pool.shutdown(wait=True, cancel_futures=True)

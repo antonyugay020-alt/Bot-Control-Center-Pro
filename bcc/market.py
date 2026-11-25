@@ -947,7 +947,10 @@ class PublicData:
             # fence and resume on the next market tick. Waiting the full
             # lease window would deadlock recovery if the lock owner releases
             # it only after seeing that diagnostic.
-            lock_deadline = time.monotonic() + 1.5
+            # The single-flight mark lane may retry a failed *reservation*,
+            # never a second HTTP request. Keep the shorter bounded deadline
+            # so a contended writer cannot monopolize this freshness lane.
+            lock_deadline = time.monotonic() + (.45 if mark_leader is not None else 1.5)
             while True:
                 if self.stop_event.is_set():
                     raise DataUnavailable("Получение данных остановлено")
@@ -966,7 +969,7 @@ class PublicData:
                 except ProviderDenied as exc:
                     raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as e:
-                    if mark_leader is not None:
+                    if mark_leader is not None and not isinstance(e, CacheContention):
                         raise DataUnavailable(str(e)) from e
                     if isinstance(e, CacheContention):
                         deadline = min(lease_deadline, lock_deadline)

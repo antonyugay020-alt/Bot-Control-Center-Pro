@@ -1008,12 +1008,15 @@ class PublicCache:
                 value = None
         # Serialization may be expensive for a long candle history. It must not
         # run while blocking every other bot's short write transaction.
+        # The dedicated collateral lane publishes ONLY its compact mark
+        # snapshot. Ordinary full ticker requests keep their own cache row;
+        # do not repeatedly rewrite a large bulk payload in the shared WAL.
+        publish_value = compact if mark_leader is not None else value
         encoded = (
-            json.dumps(value, allow_nan=False)
-            if value is not None and ttl > 0
+            json.dumps(publish_value, allow_nan=False)
+            if publish_value is not None and ttl > 0
             else None
         )
-        compact_encoded = json.dumps(compact, allow_nan=False) if compact is not None else None
         self._ensure_schema()
         published = False
         with self.db() as db:
@@ -1029,25 +1032,17 @@ class PublicCache:
                 if (encoded is not None and self._denied(db, host) is None
                         and (mark_leader is None
                              or self._mark_leader_valid(db,mark_leader,time.time()))):
-                    # An aged response at the actual commit cannot replace
-                    # the previous still valid snapshot.
-                    publishable = True
+                    # Re-evaluate original exchange freshness under the
+                    # same lease/leader/denial fence at actual commit.
                     if compact is not None:
-                        from .rest_mark_fallback import KEY
-                        old = db.execute("SELECT value FROM cache WHERE k=? AND host=?",
-                                         (KEY,host)).fetchone()
-                        old_stamp = json.loads(old[0]).get("time",0) if old else 0
-                        publishable = (book_is_fresh(compact['time']/1000)
-                                       and (type(old_stamp) is not int or compact["time"] > old_stamp))
-                    if publishable:
+                        from .rest_mark_fallback import publish_compact
+                        published = publish_compact(db, compact, encoded, book_is_fresh)
+                    else:
                         db.execute(
                             "INSERT OR REPLACE INTO cache(k,value,until,host) "
                             "VALUES(?,?,?,?)",
                             (key, encoded, time.time() + ttl, host),
                         )
-                        if compact is not None:
-                            db.execute("INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
-                                (KEY,compact_encoded,time.time()+3.,host))
                         published = True
                 if cooldown:
                     db.execute(
