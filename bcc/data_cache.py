@@ -1018,23 +1018,24 @@ class PublicCache:
                              or self._mark_leader_valid(db,mark_leader,time.time()))):
                     # An aged response at the actual commit cannot replace
                     # the previous still valid snapshot.
-                    if compact is None or book_is_fresh(compact['time']/1000):
+                    publishable = True
+                    if compact is not None:
+                        from .rest_mark_fallback import KEY
+                        old = db.execute("SELECT value FROM cache WHERE k=? AND host=?",
+                                         (KEY,host)).fetchone()
+                        old_stamp = json.loads(old[0]).get("time",0) if old else 0
+                        publishable = (book_is_fresh(compact['time']/1000)
+                                       and (type(old_stamp) is not int or compact["time"] > old_stamp))
+                    if publishable:
                         db.execute(
                             "INSERT OR REPLACE INTO cache(k,value,until,host) "
                             "VALUES(?,?,?,?)",
                             (key, encoded, time.time() + ttl, host),
                         )
                         if compact is not None:
-                            from .rest_mark_fallback import KEY
-                            old = db.execute("SELECT value FROM cache WHERE k=? AND host=?",
-                                             (KEY,host)).fetchone()
-                            old_stamp = json.loads(old[0]).get("time",0) if old else 0
-                            if type(old_stamp) is not int or compact["time"] > old_stamp:
-                                db.execute("INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
-                                    (KEY,json.dumps(compact,allow_nan=False),time.time()+3.,host))
-                                published = True
-                        else:
-                            published = True
+                            db.execute("INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
+                                (KEY,json.dumps(compact,allow_nan=False),time.time()+3.,host))
+                        published = True
                 if cooldown:
                     db.execute(
                         "INSERT INTO cooldown VALUES(?,?) ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)",

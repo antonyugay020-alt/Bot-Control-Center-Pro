@@ -45,6 +45,7 @@ def test_refresh_uses_existing_lease_and_budget_and_keeps_old_snapshot(setup):
     assert cache.read_fresh_many([],HOST,include_rest_marks=True)[0]==before
     with pytest.raises(CacheBusy):
         cache.begin(URL,PARAMS,HOST,priority=True,mark_leader=fence)
+    now[0]+=.1
     assert cache.finish(key,owner,HOST,snapshot(),ttl=1.,mark_leader=fence)
     with cache.read_db() as db:
         assert db.execute("SELECT count FROM request_budget WHERE host=?",(HOST,)).fetchone()[0]>=1
