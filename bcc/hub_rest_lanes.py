@@ -24,7 +24,8 @@ def select_history_admissions(hub, running, free):
     # Both classes borrow unused capacity; no new executor or HTTP quota.
     selected = []
     if ordinary and not running_ordinary:
-        selected.append(ordinary.pop(0))
+        index = next((i for i, item in enumerate(ordinary) if not item[3]), 0)
+        selected.append(ordinary.pop(index))
     selected.extend(repairs[:free-len(selected)])
     selected.extend(ordinary[:free-len(selected)])
     return selected

@@ -14,10 +14,12 @@ REPAIR_SQL = ("CASE WHEN json_valid(params) THEN ("
               "json_extract(params,'$.category')='linear' "
               "AND json_type(params,'$.symbol')='text' "
               "AND json_extract(params,'$.interval')='1' "
+              "AND json_type(params,'$.limit')='integer' "
               "AND json_extract(params,'$.limit')=1 "
               "AND json_type(params,'$.end')='integer' "
               "AND json_extract(params,'$.end')>=59999 "
               "AND json_extract(params,'$.end')%60000=59999 "
+              "AND (SELECT count(*) FROM json_each(params))=5 "
               "AND json_type(params,'$.start') IS NULL "
               ") ELSE 0 END")
 
