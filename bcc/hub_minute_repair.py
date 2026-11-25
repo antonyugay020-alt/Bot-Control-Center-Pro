@@ -8,6 +8,28 @@ from .closed_minutes import key as ws_key, validate
 URL = 'https://api.bybit.com/v5/market/kline'
 HOST = 'api.bybit.com'
 
+# Exact shape shared by the REST scheduler and repair demand.
+# CASE protects json_extract from malformed persisted subscription rows.
+REPAIR_SQL = ("CASE WHEN json_valid(params) THEN ("
+              "json_extract(params,'$.category')='linear' "
+              "AND json_type(params,'$.symbol')='text' "
+              "AND json_extract(params,'$.interval')='1' "
+              "AND json_extract(params,'$.limit')=1 "
+              "AND json_type(params,'$.end')='integer' "
+              "AND json_extract(params,'$.end')>=59999 "
+              "AND json_extract(params,'$.end')%60000=59999 "
+              "AND json_type(params,'$.start') IS NULL "
+              ") ELSE 0 END")
+
+
+def is_repair(url, params):
+    return (url == URL and type(params) is dict
+            and set(params) == {'category','symbol','interval','limit','end'}
+            and params['category'] == 'linear' and params['interval'] == '1'
+            and type(params['symbol']) is str and type(params['limit']) is int
+            and params['limit'] == 1 and type(params['end']) is int
+            and params['end'] >= 59999 and params['end'] % 60000 == 59999)
+
 
 def params_for(symbol, start):
     ws_key(symbol, start)  # validate symbol and exact minute boundary
@@ -93,11 +115,18 @@ def schedule(db, jobs, start, now, now_ms, *, owner, token, boot):
         until=min(now+30,active[1])
         priority=min(active[0],until) if active[0]>now else 0
         k=identity(params)
-        # Existing demand (including an active HTTP lease) wins. A newly
-        # activated client can independently rearm an expired subscription.
-        changed=db.execute('INSERT OR IGNORE INTO hub_subscriptions '
+        # An expired canonical row from a previous consumer is not current
+        # demand. Rearm it only under the live parent and with no active HTTP
+        # owner; preserve all active subscriptions and their generations.
+        changed=db.execute('INSERT INTO hub_subscriptions '
             '(k,url,params,active_until,next_due,priority_until,subscription_token) '
-            'VALUES(?,?,?,?,0,?,?)',(k,URL,encoded,until,priority,uuid.uuid4().hex)).rowcount
+            'VALUES(?,?,?,?,0,?,?) ON CONFLICT(k) DO UPDATE SET '
+            'active_until=excluded.active_until,next_due=0,'
+            'priority_until=excluded.priority_until,'
+            'subscription_token=excluded.subscription_token '
+            'WHERE hub_subscriptions.active_until<=? '
+            'AND NOT EXISTS (SELECT 1 FROM lease WHERE k=excluded.k AND until>?)',
+            (k,URL,encoded,until,priority,uuid.uuid4().hex,now,now)).rowcount
         if changed:
             scheduled.append(symbol)
     return scheduled

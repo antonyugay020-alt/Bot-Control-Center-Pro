@@ -257,6 +257,16 @@ def main():
                     for thread in ws_jobs:
                         thread.start()
                         ws_threads.append(thread)
+                    if rest_pump is not None:
+                        def rest_ready():
+                            if not hub._leader_held or not hub._leader_token:
+                                return False
+                            try:
+                                clock.bounds()
+                            except ClockUnavailable:
+                                return False
+                            return True
+                        rest_pump.start(rest_ready)
                     print('Market Hub leader lease acquired', flush=True)
                     ready_logged = True
                 try:
@@ -272,7 +282,7 @@ def main():
                     clock_was_ready = False
                     hub.poll_nonblocking(market_ready=False)
                 if rest_pump is not None:
-                    rest_pump.poll(market_ready and hub._leader_held)
+                    rest_pump.check()
                 if ws_threads and time.monotonic() - last_ws_health >= 10:
                     # Only aggregate public transport liveness and queue
                     # pressure; no token ids, API keys or market payloads.

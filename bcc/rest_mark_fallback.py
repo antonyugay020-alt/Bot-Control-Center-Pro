@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from .ws_symbols import USDT_SYMBOL
@@ -115,8 +116,18 @@ class RestMarkPump:
         self.last_started = None
         self.max_start_gap = 0.
         self.error_types = {}
+        self._lock = threading.RLock()
+        self._stop = threading.Event()
+        self._runner = None
+        self._fatal = None
 
     def poll(self, ready):
+        with self._lock:
+            return self._poll(ready)
+
+    def _poll(self, ready):
+        if self._stop.is_set():
+            return
         if self.job is not None and self.job.done():
             job, self.job = self.job, None
             try:
@@ -140,11 +151,37 @@ class RestMarkPump:
             self.started += 1
             self.job = self.pool.submit(self.fetch)
 
+    def start(self, ready):
+        """Independent bounded control loop; never overlap or catch up in bursts."""
+        with self._lock:
+            if self._runner is not None or self._stop.is_set():
+                raise RuntimeError('REST mark controller already started or closed')
+            def run():
+                try:
+                    while not self._stop.is_set():
+                        self.poll(ready())
+                        self._stop.wait(.05)
+                except BaseException as exc:
+                    with self._lock:
+                        self._fatal = exc
+            self._runner = threading.Thread(target=run, name='rest-mark-control', daemon=True)
+            self._runner.start()
+
+    def check(self):
+        with self._lock:
+            if self._fatal is not None:
+                raise RuntimeError('REST mark controller failed') from self._fatal
+
     def stats(self):
-        return dict(started=self.started, skipped=self.skipped, completed=self.completed,
-                    errors=self.errors, pending=self.job is not None,
-                    period_seconds=self.period, max_start_gap_seconds=round(self.max_start_gap, 6),
-                    error_types=dict(self.error_types))
+        with self._lock:
+            return dict(started=self.started, skipped=self.skipped, completed=self.completed,
+                        errors=self.errors, pending=self.job is not None,
+                        period_seconds=self.period, max_start_gap_seconds=round(self.max_start_gap, 6),
+                        independent_control=self._runner is not None,
+                        error_types=dict(self.error_types))
 
     def close(self):
+        self._stop.set()
+        if self._runner is not None:
+            self._runner.join()
         self.pool.shutdown(wait=True, cancel_futures=True)

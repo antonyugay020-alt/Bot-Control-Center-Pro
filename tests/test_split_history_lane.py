@@ -175,3 +175,32 @@ def test_duplicate_rest_demand_retains_original_future_without_stopping_hub(tmp_
     finally:
         release.set()
         hub.close()
+
+
+def test_canonical_repairs_have_capacity_without_starving_bootstrap(tmp_path, monkeypatch):
+    from bcc.hub_minute_repair import params_for
+    from bcc.hub_rest_lanes import admit_rest_lanes
+    source=PublicData()
+    hub=MarketDataHub(tmp_path/'cache.sqlite',source=source,max_workers=6)
+    hub.enable_split_history()
+    source.shared.central_repair=True
+    release=threading.Event()
+    def get(*a, **kw):
+        assert release.wait(5)
+    monkeypatch.setattr(source,'get',get)
+    try:
+        assert hub.acquire_leadership()
+        repair_keys={hub.registry.subscribe(KLINE,params_for(f'R{i}USDT',60000000))
+                     for i in range(8)}
+        ordinary_keys={hub.registry.subscribe(KLINE,dict(category='linear',
+            symbol=f'H{i}USDT',interval='1',limit=100),priority=True)
+            for i in range(8)}
+        assert set(row[0] for row in hub.registry.due(limit=10,history_lane=True,repair_lane=True))==repair_keys
+        assert set(row[0] for row in hub.registry.due(limit=10,history_lane=True,repair_lane=False))==ordinary_keys
+        admit_rest_lanes(hub)
+        assert len(hub._inflight)==3
+        assert len(set(hub._inflight)&repair_keys)==2
+        assert len(set(hub._inflight)&ordinary_keys)==1
+    finally:
+        release.set()
+        hub.close()

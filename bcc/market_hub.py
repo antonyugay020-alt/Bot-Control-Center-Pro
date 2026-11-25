@@ -587,10 +587,14 @@ class HubRegistry:
             ).fetchone() is not None
 
     def due(self, limit=32, *, reserve_regular=0, exclude=(), include_priority=False,
-            include_generation=False, skip_ws_routes=(), history_lane=None):
+            include_generation=False, skip_ws_routes=(), history_lane=None,
+            repair_lane=None):
         # Urgent position marks first, reserve slots for scans.
         if history_lane is not None and type(history_lane) is not bool:
             raise ValueError("Invalid REST history lane selector")
+
+        if repair_lane is not None and (type(repair_lane) is not bool or history_lane is not True):
+            raise ValueError('Invalid canonical repair lane selector')
 
         # Urgency belongs to a short renewable lease, not a permanent flag.
         if type(include_generation) is not bool:
@@ -649,6 +653,9 @@ class HubRegistry:
             # combined queue. Only this fixed allowlisted route is separated.
             op = "=" if history_lane else "<>"
             skip_sql += " AND url" + op + "'https://api.bybit.com/v5/market/kline'"
+        if repair_lane is not None:
+            from .hub_minute_repair import REPAIR_SQL
+            skip_sql += " AND coalesce((" + REPAIR_SQL + "),0)=" + ("1" if repair_lane else "0")
         # Rank actual financial-risk metadata before executable price/book,
         # then held-position candles. Grouping book with risk as equal-priority
         # lets an already-backlogged quote queue consume the one reserved

@@ -21,6 +21,10 @@ class DataUnavailable(RuntimeError):
     pass
 
 
+class RestMarkPublicationUnavailable(DataUnavailable):
+    """HTTP collateral response was not admitted by the shared transaction."""
+
+
 class WebSocketKlineUnavailable(DataUnavailable):
     """Only a missing/unverified Hub WS tail; independent REST history may recover.
 
@@ -1114,7 +1118,8 @@ class PublicData:
             # singleflight owner or a locked shared SQLite writer can prevent
             # atomic publication. The producer and direct workers both fail
             # closed instead of trading on an uncommitted private snapshot.
-            raise DataUnavailable(
+            error_type = RestMarkPublicationUnavailable if mark_leader is not None else DataUnavailable
+            raise error_type(
                 "Общий кэш: успешный HTTP-снимок не подтверждён транзакцией владельца"
             )
         if self.shared is None:

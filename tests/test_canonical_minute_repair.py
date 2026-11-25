@@ -65,3 +65,37 @@ def test_canonical_repair_rejects_invalid_evidence(kind):
     elif kind=="future":d["time"]=now+6000
     else:d["retCode"]=10006
     assert rest_minute(d,"BTCUSDT",start,now) is None
+
+
+def test_expired_canonical_subscription_rearmed_only_without_http_owner(tmp_path,monkeypatch):
+    from bcc.hub_minute_repair import schedule
+    now_ms=60062000
+    start=60000000
+    monkeypatch.setattr(market_clock,'market_now',lambda:now_ms/1000)
+    source=PublicData()
+    hub=MarketDataHub(tmp_path/'cache.sqlite',source=source,max_workers=6)
+    try:
+        assert hub.acquire_leadership()
+        hub.registry.subscribe(URL,dict(category='linear',symbol='BTCUSDT',interval='1',limit=10))
+        params=params_for('BTCUSDT',start)
+        k=hub.registry.subscribe(URL,params)
+        source.shared._ensure_schema()
+        with hub.registry._connect() as db:
+            db.execute('UPDATE hub_subscriptions SET active_until=0 WHERE k=?',(k,))
+            old=db.execute('SELECT subscription_token FROM hub_subscriptions WHERE k=?',(k,)).fetchone()[0]
+        key,owner,_=source.shared.begin(URL,params,HOST)
+        def repair():
+            with hub.registry._connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                added=schedule(db,['BTCUSDT'],start,time.time(),now_ms,
+                               owner=hub.owner,token=hub._leader_token,boot=hub.registry._boot_epoch())
+                db.commit()
+            return added
+        assert repair()==[]
+        source.shared.finish(key,owner,HOST)
+        assert repair()==['BTCUSDT']
+        with hub.registry._connect() as db:
+            assert db.execute('SELECT subscription_token FROM hub_subscriptions WHERE k=?',(k,)).fetchone()[0]!=old
+        assert repair()==[]
+    finally:
+        hub.close()
