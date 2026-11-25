@@ -255,7 +255,7 @@ def test_813_histories_across_four_processes_and_eight_threads(tmp_path):
                 child.wait(timeout=5)
 
 
-def test_worker_loop_recovers_cache_lock_and_manages_existing_position(tmp_path):
+def test_worker_loop_recovers_cache_lock_and_manages_existing_position(tmp_path, monkeypatch):
     from test_core import bars, book, config
     from test_execution_runtime import open_position
 
@@ -301,7 +301,16 @@ def test_worker_loop_recovers_cache_lock_and_manages_existing_position(tmp_path)
         def orderbook(self, symbol):
             return self.get(URL, {"category": "linear", "symbol": symbol})
 
+    # This is a replay adapter, not a live exchange acceptance test.
+    # It explicitly declines native risk maintenance; neither its history
+    # lane nor any other lane may initiate a real public-clock probe.
+    clock_probes = []
+    def unexpected_probe(provider):
+        clock_probes.append(provider)
+        raise AssertionError("Offline cache recovery attempted live clock I/O")
+    monkeypatch.setattr("bcc.market_clock.probe_source", unexpected_probe)
     source = Source()
+    assert not source.risk_maintenance_enabled()
     source.shared = seeded(tmp_path / "public.sqlite")
     blocker = sqlite3.connect(source.shared.path, isolation_level=None)
     blocker.execute("BEGIN IMMEDIATE")
@@ -328,6 +337,7 @@ def test_worker_loop_recovers_cache_lock_and_manages_existing_position(tmp_path)
             lambda *a: 50,
             None,
         )
+        assert not clock_probes, "Disabled native risk transport was called"
         assert saw_lock
         assert not store.read()["positions"]
         assert any(e.get("reason") == "TAKE_PROFIT" for e in store.history())

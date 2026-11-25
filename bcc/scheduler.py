@@ -172,7 +172,11 @@ class MarketScheduler:
         # with the next fresh executable WS book, never from this pool.
         if history_only and not getattr(self, "_risk_refresh_independent", False):
             refresh_risk = getattr(self.source, "refresh_position_risk", None)
-            if callable(refresh_risk):
+            # A transport that explicitly declines native risk maintenance
+            # must not invoke its inherited Bybit risk/clock path indirectly.
+            # Legacy adapters without the capability retain their contract.
+            enabled = getattr(self.source, "risk_maintenance_enabled", lambda: True)
+            if callable(refresh_risk) and enabled():
                 try:
                     margin_data = refresh_risk(symbol)
                 except (DataUnavailable, ValueError, KeyError, TypeError):
