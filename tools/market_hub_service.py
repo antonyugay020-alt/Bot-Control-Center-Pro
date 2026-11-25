@@ -280,6 +280,29 @@ def main():
                             if callable(pressure):
                                 states[label]["refresh"] = pressure()
                     queue_stats = ws_updates.stats()
+                    cached_marks = None
+                    if (market_ready and quote_stream is not None
+                            and os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1"):
+                        from bcc.data_cache import CacheBusy, ProviderDenied
+                        try:
+                            names = tuple(hub._ws_quote_symbols)
+                            rows = hub.source.shared.read_fresh_many([
+                                ("https://api.bybit.com/v5/market/tickers",
+                                 {"category":"linear","symbol":s}) for s in names
+                            ], "api.bybit.com")
+                            from bcc.market import DataUnavailable
+                            fresh = 0
+                            for symbol, row in zip(names, rows):
+                                if not isinstance(row,dict):
+                                    continue
+                                try:
+                                    PublicData._decode_ws_position_mark(symbol,row)
+                                except DataUnavailable:
+                                    continue
+                                fresh += 1
+                            cached_marks = {"active":len(names),"fresh":fresh}
+                        except (CacheBusy,ProviderDenied,ClockUnavailable):
+                            cached_marks = {"unavailable":True}
                     print("Market Hub WS health: " +
                           json.dumps({
                               "streams": states,
@@ -289,6 +312,7 @@ def main():
                               "mark_delivery": {
                                   "enabled": os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1",
                                   "balanced_batch": os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1",
+                                  "cache": cached_marks,
                               },
                               "clock": {
                                   "ready": market_ready,

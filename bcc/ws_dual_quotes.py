@@ -178,13 +178,21 @@ class DualBybitQuoteStream:
                 if self.maintained_enabled:
                     primary_mark = self._primary.maintained_mark(symbol)
                 marks = [primary_mark]
+                recovery_mark = None
                 if symbol in self._recovery_demand:
-                    marks.append(self._recovery.snapshot_for_hub(symbol)[0])
+                    recovery_mark = self._recovery.snapshot_for_hub(symbol)[0]
+                    marks.append(recovery_mark)
                 stamps = [m[1] for m in marks if m is not None]
                 newest = max(stamps, default=-1.)
                 if fence and not stamps and now-self._primary_added[symbol] < .75:
                     continue
                 lead = 1.0 if symbol in self._priority else 1.5
+                if self.maintained_recovery_enabled and recovery_mark is not None:
+                    # Starting a new wire generation revokes the old chain.
+                    # Avoid destroying still-usable collateral on every
+                    # 1-second proactive scan. This is only a command lead;
+                    # the same 3s original evidence deadline still applies.
+                    lead = 2.25
                 if not stamps or wall-newest >= lead:
                     wanted.append((symbol, newest))
             wanted = [s for s, _ in sorted(wanted,
