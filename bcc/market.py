@@ -617,8 +617,31 @@ class PublicData:
         return {"symbol": symbol, "price": str(price),
                 "_bcc_ws_binance": True, "_ws_timestamp": stamp}
 
+    def refresh_rest_marks(self, owner, token):
+        """Only the elected Hub requests the bulk mark snapshot."""
+        from .rest_mark_fallback import enabled, URL
+        if (not enabled() or self.shared is None or self._quote_stream is None
+                or os.environ.get("BCC_MARKET_HUB_MODE")=="client"):
+            raise DataUnavailable("REST mark fallback requires the elected WS Hub")
+        clock.bounds()
+        previous = getattr(self._thread,"position_mark",False)
+        previous_leader = getattr(self._thread,"rest_mark_leader",None)
+        self._thread.position_mark = True
+        self._thread.rest_mark_leader = (owner,token)
+        try:
+            return self.get(URL,{"category":"linear"},ttl=1.)
+        finally:
+            self._thread.rest_mark_leader = previous_leader
+            self._thread.position_mark = previous
+
     def get(self, url, params=None, ttl=0):
         began = time.monotonic()
+        from .rest_mark_fallback import client_enabled
+        mark_leader = getattr(self._thread,"rest_mark_leader",None)
+        hybrid_mark = (client_enabled() and getattr(self._thread,"mark_intent",False)
+                       and url=="https://api.bybit.com/v5/market/tickers"
+                       and type(params) is dict and set(params)=={"category","symbol"}
+                       and params.get("category")=="linear")
 
         def received(data, via):
             self._thread.last_read = dict(
@@ -811,7 +834,19 @@ class PublicData:
             )
             while not self.stop_event.is_set():
                 try:
-                    cached = self.shared.read_fresh(url, params, host)
+                    if hybrid_mark:
+                        cached, bulk = self.shared.read_fresh_many(
+                            [(url,params)],host,include_rest_marks=True)
+                        mark = self._hybrid_mark(params["symbol"],cached,
+                                                 self._rest_mark_index(bulk))
+                        if mark is not None:
+                            # Internal mark-only result. Never return it to
+                            # executable ticker or orderbook readers.
+                            return received({"_bcc_hybrid_collateral":mark},
+                                            "market_hub_mark")
+                        cached = None
+                    else:
+                        cached = self.shared.read_fresh(url, params, host)
                 except ProviderDenied as exc:
                     raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as exc:
@@ -919,12 +954,18 @@ class PublicData:
                         host == 'api.bybit.com'
                         and self._position_critical_request(url, params)
                     )
-                    shared_key, owner, cached = self.shared.begin(
-                        url, params, host, priority=is_position_critical)
+                    if mark_leader is None:
+                        shared_key, owner, cached = self.shared.begin(
+                            url, params, host, priority=is_position_critical)
+                    else:
+                        shared_key, owner, cached = self.shared.begin(
+                            url, params, host, priority=is_position_critical, mark_leader=mark_leader)
                     break
                 except ProviderDenied as exc:
                     raise SourceAccessDenied(exc.host, exc.http_status) from exc
                 except CacheBusy as e:
+                    if mark_leader is not None:
+                        raise DataUnavailable(str(e)) from e
                     if isinstance(e, CacheContention):
                         deadline = min(lease_deadline, lock_deadline)
                     elif str(e) == "Данные уже запрашиваются другим ботом":
@@ -947,7 +988,7 @@ class PublicData:
             # before this method sees the final status. No redirect is safe to
             # follow automatically, including a redirect within the same host.
             response = self.session.get(
-                url, params=params, timeout=(3, 8), allow_redirects=False
+                url, params=params, timeout=(1,2) if mark_leader is not None else (3, 8), allow_redirects=False
             )
             if 300 <= response.status_code < 400:
                 # 3xx is not an HTTPError in requests; accepting a JSON body
@@ -981,6 +1022,8 @@ class PublicData:
             if response.status_code in (418, 429):
                 self._record_rate_cooldown(shared_key,owner,host,self._rate_delay(response,default=90))
             response.raise_for_status()
+            if mark_leader is not None and response.status_code!=200:
+                raise ValueError("REST mark snapshot requires HTTP 200")
             try:
                 data = response.json()
             except ValueError as e:
@@ -1052,7 +1095,11 @@ class PublicData:
                 # The cache key is the explicit end boundary, not a moving
                 # "latest" alias. Historical fetches remain quota fenced.
                 cache_ttl = max(cache_ttl, 60.)
-            published = self._finish_shared(shared_key, owner, host, data, cache_ttl)
+            if mark_leader is None:
+                published = self._finish_shared(shared_key, owner, host, data, cache_ttl)
+            else:
+                published = self._finish_shared(shared_key, owner, host, data, cache_ttl,
+                                                mark_leader=mark_leader)
         # Another in-flight request can receive a 403/451 while this HTTP
         # request is completing. Its host-wide denial takes precedence over
         # this otherwise successful response, even if our lease was valid.
@@ -1652,7 +1699,29 @@ class PublicData:
             )
         finally:
             self._thread.mark_intent = previous
+        from .rest_mark_fallback import client_enabled
+        if client_enabled() and isinstance(value,dict) and "_bcc_hybrid_collateral" in value:
+            mark = value["_bcc_hybrid_collateral"]
+            if quote_is_recent(mark,maximum=3):
+                return mark
+            raise DataUnavailable("Bybit hybrid markPrice stale")
         return self._decode_ws_position_mark(symbol, value)
+
+    @staticmethod
+    def _rest_mark_index(value):
+        from .rest_mark_fallback import index_snapshot,client_enabled
+        return index_snapshot(value,book_is_fresh) if client_enabled() else {}
+
+    def _hybrid_mark(self,symbol,ws,rest_marks):
+        if isinstance(ws,dict):
+            try:
+                return self._decode_ws_position_mark(symbol,ws)
+            except DataUnavailable:
+                pass
+        mark = rest_marks.get(symbol)
+        if mark is not None and book_is_fresh(mark["at"]):
+            return observed_quote(mark)
+        return None
 
     @staticmethod
     def _decode_ws_position_mark(symbol, value):
@@ -1728,15 +1797,20 @@ class PublicData:
                 # Read candidate collateral and depth in one admitted snapshot
                 # after the scheduler handoff, not before waiting on the owner.
                 if isinstance(previous.get('margin_data'), dict):
-                    value, ticker = self.shared.read_fresh_many([
-                        depth, ('https://api.bybit.com/v5/market/tickers',
-                                {'category':'linear','symbol':symbol}),
-                    ], 'api.bybit.com')
-                    if isinstance(ticker, dict):
-                        try:
-                            mark = self._decode_ws_position_mark(symbol, ticker)
-                        except DataUnavailable:
-                            pass
+                    from .rest_mark_fallback import client_enabled
+                    requests = [depth, ('https://api.bybit.com/v5/market/tickers',
+                                        {'category':'linear','symbol':symbol})]
+                    if client_enabled():
+                        value,ticker,bulk = self.shared.read_fresh_many(
+                            requests,'api.bybit.com',include_rest_marks=True)
+                        mark = self._hybrid_mark(symbol,ticker,self._rest_mark_index(bulk))
+                    else:
+                        value,ticker = self.shared.read_fresh_many(requests,'api.bybit.com')
+                        if isinstance(ticker, dict):
+                            try:
+                                mark = self._decode_ws_position_mark(symbol, ticker)
+                            except DataUnavailable:
+                                pass
                 else:
                     value = self.shared.read_fresh(*depth, 'api.bybit.com')
         except ProviderDenied as exc:
@@ -1790,25 +1864,29 @@ class PublicData:
             if cached is not None and cached[0] == symbols and now < cached[1]:
                 return cached[2], cached[3]
             url = "https://api.bybit.com/v5/market/tickers"
+            from .rest_mark_fallback import client_enabled
+            rest_marks = {}
             try:
-                values = self.shared.read_fresh_many(
-                    [(url, {"category": "linear", "symbol": symbol}) for symbol in symbols]
+                requests = ([(url, {"category": "linear", "symbol": symbol}) for symbol in symbols]
                     + [("https://api.bybit.com/v5/market/orderbook",
-                        {"category": "linear", "symbol": symbol, "limit": 50}) for symbol in symbols],
-                    "api.bybit.com",
-                )
+                        {"category": "linear", "symbol": symbol, "limit": 50}) for symbol in symbols])
+                if client_enabled():
+                    values = self.shared.read_fresh_many(requests,"api.bybit.com",
+                                                         include_rest_marks=True)
+                    rest_marks = self._rest_mark_index(values.pop())
+                else:
+                    values = self.shared.read_fresh_many(requests,"api.bybit.com")
             except ProviderDenied as exc:
                 raise SourceAccessDenied(exc.host, exc.http_status) from exc
             except CacheBusy as exc:
                 raise DataUnavailable("Portfolio WS cache unavailable: " + str(exc)) from exc
             marks, quotes = {}, {}
             for symbol, value in zip(symbols, values[:len(symbols)]):
+                mark = self._hybrid_mark(symbol,value,rest_marks)
+                if mark is not None:
+                    marks[symbol] = mark
                 if not isinstance(value, dict):
                     continue
-                try:
-                    marks[symbol] = self._decode_ws_position_mark(symbol, value)
-                except DataUnavailable:
-                    pass
                 if value.get("_bcc_ws_quote") is True:
                     try:
                         rows = value["result"]["list"]

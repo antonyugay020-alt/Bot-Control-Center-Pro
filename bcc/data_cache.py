@@ -443,14 +443,21 @@ class PublicCache:
         value = json.loads(row[0]) if row else None
         return self._project_payload(host, value)
 
-    def read_fresh_many(self, requests, host):
+    def read_fresh_many(self, requests, host, *, include_rest_marks=False):
         """One read snapshot for a portfolio; no HTTP, leases or budget debit."""
+        if type(include_rest_marks) is not bool or (include_rest_marks and host != 'api.bybit.com'):
+            raise ValueError('Invalid REST mark snapshot request')
         from .market import PublicData
         keys = []
         for url, params in requests:
             if PublicData.validated_public_request(url, params) != host:
                 raise ValueError("mixed cache hosts")
             keys.append(hashlib.sha256(json.dumps([url, params], sort_keys=True).encode()).hexdigest())
+        if include_rest_marks:
+            from .rest_mark_fallback import KEY, client_enabled, enabled
+            if not enabled():
+                raise ValueError('REST mark fallback is not enabled')
+            keys.append(KEY)
         if not keys:
             return []
         self._ensure_schema()
@@ -773,7 +780,21 @@ class PublicCache:
             self.stats["finalized_minutes_published"] += finalized_count
         return outcomes
 
-    def begin(self, url, params, host, *, priority=False, websocket=False):
+    def _mark_leader_valid(self, db, fence, now):
+        boot = self._boot_epoch()
+        return bool(db.execute(
+            "SELECT 1 FROM hub_leader WHERE singleton=1 AND owner=? AND lease_token=? "
+            "AND expires>? AND (boot_epoch=0 OR ?=0 OR abs(boot_epoch-?)<=60)",
+            (*fence, now, boot, boot)).fetchone())
+
+    def begin(self, url, params, host, *, priority=False, websocket=False, mark_leader=None):
+        if mark_leader is not None:
+            from .rest_mark_fallback import enabled, URL, HOST
+            if (not enabled() or websocket or url != URL or host != HOST
+                    or params != {'category':'linear'}
+                    or type(mark_leader) is not tuple or len(mark_leader)!=2
+                    or not all(type(v) is str and v for v in mark_leader)):
+                raise ValueError('Invalid leader-fenced bulk REST mark request')
         if type(priority) is not bool or type(websocket) is not bool:
             raise ValueError('Invalid public request reservation')
         if websocket:
@@ -802,7 +823,7 @@ class PublicCache:
         ).hexdigest()
         self._ensure_schema()
         owner = uuid.uuid4().hex
-        if self.split_history_lanes:
+        if self.split_history_lanes and mark_leader is None:
             # Reuse a single read snapshot of the provider policy and cache
             # row without occupying the local WS publication writer guard.
             # Misses still recheck BOTH inside BEGIN IMMEDIATE below.
@@ -812,16 +833,28 @@ class PublicCache:
             if value is not None:
                 return key, None, json.loads(value)
         with self.db() as db:
-            if not self.split_history_lanes:
+            if not self.split_history_lanes and mark_leader is None:
                 value = self._cached(db, key, host, time.time())
                 if value is not None:
                     return key, None, json.loads(value)
             db.execute("BEGIN IMMEDIATE")
             now = time.time()
-            value = self._cached(db, key, host, now)
-            if value is not None:
-                db.commit()
-                return key, None, json.loads(value)
+            if mark_leader is not None:
+                # Refresh a still-readable snapshot without expiring it,
+                # but never bypass the quota, cooldown, refusal or owner lease.
+                status = self._denied(db,host)
+                if status is not None:
+                    raise ProviderDenied(host,status)
+                if not self._mark_leader_valid(db,mark_leader,now):
+                    raise CacheBusy('REST mark refresh requires current Hub leadership')
+                cooldown = db.execute("SELECT until FROM cooldown WHERE host=?", (host,)).fetchone()
+                if cooldown and cooldown[0]>now:
+                    raise CacheBusy("Общий лимит запросов " + host)
+            else:
+                value = self._cached(db, key, host, now)
+                if value is not None:
+                    db.commit()
+                    return key, None, json.loads(value)
             lease = db.execute("SELECT until FROM lease WHERE k=?", (key,)).fetchone()
             if lease and lease[0] > now:
                 raise CacheBusy("Данные уже запрашиваются другим ботом")
@@ -935,7 +968,7 @@ class PublicCache:
             db.commit()
 
     def finish(self, key, owner, host, value=None, ttl=0, cooldown=0,
-               denial_status=None):
+               denial_status=None, *, mark_leader=None):
         """Return True only when this lease published its value to shared cache.
 
         A replaced lease or provider denial may discard a 200 HTTP response;
@@ -946,6 +979,21 @@ class PublicCache:
         if ((isinstance(value, dict) and value.get('_bcc_ws_split_ticker') is True)
                 or not self._accepted_payload(host,value)):
             value = None
+        # The dedicated compact key can only be produced by a successful
+        # budgeted bulk HTTP lease, with the same Hub generation at commit.
+        compact = None
+        if mark_leader is not None:
+            from .rest_mark_fallback import enabled, URL, HOST, build_snapshot
+            from .market_clock import book_is_fresh
+            expected = hashlib.sha256(json.dumps([URL,{'category':'linear'}],
+                                      sort_keys=True).encode()).hexdigest()
+            if (not enabled() or key!=expected or host!=HOST
+                    or type(mark_leader) is not tuple or len(mark_leader)!=2
+                    or not all(type(v) is str and v for v in mark_leader)):
+                raise ValueError('Invalid REST mark publication fence')
+            compact = build_snapshot(value,book_is_fresh)
+            if compact is None:
+                value = None
         # Serialization may be expensive for a long candle history. It must not
         # run while blocking every other bot's short write transaction.
         encoded = (
@@ -965,13 +1013,22 @@ class PublicCache:
                 # A second in-flight GET may complete after another request
                 # from the same host was rejected. Never publish that older
                 # response into the shared cache while the policy fence holds.
-                if encoded is not None and self._denied(db, host) is None:
-                    db.execute(
-                        "INSERT OR REPLACE INTO cache(k,value,until,host) "
-                        "VALUES(?,?,?,?)",
-                        (key, encoded, time.time() + ttl, host),
-                    )
-                    published = True
+                if (encoded is not None and self._denied(db, host) is None
+                        and (mark_leader is None
+                             or self._mark_leader_valid(db,mark_leader,time.time()))):
+                    # An aged response at the actual commit cannot replace
+                    # the previous still valid snapshot.
+                    if compact is None or book_is_fresh(compact['time']/1000):
+                        db.execute(
+                            "INSERT OR REPLACE INTO cache(k,value,until,host) "
+                            "VALUES(?,?,?,?)",
+                            (key, encoded, time.time() + ttl, host),
+                        )
+                        if compact is not None:
+                            from .rest_mark_fallback import KEY
+                            db.execute("INSERT OR REPLACE INTO cache(k,value,until,host) VALUES(?,?,?,?)",
+                                (KEY,json.dumps(compact,allow_nan=False),time.time()+3.,host))
+                        published = True
                 if cooldown:
                     db.execute(
                         "INSERT INTO cooldown VALUES(?,?) ON CONFLICT(host) DO UPDATE SET until=max(until,excluded.until)",

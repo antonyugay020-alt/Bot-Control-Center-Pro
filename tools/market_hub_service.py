@@ -113,6 +113,7 @@ def main():
                 last_warning = time.monotonic()
 
     publisher = None
+    rest_pump = None
     if (args.bybit_ws_quotes or args.bybit_ws_books or
             args.bybit_ws_klines or args.poly_ws_books or
             args.binance_ws_price):
@@ -168,6 +169,26 @@ def main():
             hub.source.shared.central_repair = True
             print("Canonical closed-minute repair enabled",flush=True)
         hub.set_ws_dispatcher(ws_updates)
+        from bcc.rest_mark_fallback import enabled as rest_marks_enabled, RestMarkPump
+        if rest_marks_enabled():
+            if quote_stream is None or not hub.source.shared.bybit_ws_source_deadlines:
+                raise RuntimeError("REST mark fallback requires verified WS ticker Hub")
+            from bcc.market import DataUnavailable
+            from bcc.data_cache import CacheBusy, ProviderDenied
+            def fetch_missing_marks():
+                clock.bounds()
+                token = hub._leader_token
+                if not hub._leader_held or not token:
+                    return False
+                names = tuple(hub._ws_quote_symbols)
+                if not names or all(quote_stream.independent_observations_for_hub(s)[0]
+                                    is not None for s in names):
+                    return False
+                hub.source.refresh_rest_marks(hub.owner,token)
+                return True
+            rest_pump = RestMarkPump(fetch_missing_marks,recoverable=(
+                DataUnavailable,CacheBusy,ProviderDenied,ClockUnavailable,OSError,sqlite3.OperationalError))
+            print("Official Bybit bulk REST collateral fallback enabled",flush=True)
         for label, stream in (('tickers', quote_stream), ('depth50', book_stream),
                               ('kline1', kline_stream), ('polybook', poly_stream),
                               ('binance_trade', binance_stream)):
@@ -249,6 +270,8 @@ def main():
                         print("Market Hub clock unavailable during scheduling; market admission paused", flush=True)
                     clock_was_ready = False
                     hub.poll_nonblocking(market_ready=False)
+                if rest_pump is not None:
+                    rest_pump.poll(market_ready and hub._leader_held)
                 if ws_threads and time.monotonic() - last_ws_health >= 10:
                     # Only aggregate public transport liveness and queue
                     # pressure; no token ids, API keys or market payloads.
@@ -288,26 +311,40 @@ def main():
                                 states[label]["refresh"] = pressure()
                     queue_stats = ws_updates.stats()
                     cached_marks = None
+                    hybrid_marks = None
                     if (market_ready and quote_stream is not None
                             and os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1"):
                         from bcc.data_cache import CacheBusy, ProviderDenied
                         try:
                             names = tuple(hub._ws_quote_symbols)
-                            rows = hub.source.shared.read_fresh_many([
-                                ("https://api.bybit.com/v5/market/tickers",
-                                 {"category":"linear","symbol":s}) for s in names
-                            ], "api.bybit.com")
+                            requests = [("https://api.bybit.com/v5/market/tickers",
+                                         {"category":"linear","symbol":s}) for s in names]
+                            rest_index = {}
+                            if rest_pump is not None:
+                                from bcc.rest_mark_fallback import index_snapshot
+                                from bcc.market_clock import book_is_fresh
+                                rows = hub.source.shared.read_fresh_many(requests,"api.bybit.com",
+                                                                         include_rest_marks=True)
+                                rest_index = index_snapshot(rows.pop(),book_is_fresh)
+                            else:
+                                rows = hub.source.shared.read_fresh_many(requests,"api.bybit.com")
                             from bcc.market import DataUnavailable
-                            fresh = 0
+                            fresh = fallback = 0
                             for symbol, row in zip(names, rows):
-                                if not isinstance(row,dict):
-                                    continue
-                                try:
-                                    PublicData._decode_ws_position_mark(symbol,row)
-                                except DataUnavailable:
-                                    continue
-                                fresh += 1
+                                if isinstance(row,dict):
+                                    try:
+                                        PublicData._decode_ws_position_mark(symbol,row)
+                                    except DataUnavailable:
+                                        pass
+                                    else:
+                                        fresh += 1
+                                        continue
+                                if symbol in rest_index:
+                                    fallback += 1
                             cached_marks = {"active":len(names),"fresh":fresh}
+                            if rest_pump is not None:
+                                hybrid_marks = {"active":len(names),"fresh":fresh+fallback,
+                                                "ws_fresh":fresh,"rest_only":fallback}
                         except (CacheBusy,ProviderDenied,ClockUnavailable):
                             cached_marks = {"unavailable":True}
                     print("Market Hub WS health: " +
@@ -320,6 +357,8 @@ def main():
                                   "enabled": os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1",
                                   "balanced_batch": os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1",
                                   "cache": cached_marks,
+                                  "hybrid_cache": hybrid_marks,
+                                  "rest_fallback": rest_pump.stats() if rest_pump is not None else None,
                                   "sharded": os.environ.get("BCC_BYBIT_SHARDED_TICKERS_CANDIDATE")=="1",
                                   "derived_lease_updates": hub._derived_ticker_renewals,
                               },
@@ -357,6 +396,8 @@ def main():
         traceback.print_exc()
         raise
     finally:
+        if rest_pump is not None:
+            rest_pump.close()
         for stream in (quote_stream, book_stream, kline_stream, poly_stream,
                        binance_stream):
             if stream is not None:
