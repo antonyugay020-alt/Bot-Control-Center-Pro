@@ -1,13 +1,12 @@
-"""FIFO tickets for cooperating public WAL writers; SQLite is still authority.
+"""FIFO admission using permanent reusable slots, never unlinking live paths.
 
-Each published ticket is locked by its live owner. A crashed owner/waiter is
-reaped only after the OS grants its ticket lock. Persistent admission locks
-are never unlinked. No wall-clock/PID guessing or lease expiry steals a lock.
+OS byte locks witness liveness; the registration lock serializes publication.
+A slot's sequence is stored beyond the locked byte and is meaningful only
+while that slot is locked. SQLite remains the final transaction authority.
 """
 import errno
 import os
 import time
-import uuid
 from pathlib import Path
 
 
@@ -33,6 +32,21 @@ class _ByteLock:
         self.held = True
         return True
 
+    def read_sequence(self):
+        os.lseek(self.fd, 1, os.SEEK_SET)
+        data = os.read(self.fd, 20)
+        if len(data) != 20 or not data.isdigit():
+            raise RuntimeError('Invalid live writer sequence')
+        return int(data)
+
+    def write_sequence(self, seq):
+        if not self.held or not 0 < seq < 10**20:
+            raise RuntimeError('Invalid writer sequence publication')
+        data = f'{seq:020d}'.encode('ascii')
+        os.lseek(self.fd, 1, os.SEEK_SET)
+        if os.write(self.fd, data) != len(data):
+            raise OSError('Incomplete writer sequence publication')
+
     def close(self):
         try:
             if self.held:
@@ -56,79 +70,84 @@ def _pause(deadline, blocking):
     return True
 
 
-def _unlink_ticket(path):
-    try:
-        path.unlink()
-    except (FileNotFoundError, PermissionError):
-        # Windows may have a concurrent reaper's handle open. A later head
-        # scan will remove this unlocked ticket. Never remove a live ticket.
-        pass
-
-
 class ProcessWriterLock:
     def __init__(self, database):
         self.path = str(Path(database)) + '.writer.lock'
-        self.queue = Path(self.path + '.queue')
-        self.ticket = None
+        # Separate from the retired per-request V29 ticket namespace.
+        self.queue = Path(self.path + '.slots')
+        self.slot = None
         self.ticket_lock = None
+        self.sequence = None
         self.writer = None
 
     def _register(self, deadline, blocking):
         self.queue.mkdir(exist_ok=True)
         mutex = _ByteLock(self.queue / 'register.lock')
+        spare = None
         try:
             while not mutex.try_lock():
                 if not _pause(deadline, blocking):
                     return False
-            # Serialize publication: an observer can never see an unlocked
-            # half-created ticket. Sequence is relative to current queue.
-            entries = sorted(self.queue.glob('*.ticket'))
-            seq = int(entries[-1].name.split('-', 1)[0]) + 1 if entries else 0
-            self.ticket = self.queue / f'{seq:020d}-{uuid.uuid4().hex}.ticket'
-            self.ticket_lock = _ByteLock(self.ticket)
-            if not self.ticket_lock.try_lock():
-                raise RuntimeError('new writer ticket unexpectedly locked')
+            highest = 0
+            entries = sorted(self.queue.glob('*.slot'))
+            for path in entries:
+                probe = _ByteLock(path, create=False)
+                try:
+                    if probe.try_lock():
+                        if spare is None:
+                            spare, self.slot = probe, path
+                            probe = None
+                    else:
+                        highest = max(highest, probe.read_sequence())
+                finally:
+                    if probe is not None:
+                        probe.close()
+            if spare is None:
+                # Files only grow to the peak number of concurrent waiters.
+                # Slots are never removed, renamed, or truncated.
+                index = int(entries[-1].stem) + 1 if entries else 0
+                self.slot = self.queue / f'{index:020d}.slot'
+                spare = _ByteLock(self.slot)
+                if not spare.try_lock():
+                    raise RuntimeError('New writer slot unexpectedly locked')
+            self.sequence = highest + 1
+            spare.write_sequence(self.sequence)
+            self.ticket_lock, spare = spare, None
             return True
         finally:
-            mutex.close()
+            # On a failed publication, release the slot before the mutex.
+            try:
+                if spare is not None:
+                    spare.close()
+            finally:
+                mutex.close()
 
     def _head(self):
-        # Registration mutex is needed ONLY while publishing/reaping, not
-        # while waiting on SQLite or the actual writer. Keep this section short.
         mutex = _ByteLock(self.queue / 'register.lock')
         try:
             if not mutex.try_lock():
                 return False
-            for path in sorted(self.queue.glob('*.ticket')):
-                if path == self.ticket:
-                    return True
-                try:
-                    probe = _ByteLock(path, create=False)
-                except FileNotFoundError:
+            for path in self.queue.glob('*.slot'):
+                if path == self.slot:
                     continue
+                probe = _ByteLock(path, create=False)
                 try:
-                    dead = probe.try_lock()
+                    if not probe.try_lock() and probe.read_sequence() < self.sequence:
+                        return False
                 finally:
                     probe.close()
-                if not dead:
-                    return False
-                _unlink_ticket(path)
-            return False
+            return True
         finally:
             mutex.close()
 
     def _drop_ticket(self):
-        lock, path = self.ticket_lock, self.ticket
-        self.ticket_lock = self.ticket = None
-        try:
-            if lock is not None:
-                lock.close()
-        finally:
-            if path is not None:
-                _unlink_ticket(path)
+        lock, self.ticket_lock = self.ticket_lock, None
+        self.slot = self.sequence = None
+        if lock is not None:
+            lock.close()
 
     def acquire(self, deadline, blocking):
-        if self.ticket is not None or self.writer is not None:
+        if self.ticket_lock is not None or self.writer is not None:
             raise RuntimeError('process writer already held')
         granted = False
         try:
@@ -136,8 +155,7 @@ class ProcessWriterLock:
                 return False
             while True:
                 if self._head():
-                    # Preserve interoperability with the existing byte lock.
-                    # Do not admit if a V28/non-queue writer still owns it.
+                    # Retain the actual V28/V29 writer lock for compatibility.
                     candidate = _ByteLock(self.path)
                     try:
                         if candidate.try_lock():

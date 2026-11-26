@@ -86,7 +86,8 @@ print('PASS')
     try:
         for proc in procs:
             out,err=proc.communicate(timeout=30)
-            assert proc.returncode==0,(out,err)
+            if proc.returncode != 0:
+                pytest.fail(err.decode('utf-8', errors='replace'), pytrace=False)
         with sqlite3.connect(path) as db:
             assert db.execute('SELECT count(*) FROM rows').fetchone()[0]==240
             assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'

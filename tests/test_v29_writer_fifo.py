@@ -6,7 +6,10 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 from bcc.public_writer import writer_gate
+from bcc.public_writer_ipc import _ByteLock
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,9 +26,26 @@ def stop(proc):
     proc.communicate(timeout=10)
 
 
+def active_count(queue):
+    mutex = _ByteLock(queue / 'register.lock')
+    try:
+        if not mutex.try_lock():
+            return None
+        count = 0
+        for path in queue.glob('*.slot'):
+            probe = _ByteLock(path, create=False)
+            try:
+                count += not probe.try_lock()
+            finally:
+                probe.close()
+        return count
+    finally:
+        mutex.close()
+
+
 def wait_count(queue, count, proc):
     deadline = time.monotonic() + 5
-    while len(list(queue.glob('*.ticket'))) != count:
+    while active_count(queue) != count:
         assert proc.poll() is None, proc.communicate()
         assert time.monotonic() < deadline
         time.sleep(.005)
@@ -42,7 +62,7 @@ with writer_gate(path):
 
 def test_fifo_no_overtake_and_crashed_waiter_reaped(tmp_path):
     path = tmp_path/'db.sqlite'
-    queue = Path(str(path)+'.writer.lock.queue')
+    queue = Path(str(path)+'.writer.lock.slots')
     output = tmp_path/'order.txt'
     gate = writer_gate(path)
     procs = []
@@ -53,7 +73,7 @@ def test_fifo_no_overtake_and_crashed_waiter_reaped(tmp_path):
                 procs.append(p)
                 wait_count(queue, i+2, p)
             # Kill the first queued waiter while the owner still holds the
-            # writer. Its published ticket remains until OS-proven reaping.
+            # writer. Its slot becomes available only after OS releases the lock.
             stop(procs[0])
             assert not output.exists()
         # The previous owner must not jump in front of either queued waiter.
@@ -62,17 +82,18 @@ def test_fifo_no_overtake_and_crashed_waiter_reaped(tmp_path):
                 f.write('owner\n')
         for p in procs[1:]:
             out, err = p.communicate(timeout=10)
-            assert p.returncode == 0, (out, err)
+            if p.returncode != 0:
+                pytest.fail(err.decode('utf-8', errors='replace'), pytrace=False)
         assert output.read_text().splitlines() == ['1', '2', 'owner']
-        assert not list(queue.glob('*.ticket'))
+        assert active_count(queue) == 0
     finally:
         for p in procs:
             stop(p)
 
 
-def test_timed_out_ticket_is_removed_without_skipping_live_owner(tmp_path):
+def test_timed_out_slot_is_released_without_skipping_live_owner(tmp_path):
     path = tmp_path/'db.sqlite'
-    queue = Path(str(path)+'.writer.lock.queue')
+    queue = Path(str(path)+'.writer.lock.slots')
     code = '''import sys
 from bcc.public_writer import writer_gate
 g=writer_gate(sys.argv[1]); assert not g.acquire(timeout=.15)
@@ -82,11 +103,12 @@ g=writer_gate(sys.argv[1]); assert not g.acquire(timeout=.15)
         p = child(code, path)
         try:
             out, err = p.communicate(timeout=10)
-            assert p.returncode == 0, (out, err)
-            assert len(list(queue.glob('*.ticket'))) == 1
+            if p.returncode != 0:
+                pytest.fail(err.decode('utf-8', errors='replace'), pytrace=False)
+            assert active_count(queue) == 1
         finally:
             stop(p)
-    assert not list(queue.glob('*.ticket'))
+    assert active_count(queue) == 0
 
 
 def test_slow_polling_writers_keep_original_admission_budget(tmp_path):
@@ -122,14 +144,33 @@ for i in range(60):
     try:
         for p in procs:
             out, err = p.communicate(timeout=40)
-            assert p.returncode == 0, (out, err)
+            if p.returncode != 0:
+                pytest.fail(err.decode('utf-8', errors='replace'), pytrace=False)
         db = sqlite3.connect(path)
         try:
             assert db.execute('SELECT count(*) FROM rows').fetchone()[0] == 240
             assert db.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
         finally:
             db.close()
-        assert not list(Path(str(path)+'.writer.lock.queue').glob('*.ticket'))
+        queue = Path(str(path)+'.writer.lock.slots')
+        assert active_count(queue) == 0
+        assert len(list(queue.glob('*.slot'))) <= len(procs)
     finally:
         for p in procs:
             stop(p)
+
+
+def test_slots_are_reused_without_unlink_or_rename(tmp_path, monkeypatch):
+    path = tmp_path/'db.sqlite'
+    queue = Path(str(path)+'.writer.lock.slots')
+    def forbidden(*args, **kwargs):
+        raise AssertionError('writer slots must not be removed or renamed')
+    monkeypatch.setattr(Path, 'unlink', forbidden)
+    monkeypatch.setattr(Path, 'rename', forbidden)
+    monkeypatch.setattr(Path, 'replace', forbidden)
+    gate = writer_gate(path)
+    for _ in range(100):
+        with gate:
+            assert active_count(queue) == 1
+        assert active_count(queue) == 0
+    assert len(list(queue.glob('*.slot'))) == 1
