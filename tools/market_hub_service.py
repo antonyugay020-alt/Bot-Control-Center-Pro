@@ -114,6 +114,7 @@ def main():
 
     publisher = None
     rest_pump = None
+    demand_server = None
     if (args.bybit_ws_quotes or args.bybit_ws_books or
             args.bybit_ws_klines or args.poly_ws_books or
             args.binance_ws_price):
@@ -236,6 +237,14 @@ def main():
                     if not hub.acquire_leadership(lifetime=120):
                         stop.wait(args.poll)
                         continue
+                    from bcc.hub_demand import enabled as demand_enabled, DemandServer
+                    if demand_enabled():
+                        hub.source.shared._ensure_schema()
+                        demand_server = DemandServer(args.cache, hub.registry.prepare_subscription,
+                            lambda rows: hub.registry.commit_subscriptions(rows,
+                                owner=hub.owner, token=hub._leader_token))
+                        demand_server.start()
+                        print('Central Hub demand transport enabled', flush=True)
                     if args.ready_file:
                         from pathlib import Path
                         from bcc.storage import atomic_json
@@ -363,6 +372,7 @@ def main():
                               "streams": states,
                               "queue": queue_stats,
                               "publication": hub.ws_publication_stats(),
+                              "central_demand": demand_server.stats() if demand_server is not None else None,
                               "rest_lanes": hub.rest_lane_health(),
                               "mark_delivery": {
                                   "enabled": os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1",
@@ -417,7 +427,11 @@ def main():
             thread.join(timeout=5)
         if publisher is not None:
             publisher.join(timeout=5)
-        hub.close()
+        try:
+            if demand_server is not None:
+                demand_server.close()
+        finally:
+            hub.close()
 
 
 if __name__ == '__main__':

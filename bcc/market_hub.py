@@ -343,7 +343,7 @@ class HubRegistry:
         key = hashlib.sha256(identity_text.encode()).hexdigest()
         return key, params_text
 
-    def subscribe(self, url, params, *, lifetime=60, priority=False, force_due=False):
+    def prepare_subscription(self, url, params, *, lifetime=60, priority=False, force_due=False):
         if (type(lifetime) not in (int, float) or not math.isfinite(lifetime)
                 or not 0 < lifetime <= 3600):
             raise ValueError('Hub subscription lifetime must be finite and positive')
@@ -358,46 +358,65 @@ class HubRegistry:
                 and type(params.get('limit')) is int):
             raise ValueError('Only validated Bybit historical candles may rearm on demand')
         key, encoded = self.identity(url, params)
+        return key, url, encoded, lifetime, priority, force_due
+
+    @staticmethod
+    def _write_subscription(db, row, now):
+        key, url, encoded, lifetime, priority, force_due = row
         generation = uuid.uuid4().hex
-        with self._write_connect() as db:
-            # A subscription may expire while waiting on a fleet-wide writer.
-            # Refresh its incarnation and TTL from transaction admission.
-            now = time.time()
-            # A new request after a parked (completed) snapshot must have a
-            # fresh subscription fencing token. Otherwise the older in-flight
-            # completion can overwrite this new demand with a 3600s deadline.
-            # Do NOT rotate for every concurrent caller when next_due=0:
-            # they already share one outstanding fetch and token churn could
-            # starve acknowledgements indefinitely. The whole decision is
-            # transactional with the next_due rearm.
-            db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until,subscription_token)
-              VALUES(?,?,?,?,0,?,?) ON CONFLICT(k) DO UPDATE SET
-              active_until=max(hub_subscriptions.active_until,excluded.active_until),
-              subscription_token=CASE
-                             WHEN (?=1 AND hub_subscriptions.next_due>?)
-                             OR hub_subscriptions.active_until<=?
-                             OR hub_subscriptions.params<>excluded.params
-                             OR hub_subscriptions.url<>excluded.url
-                             THEN excluded.subscription_token
-                             ELSE hub_subscriptions.subscription_token END,
-              priority_until=CASE WHEN hub_subscriptions.active_until<=?
-                             THEN excluded.priority_until
-                             ELSE max(hub_subscriptions.priority_until,excluded.priority_until) END,
-              params=excluded.params,
-              url=excluded.url,
-              next_due=CASE WHEN ?=1 OR hub_subscriptions.active_until<=?
-                            OR hub_subscriptions.params<>excluded.params
-                            OR hub_subscriptions.url<>excluded.url
-                            THEN 0 ELSE hub_subscriptions.next_due END,
-              last_error=CASE WHEN hub_subscriptions.active_until<=?
-                              OR hub_subscriptions.params<>excluded.params
-                              OR hub_subscriptions.url<>excluded.url
-                              THEN '' ELSE hub_subscriptions.last_error END''',
-              (key, url, encoded, now + lifetime,
-               now + min(lifetime * 0.75, 90) if priority else 0,
-               generation, int(force_due), now, now, now,
-               int(force_due), now, now))
+        db.execute('''INSERT INTO hub_subscriptions(k,url,params,active_until,next_due,priority_until,subscription_token)
+          VALUES(?,?,?,?,0,?,?) ON CONFLICT(k) DO UPDATE SET
+          active_until=max(hub_subscriptions.active_until,excluded.active_until),
+          subscription_token=CASE
+                         WHEN (?=1 AND hub_subscriptions.next_due>?)
+                         OR hub_subscriptions.active_until<=?
+                         OR hub_subscriptions.params<>excluded.params
+                         OR hub_subscriptions.url<>excluded.url
+                         THEN excluded.subscription_token
+                         ELSE hub_subscriptions.subscription_token END,
+          priority_until=CASE WHEN hub_subscriptions.active_until<=?
+                         THEN excluded.priority_until
+                         ELSE max(hub_subscriptions.priority_until,excluded.priority_until) END,
+          params=excluded.params,
+          url=excluded.url,
+          next_due=CASE WHEN ?=1 OR hub_subscriptions.active_until<=?
+                        OR hub_subscriptions.params<>excluded.params
+                        OR hub_subscriptions.url<>excluded.url
+                        THEN 0 ELSE hub_subscriptions.next_due END,
+          last_error=CASE WHEN hub_subscriptions.active_until<=?
+                          OR hub_subscriptions.params<>excluded.params
+                          OR hub_subscriptions.url<>excluded.url
+                          THEN '' ELSE hub_subscriptions.last_error END''',
+          (key, url, encoded, now + lifetime,
+           now + min(lifetime * 0.75, 90) if priority else 0,
+           generation, int(force_due), now, now, now,
+           int(force_due), now, now))
         return key
+
+    def subscribe(self, url, params, *, lifetime=60, priority=False, force_due=False):
+        row = self.prepare_subscription(url, params, lifetime=lifetime,
+                                        priority=priority, force_due=force_due)
+        with self._write_connect() as db:
+            key = self._write_subscription(db, row, time.time())
+        return key
+
+    def commit_subscriptions(self, rows, *, owner, token):
+        """Acknowledge one bounded demand batch only after elected-owner commit."""
+        if not 1 <= len(rows) <= 32 or not owner or not token:
+            raise ValueError('Invalid Hub demand batch')
+        boot = self._boot_epoch()
+        with self._write_connect() as db:
+            now = time.time()
+            admitted = db.execute(
+                "SELECT 1 FROM hub_leader WHERE singleton=1 "
+                "AND owner=? AND lease_token=? AND expires>? "
+                "AND (boot_epoch=0 OR ?=0 OR abs(boot_epoch-?)<=60)",
+                (owner, token, now, boot, boot),
+            ).fetchone()
+            if not admitted:
+                raise RuntimeError('Hub demand leader lease unavailable')
+            keys = [self._write_subscription(db, row, now) for row in rows]
+        return keys
 
     def request_once(self, url, params, *, lifetime=12, priority=False):
         """Rearm a historical REST fetch only when a consumer asks again.

@@ -12,6 +12,7 @@ import weakref
 from pathlib import Path
 from contextlib import contextmanager
 from .public_writer_ipc import ProcessWriterLock
+from .hub_demand import enabled as central_demand_enabled
 
 
 class WriterGate:
@@ -107,11 +108,12 @@ _guard = threading.Lock()
 
 def writer_gate(path):
     path = os.path.normcase(str(Path(path).resolve()))
-    key = (os.getpid(), path)
+    central = central_demand_enabled()
+    key = (os.getpid(), path, central)
     with _guard:
         gate = _gates.get(key)
         if gate is None:
-            gate = WriterGate(path)
+            gate = WriterGate(None if central else path)
             _gates[key] = gate
         return gate
 

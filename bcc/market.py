@@ -653,7 +653,9 @@ class PublicData:
                 return
             try:
                 if self._hub_registry is None:
-                    self._hub_registry = registry_factory(self.shared.path)
+                    from .hub_demand import enabled, DemandClient
+                    self._hub_registry = (DemandClient(self.shared.path) if enabled()
+                                          else registry_factory(self.shared.path))
                 once = getattr(self._hub_registry, 'request_once', None)
                 if force_due and callable(once):
                     once(url, params, lifetime=lifetime, priority=priority)

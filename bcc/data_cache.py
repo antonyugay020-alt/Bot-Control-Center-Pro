@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+import os
 import sqlite3
 import threading
 import time
@@ -12,6 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from .public_writer import writer_gate
+from .hub_demand import enabled as central_demand_enabled
 
 
 class CacheBusy(RuntimeError):
@@ -44,6 +46,7 @@ class PublicCache:
         self.central_closed_history = False
         self.central_repair = False
         self._guard = writer_gate(self.path)
+        self._read_only_client = central_demand_enabled() and os.environ.get("BCC_MARKET_HUB_MODE") == "client"
         self._connection = None
         # WAL readers must not queue behind this process's HTTP lease/cache
         # writer. A separate bounded connection retains the same SQL policy
@@ -125,6 +128,12 @@ class PublicCache:
     def _ensure_schema(self):
         with self._setup_lock:
             if self._ready:
+                return
+            if self._read_only_client:
+                with self.read_db() as db:
+                    if db.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal" or not self._schema_current(db):
+                        raise CacheBusy("Hub public cache is not initialized")
+                self._ready = True
                 return
             with self.db() as db:
                 # Avoid a cross-process writer lock for an already-migrated
@@ -212,6 +221,8 @@ class PublicCache:
 
     @contextmanager
     def db(self):
+        if self._read_only_client:
+            raise CacheBusy("Hub client public cache is read-only")
         # One short SQL operation at a time within this process. Keeping the
         # connection open avoids the last-connection WAL checkpoint on every GET.
         try:
