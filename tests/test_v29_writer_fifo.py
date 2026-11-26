@@ -84,7 +84,7 @@ def test_fifo_no_overtake_and_crashed_waiter_reaped(tmp_path):
             out, err = p.communicate(timeout=10)
             if p.returncode != 0:
                 pytest.fail(err.decode('utf-8', errors='replace'), pytrace=False)
-        assert output.read_text().splitlines() == ['1', '2', 'owner']
+        assert output.read_text(encoding='ascii').splitlines() == ['1', '2', 'owner']
         assert active_count(queue) == 0
     finally:
         for p in procs:

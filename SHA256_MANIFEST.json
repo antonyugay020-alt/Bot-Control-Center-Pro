@@ -509,7 +509,7 @@
     "tests/test_v28_history_merge.py": "e6dbf8ae4508761caf73a4d207a4c0e2432642aae8047b624874198a18eca3b0",
     "tests/test_v28_hub_demand.py": "28029f06c62629981a81fae4aec258cb6c448030fac106ebf903f119f4cb8102",
     "tests/test_v28_interprocess_writer.py": "50c24a320b4b79c20ed2ca1373113a575ced7207e0f15136f6cb991e6275350d",
-    "tests/test_v29_writer_fifo.py": "94e05a5f69111f153a9674a31fddfb5b03afb83ff12da43b2411f32bae7d6e38",
+    "tests/test_v29_writer_fifo.py": "5350fdf586f91ff6773dd552f7e71c39259dd18b863b0b5cc5756a07f7297174",
     "tests/test_veles_behaviour.py": "f1d9dc24571690c561b84ec2eb5ed2669c9faa4e424d18fc32b3bdfb29f7d7c8",
     "tests/test_veles_capital_per_coin_mode.py": "372668cf685f9ddc5f4a48f0f90378bae5f26235120995effd5fee674d705306",
     "tests/test_veles_coin_transaction_integration.py": "86594ae79809d66803d158c7ab6281b72be8194436a0559bec269117021775cf",
