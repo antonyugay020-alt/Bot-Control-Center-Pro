@@ -140,7 +140,7 @@ def writer_transaction(gate, connect, *, migration=False):
         remaining = deadline - _monotonic()
         if remaining <= 0:
             raise sqlite3.OperationalError('database is locked (writer admission)') from last
-        if gate.acquire(timeout=min(.2, remaining)):
+        if gate.acquire(timeout=remaining):
             try:
                 with connect() as db:
                     db.execute('PRAGMA busy_timeout=100')
