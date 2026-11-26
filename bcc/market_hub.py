@@ -401,12 +401,12 @@ class HubRegistry:
         return key
 
     def commit_subscriptions(self, rows, *, owner, token):
-        """Acknowledge one bounded demand batch only after elected-owner commit."""
+        """Acknowledge an elected-owner committed or already covered lease."""
+        from .hub_demand_policy import commit_demand_batch
         if not 1 <= len(rows) <= 32 or not owner or not token:
             raise ValueError('Invalid Hub demand batch')
         boot = self._boot_epoch()
-        with self._write_connect() as db:
-            now = time.time()
+        def leader_check(db, now):
             admitted = db.execute(
                 "SELECT 1 FROM hub_leader WHERE singleton=1 "
                 "AND owner=? AND lease_token=? AND expires>? "
@@ -415,8 +415,9 @@ class HubRegistry:
             ).fetchone()
             if not admitted:
                 raise RuntimeError('Hub demand leader lease unavailable')
-            keys = [self._write_subscription(db, row, now) for row in rows]
-        return keys
+        return commit_demand_batch(rows, connect=self._connect,
+                                   write_connect=self._write_connect,
+                                   leader_check=leader_check, write=self._write_subscription)
 
     def request_once(self, url, params, *, lifetime=12, priority=False):
         """Rearm a historical REST fetch only when a consumer asks again.

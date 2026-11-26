@@ -3,7 +3,6 @@
 SQLite remains the cross-process authority. This gate never grants permission
 for an HTTP request, a market observation, or an account transaction.
 """
-import collections
 import os
 import sqlite3
 import threading
@@ -13,6 +12,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from .public_writer_ipc import ProcessWriterLock
 from .hub_demand import enabled as central_demand_enabled
+from .writer_priority import PriorityWaiters
 
 
 class WriterGate:
@@ -20,11 +20,23 @@ class WriterGate:
         self._cv = threading.Condition()
         self._owner = None
         self._depth = 0
-        self._waiters = collections.deque()
+        self._waiters = PriorityWaiters()
+        self._priority = threading.local()
+        self._priority_grants = 0
         self._admitted = self._timeouts = 0
         self._max_wait = 0.
         self._process_lock = ProcessWriterLock(path) if path is not None else None
         self._process_timeouts = 0
+
+    @contextmanager
+    def prioritize(self, enabled=True):
+        """Only central-mode WS/REST publications opt into bounded priority."""
+        previous = getattr(self._priority, 'urgent', False)
+        self._priority.urgent = previous or (enabled and self._process_lock is None)
+        try:
+            yield
+        finally:
+            self._priority.urgent = previous
 
     def acquire(self, blocking=True, timeout=-1):
         if not blocking and timeout != -1:
@@ -32,6 +44,7 @@ class WriterGate:
         if timeout < 0 and timeout != -1:
             raise ValueError('invalid writer timeout')
         ident = threading.get_ident()
+        urgent = getattr(self._priority, 'urgent', False)
         began = _monotonic()
         deadline = None if timeout == -1 else began + timeout
         with self._cv:
@@ -44,16 +57,16 @@ class WriterGate:
                     return False
             else:
                 ticket = object()
-                self._waiters.append(ticket)
+                self._waiters.append(ticket, urgent)
                 try:
-                    while self._owner is not None or self._waiters[0] is not ticket:
+                    while self._owner is not None or self._waiters.head() is not ticket:
                         remaining = None if deadline is None else deadline - _monotonic()
                         if remaining is not None and remaining <= 0:
                             self._timeouts += 1
                             return False
                         self._cv.wait(remaining)
                 finally:
-                    self._waiters.remove(ticket)
+                    self._waiters.remove(ticket, urgent)
                     self._cv.notify_all()
             self._owner = ident
             self._depth = 1
@@ -66,6 +79,8 @@ class WriterGate:
             with self._cv:
                 if acquired:
                     self._admitted += 1
+                    self._waiters.admitted(urgent)
+                    self._priority_grants += int(urgent)
                     self._max_wait = max(self._max_wait, _monotonic() - began)
                 else:
                     self._process_timeouts += 1
@@ -99,7 +114,8 @@ class WriterGate:
             return dict(admitted=self._admitted, timeouts=self._timeouts,
                         waiting=len(self._waiters), held=self._owner is not None,
                         max_wait_seconds=round(self._max_wait, 6),
-                        process_timeouts=self._process_timeouts)
+                        process_timeouts=self._process_timeouts,
+                        priority_grants=self._priority_grants)
 
 
 _gates = weakref.WeakValueDictionary()

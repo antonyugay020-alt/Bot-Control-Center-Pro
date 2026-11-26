@@ -327,6 +327,7 @@ class PublicData:
         # cache freshness, but at most once per key per 20 seconds.
         self._hub_registry = None
         self._hub_demand_lock = threading.RLock()
+        self._hub_demand_stripes = [threading.RLock() for _ in range(16)]
         self._hub_renew_at = {}
         self._hub_priority_until = {}
         self._risk_refresh_due = {}
@@ -646,16 +647,22 @@ class PublicData:
         The demand lock is independent of the quote/history cache lock. Only
         successful committed admission advances the local renewal deadline.
         """
-        with self._hub_demand_lock:
+        from .hub_demand import enabled, DemandClient
+        central = enabled()
+        # Independent symbols may reach the batch consumer concurrently;
+        # same-key renewals remain serialized and legacy mode is unchanged.
+        lock = self._hub_demand_stripes[hash(key) % len(self._hub_demand_stripes)] if central else self._hub_demand_lock
+        with lock:
             now = time.monotonic()
             if not (force_due or now >= self._hub_renew_at.get(key, 0)
                     or (priority and now >= self._hub_priority_until.get(key, 0))):
                 return
             try:
                 if self._hub_registry is None:
-                    from .hub_demand import enabled, DemandClient
-                    self._hub_registry = (DemandClient(self.shared.path) if enabled()
-                                          else registry_factory(self.shared.path))
+                    with self._hub_demand_lock:
+                        if self._hub_registry is None:
+                            self._hub_registry = (DemandClient(self.shared.path) if central
+                                                  else registry_factory(self.shared.path))
                 once = getattr(self._hub_registry, 'request_once', None)
                 if force_due and callable(once):
                     once(url, params, lifetime=lifetime, priority=priority)

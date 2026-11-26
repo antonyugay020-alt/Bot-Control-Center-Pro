@@ -151,7 +151,8 @@ class DemandServer:
         self.stop = threading.Event()
         self._lock = threading.Lock()
         self._stats = dict(received=0, committed=0, batches=0, rejected=0,
-                           overloaded=0, failed_batches=0, max_batch=0, error_types={})
+                           overloaded=0, failed_batches=0, max_batch=0, error_types={},
+                           write_batches=0, written_rows=0, reused=0)
         self.listener = _Listener(self, _Handler)
         self.receiver = threading.Thread(target=self.listener.serve_forever,
                                          kwargs={'poll_interval':.05}, name='hub-demand-receiver', daemon=True)
@@ -183,7 +184,7 @@ class DemandServer:
                 continue
             items = [first]
             # One short coalescing window, never wait for a full batch.
-            until = time.monotonic()+.005
+            until = time.monotonic()+.025
             while len(items) < BATCH and not self.stop.is_set():
                 try:
                     items.append(self.pending.get(timeout=max(0., until-time.monotonic())))
@@ -210,6 +211,10 @@ class DemandServer:
                 with self._lock:
                     self._stats['batches'] += 1
                     self._stats['committed'] += len(keys)
+                    written = getattr(keys, 'written_rows', len(keys))
+                    self._stats['written_rows'] += written
+                    self._stats['write_batches'] += getattr(keys, 'write_batches', 1)
+                    self._stats['reused'] += len(keys) - written
                     self._stats['max_batch'] = max(self._stats['max_batch'],len(keys))
                 for (job,_),key in zip(active,keys):
                     job.set_result(key)

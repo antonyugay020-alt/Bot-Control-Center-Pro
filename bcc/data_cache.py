@@ -698,7 +698,7 @@ class PublicCache:
                     book_encoded = json.dumps(raw, allow_nan=False)
             source_records.append((raw, symbol, book_encoded))
         self._ensure_schema()
-        with self.db() as db:
+        with self._guard.prioritize(), self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             now = time.time()
             boot = self._boot_epoch()
@@ -855,7 +855,7 @@ class PublicCache:
                 value = self._cached(reader, key, host, time.time())
             if value is not None:
                 return key, None, json.loads(value)
-        with self.db() as db:
+        with self._guard.prioritize(mark_leader is not None), self.db() as db:
             if not self.split_history_lanes and mark_leader is None:
                 value = self._cached(db, key, host, time.time())
                 if value is not None:
@@ -1030,7 +1030,7 @@ class PublicCache:
         )
         self._ensure_schema()
         published = False
-        with self.db() as db:
+        with self._guard.prioritize(mark_leader is not None), self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT owner,until FROM lease WHERE k=?", (key,)).fetchone()
             # A matching owner is insufficient after its 20-second HTTP lease
