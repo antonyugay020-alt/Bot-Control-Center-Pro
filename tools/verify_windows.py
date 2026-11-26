@@ -383,7 +383,7 @@ def source_access_blockers(path):
     return blockers
 
 
-def validate_required_evidence(output, *, venue="all"):
+def validate_required_evidence(output, *, venue="all", central_demand=False):
     """Fail closed on missing, malformed or incomplete *required* Windows evidence.
 
     This checks evidence structure only. It is NOT a substitute for genuinely
@@ -398,7 +398,8 @@ def validate_required_evidence(output, *, venue="all"):
         from tools.verify_package import verify
         try:
             ws_report = json.loads((output / "bybit_ws" / "live_ws_report.json").read_text(encoding="utf-8"))
-            problems.extend(validate_report(ws_report, verify(ROOT)["manifest_sha256"]))
+            problems.extend(validate_report(ws_report, verify(ROOT)["manifest_sha256"],
+                                            require_central=central_demand))
         except (OSError, ValueError, TypeError) as exc:
             problems.append("Bybit WS evidence unavailable: " + str(exc))
     try:
@@ -539,7 +540,11 @@ def main():
         "--venue", choices=("all", "bybit"), default="all",
         help="Scoped Bybit phase does not certify deferred Polymarket/Binance venues"
     )
+    parser.add_argument('--central-demand', action='store_true',
+                        help='Require central public demand in the isolated Bybit WS stage')
     args = parser.parse_args()
+    if args.central_demand and args.venue != 'bybit':
+        parser.error('--central-demand requires --venue bybit')
     output = args.output.resolve()
     # A reused output directory might contain stale passing screenshots/XML.
     # Never let old evidence certify a new verification attempt.
@@ -605,7 +610,8 @@ def main():
     if args.venue == "bybit":
         steps.insert(-1, (
             "bybit_ws", ["-m", "tools.bybit_ws_live_acceptance", "--output",
-                         str(output / "bybit_ws"), "--require-mark"],
+                         str(output / "bybit_ws"), "--require-mark"]
+                         + (["--central-demand"] if args.central_demand else []),
             WINDOWS_QA_TIMEOUTS["bybit_ws"],
         ))
     # The outer launcher must not time out before the inner runner can
@@ -629,7 +635,7 @@ def main():
     except (OSError, ValueError, ET.ParseError):
         report["test_totals"] = None
     report["source_access_blockers"] = source_access_blockers(output / "public_sources.json")
-    report["evidence_errors"] = validate_required_evidence(output, venue=args.venue)
+    report["evidence_errors"] = validate_required_evidence(output, venue=args.venue, central_demand=args.central_demand)
     if report["evidence_errors"]:
         report["steps"].append({
             "step": "required_evidence", "status": "FAIL",

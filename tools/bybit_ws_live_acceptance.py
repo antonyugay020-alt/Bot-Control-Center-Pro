@@ -82,43 +82,58 @@ def _record_book(row, symbol, value):
         raise ValueError('Invalid executable spread')
 
 
-def probe(source, symbol, *, require_mark=False, initial=False):
+def probe(source, symbol, *, require_mark=False, initial=False, parallel=False):
     started = time.monotonic()
-    row = {"symbol": symbol, "status": "FAIL", "stage_seconds": {}}
-    # Measure each stage even on a successful but over-budget sample.
-    # Monotonic timings only: never collect prices, auth, or private caches.
+    parallel = bool(parallel and require_mark)
+    row = {"symbol": symbol, "status": "FAIL", "stage_seconds": {}, "parallel_pair": parallel}
+    # Preserve wall-clock duration across both independent reads and their
+    # coherent recheck. In parallel mode scalar stage durations overlap.
     def measure(name, operation):
         before = time.monotonic()
         try:
             return operation()
         finally:
             durations = row["stage_seconds"]
-            durations[name] = round(
-                durations.get(name, 0) + time.monotonic() - before, 4
-            )
+            durations[name] = round(durations.get(name, 0) + time.monotonic() - before, 4)
+
+    def wait_mark(deadline):
+        while True:
+            try:
+                return measure('mark_get', lambda: source._ws_position_mark(symbol))
+            except SourceAccessDenied:
+                raise
+            except DataUnavailable as exc:
+                row['last_mark_failure'] = str(exc)[:160]
+                if time.monotonic() >= deadline or source.stop_event.is_set():
+                    raise
+                time.sleep(min(.1, max(0., deadline - time.monotonic())))
 
     stage = 'initial_book_get'
     try:
-        # Every process consuming raw cache observations needs its own vetted
-        # UTC reference. The producer's clock is not inherited across a spawn.
         measure('clock_ensure', clock.ensure)
         params = {"category": "linear", "symbol": symbol, "limit": 50}
-        value = measure('book_get', lambda: source.get(URL, params))
-        stage = 'independent_mark_get'
+        def get_book():
+            return measure('book_get', lambda: source.get(URL, params))
+        if parallel:
+            from tools.ws_pair_delivery import parallel_reads
+            # The initial handshake keeps the original combined 8+4 second
+            # allowance. Steady delivery retains the same 1.5 s total budget.
+            deadline = started + (12.0 if initial else STEADY_READ_BUDGET)
+            depth, collateral = measure('parallel_pair_wait', lambda: parallel_reads(
+                get_book, lambda: wait_mark(deadline)))
+            value = depth.result()
+            stage = 'independent_mark_get'
+            collateral.result()
+            if time.monotonic() > deadline:
+                raise DataUnavailable('Independent WS delivery exceeded total budget')
+        else:
+            value = get_book()
+            stage = 'independent_mark_get'
+            if require_mark:
+                deadline = (time.monotonic() + 4.0 if initial
+                            else started + STEADY_READ_BUDGET)
+                wait_mark(deadline)
         if require_mark:
-            deadline = (time.monotonic() + 4.0 if initial
-                        else started + STEADY_READ_BUDGET)
-            while True:
-                try:
-                    measure('mark_get', lambda: source._ws_position_mark(symbol))
-                    break
-                except SourceAccessDenied:
-                    raise
-                except DataUnavailable as exc:
-                    row['last_mark_failure'] = str(exc)[:160]
-                    if time.monotonic() >= deadline or source.stop_event.is_set():
-                        raise
-                    time.sleep(min(.1, max(0., deadline - time.monotonic())))
             attempts = 0
             stage = 'coherent_cache_pair'
             while True:
@@ -137,21 +152,27 @@ def probe(source, symbol, *, require_mark=False, initial=False):
                     if time.monotonic() >= deadline or source.stop_event.is_set():
                         row.update(candidate)
                         raise
-                    # Retry only within the declared overall delivery budget.
-                    # Only a new genuine cache snapshot may resolve expiry.
                     time.sleep(min(.05, max(0., deadline-time.monotonic())))
                 finally:
                     row['snapshot_attempts'] = attempts
         else:
             _record_book(row, symbol, value)
+        if parallel and time.monotonic() > deadline:
+            raise DataUnavailable('Coherent WS delivery exceeded total budget')
         row["status"] = "PASS"
     except Exception as exc:
         row["failed_stage"] = stage
         row["error"] = f"{type(exc).__name__}: {exc}"[:400]
-    row["received_in_seconds"] = round(time.monotonic() - started, 3)
-    # Includes retry waits and thread preemption not spent in measured calls.
-    row['unattributed_seconds'] = round(max(0.,
-        row['received_in_seconds'] - sum(row['stage_seconds'].values())), 4)
+    elapsed = time.monotonic() - started
+    row["received_in_seconds"] = round(elapsed, 3)
+    if parallel and not initial and elapsed > STEADY_READ_BUDGET:
+        row['status'] = 'FAIL'
+        row.setdefault('failed_stage', 'total_delivery_budget')
+        row.setdefault('error', 'Independent WS delivery exceeded total budget')
+    durations = row['stage_seconds']
+    accounted = sum(v for k, v in durations.items()
+                    if not parallel or k not in ('book_get','mark_get'))
+    row['unattributed_seconds'] = round(max(0., elapsed - accounted), 4)
     return row
 
 
@@ -171,7 +192,7 @@ def stop_owned_hub(root):
         process.wait(timeout=8)
 
 
-def validate_report(report, manifest_sha256):
+def validate_report(report, manifest_sha256, *, require_central=False):
     """Require every symbol/mark in sustained, source-bound transport evidence."""
     import math
     errors = []
@@ -187,6 +208,9 @@ def validate_report(report, manifest_sha256):
         if (not isinstance(record, dict) or record.get("status") != "PASS"
                 or record.get("manifest_sha256") != manifest_sha256):
             errors.append("Bybit WS source snapshot mismatch: " + key)
+    if require_central or report.get('central_demand_requested') is True:
+        from tools.ws_pair_delivery import central_evidence_problems
+        errors.extend(central_evidence_problems(report, symbols=SYMBOLS))
     rounds = report.get("rounds")
     requested = report.get("requested_rounds")
     if (type(requested) is not int or not MIN_ROUNDS <= requested <= 120
@@ -225,7 +249,11 @@ def main(argv=None):
                         help="Also require independently timestamped live Bybit WS mark-price")
     parser.add_argument("--rounds", type=int, default=MIN_ROUNDS,
                         help="Sustained public-data sampling rounds (minimum 24)")
+    parser.add_argument('--central-demand', action='store_true',
+                        help='Require central Hub demand transport, with parallel independent WS reads')
     args = parser.parse_args(argv)
+    if args.central_demand and not args.require_mark:
+        parser.error('--central-demand requires --require-mark')
     if not MIN_ROUNDS <= args.rounds <= 120:
         parser.error("rounds must be between 24 and 120")
     out = args.output.resolve()
@@ -240,6 +268,7 @@ def main(argv=None):
         "at": datetime.now(timezone.utc).isoformat(),
         "scope": "BYBIT_PUBLIC_WS_BOOK_AND_MARK" if args.require_mark else "BYBIT_PUBLIC_WS_ONLY",
         "require_mark": args.require_mark,
+        "central_demand_requested": args.central_demand,
         "real_orders": False,
         "source_integrity": integrity,
         "requested_rounds": args.rounds,
@@ -253,12 +282,18 @@ def main(argv=None):
     hub_started = False
     original = {k: os.environ.get(k) for k in (
         "BCC_PUBLIC_CACHE", "BCC_MARKET_HUB_MODE",
-        "BCC_BYBIT_WS_QUOTES", "BCC_BYBIT_WS_BOOKS"
+        "BCC_BYBIT_WS_QUOTES", "BCC_BYBIT_WS_BOOKS",
+        "BCC_PUBLIC_DEMAND_HUB_CANDIDATE", "BCC_BYBIT_REST_MARK_FALLBACK"
     )}
     try:
         # This root has no MY_BOTS and cannot inherit the user's shared cache.
         clock.ensure()
         report["trading_clock"] = clock.evidence
+        if args.central_demand:
+            os.environ['BCC_PUBLIC_DEMAND_HUB_CANDIDATE'] = '1'
+            # This remains a strict WS-only gate; official REST fallback is
+            # independently tested during the long PAPER acceptance.
+            os.environ.pop('BCC_BYBIT_REST_MARK_FALLBACK', None)
         ensure_hub(root, bybit_ws=True)
         hub_started = True
         os.environ["BCC_PUBLIC_CACHE"] = str(cache)
@@ -273,7 +308,8 @@ def main(argv=None):
                 rows = list(pool.map(
                     lambda symbol: probe(source, symbol,
                                          require_mark=args.require_mark,
-                                         initial=iteration == 0),
+                                         initial=iteration == 0,
+                                         parallel=args.central_demand),
                     SYMBOLS,
                 ))
             report["rounds"].append(rows)
@@ -319,6 +355,12 @@ def main(argv=None):
                 log.read_text(encoding="utf-8", errors="replace")[-12000:],
                 encoding="utf-8",
             )
+        if args.central_demand:
+            from tools.ws_pair_delivery import collect_central_evidence
+            try:
+                report['central_transport'] = collect_central_evidence(root)
+            except (OSError, ValueError) as exc:
+                report['central_transport_error'] = str(exc)
         try:
             report["source_integrity_final"] = assert_same_snapshot(
                 integrity, verify(Path(__file__).resolve().parents[1]))
@@ -327,7 +369,7 @@ def main(argv=None):
             report["source_error"] = str(exc)
         atomic_json(out / "live_ws_report.json", report)
     if report["status"] == "PUBLIC_WS_HUB_CLIENT_PASS" and args.require_mark:
-        problems = validate_report(report, integrity["manifest_sha256"])
+        problems = validate_report(report, integrity["manifest_sha256"], require_central=args.central_demand)
         if problems:
             report["status"] = "BLOCKED_INCOMPLETE_EVIDENCE"
             report["evidence_errors"] = problems
