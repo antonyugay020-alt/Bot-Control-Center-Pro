@@ -326,6 +326,7 @@ class PublicData:
         # candle, book and instrument GET. Renew registration independently of
         # cache freshness, but at most once per key per 20 seconds.
         self._hub_registry = None
+        self._hub_demand_lock = threading.RLock()
         self._hub_renew_at = {}
         self._hub_priority_until = {}
         self._risk_refresh_due = {}
@@ -638,6 +639,33 @@ class PublicData:
             self._thread.rest_mark_leader = previous_leader
             self._thread.position_mark = previous
 
+    def _renew_hub_demand(self, registry_factory, key, url, params, *,
+                          lifetime, renewal, priority, priority_renewal, force_due=False):
+        """A failed public demand is unavailable data, not an account failure.
+
+        The demand lock is independent of the quote/history cache lock. Only
+        successful committed admission advances the local renewal deadline.
+        """
+        with self._hub_demand_lock:
+            now = time.monotonic()
+            if not (force_due or now >= self._hub_renew_at.get(key, 0)
+                    or (priority and now >= self._hub_priority_until.get(key, 0))):
+                return
+            try:
+                if self._hub_registry is None:
+                    self._hub_registry = registry_factory(self.shared.path)
+                once = getattr(self._hub_registry, 'request_once', None)
+                if force_due and callable(once):
+                    once(url, params, lifetime=lifetime, priority=priority)
+                else:
+                    self._hub_registry.subscribe(url, params, lifetime=lifetime, priority=priority)
+            except (sqlite3.Error, OSError, CacheBusy) as exc:
+                raise DataUnavailable("Market Data Hub subscription unavailable: " + str(exc)) from exc
+            now = time.monotonic()
+            self._hub_renew_at[key] = now + renewal
+            if priority:
+                self._hub_priority_until[key] = now + priority_renewal
+
     def get(self, url, params=None, ttl=0):
         began = time.monotonic()
         from .rest_mark_fallback import client_enabled
@@ -801,29 +829,10 @@ class PublicData:
             persistent_demand = stable_closed_tail or stable_ticker
             lifetime = 90 if persistent_demand else 12 if transient_demand else 60
             renewal = 30 if persistent_demand else 4 if transient_demand else 20
-            with self._lock:
-                if self._hub_registry is None:
-                    self._hub_registry = HubRegistry(self.shared.path)
-                now_mono = time.monotonic()
-                if (rest_history_demand
-                    or now_mono >= self._hub_renew_at.get(subscription_key, 0)
-                    or (urgent and now_mono >= self._hub_priority_until.get(subscription_key, 0))):
-                    try:
-                        demand_once = getattr(self._hub_registry, 'request_once', None)
-                        if rest_history_demand and callable(demand_once):
-                            demand_once(url, params, lifetime=lifetime, priority=urgent)
-                        else:
-                            # Legacy fixture/custom registry compatibility:
-                            # ordinary subscribe retains the previous API.
-                            self._hub_registry.subscribe(
-                                url, params, lifetime=lifetime, priority=urgent
-                            )
-                    except (OSError, CacheBusy) as exc:
-                        raise DataUnavailable("Market Data Hub subscription unavailable: " + str(exc)) from exc
-                    self._hub_renew_at[subscription_key] = now_mono + renewal
-                    if urgent:
-                        # Renew before the short-lived urgent lease expires.
-                        self._hub_priority_until[subscription_key] = now_mono + (30 if stable_ticker else 5)
+            self._renew_hub_demand(HubRegistry, subscription_key, url, params,
+                                   lifetime=lifetime, renewal=renewal,
+                                   priority=urgent, priority_renewal=30 if stable_ticker else 5,
+                                   force_due=rest_history_demand)
             # This is a bounded queue wait, NOT permission to use an expired
             # market snapshot. In an overloaded system the client fails closed.
             deadline = time.monotonic() + (
@@ -1315,22 +1324,9 @@ class PublicData:
         url = "https://api.bybit.com/v5/market/kline"
         params = dict(category="linear", symbol=symbol, interval="1", limit=10)
         subscription_key = HubRegistry.identity(url, params)[0]
-        with self._lock:
-            try:
-                if self._hub_registry is None:
-                    self._hub_registry = HubRegistry(self.shared.path)
-            except (sqlite3.Error, OSError, CacheBusy) as exc:
-                raise DataUnavailable("Реестр закрытых свечей недоступен: " + str(exc)) from exc
-            now = time.monotonic()
-            if (now >= self._hub_renew_at.get(subscription_key, 0)
-                    or (priority and now >= self._hub_priority_until.get(subscription_key, 0))):
-                try:
-                    self._hub_registry.subscribe(url, params, lifetime=90, priority=priority)
-                except (sqlite3.Error, OSError, CacheBusy) as exc:
-                    raise DataUnavailable("Не обновлена подписка закрытых свечей: " + str(exc)) from exc
-                self._hub_renew_at[subscription_key] = now + 30
-                if priority:
-                    self._hub_priority_until[subscription_key] = now + 30
+        self._renew_hub_demand(HubRegistry, subscription_key, url, params,
+                               lifetime=90, renewal=30,
+                               priority=priority, priority_renewal=30)
 
     def cached_closed_cohort(self, requirements):
         """Advance warm verified history from a single shared read snapshot.

@@ -349,6 +349,18 @@ class MarketScheduler:
         self._poll_closed_cohort(state, closed, priority)
         return bool(self._apply_closed_cohort([(tick.symbol, tick, None)], closed, state))
 
+    def _save_history_result(self, symbol, tick, closed_symbols, state):
+        # A late transport result may finish after the independent cohort
+        # has already recovered. Merge that verified current boundary before
+        # replacing the history used by the quote lane. Explicit denial and
+        # risk-only ticks remain ineligible in _apply_closed_cohort.
+        self._apply_closed_cohort([(symbol, tick, None)], closed_symbols, state)
+        self._history_results[symbol] = MarketTick(
+            symbol, tick.bars, None, tick.rates, tick.funding_marks,
+            tick.history_error, '', tick.margin_data,
+            live_history=tick.live_history,
+            history_denied=getattr(tick, 'history_denied', False))
+
     def collect(self, state, timeout=0.2):
         symbols = list(
             dict.fromkeys(
@@ -475,11 +487,7 @@ class MarketScheduler:
                         # This plane publishes indicator inputs only. A scanner
                         # admitted just before OPEN must not emit a second book
                         # for the same position alongside the quote lane.
-                        self._history_results[symbol] = MarketTick(
-                            symbol, tick.bars, None, tick.rates, tick.funding_marks,
-                            tick.history_error, '', tick.margin_data,
-                            live_history=tick.live_history,
-                            history_denied=getattr(tick,"history_denied",False))
+                        self._save_history_result(symbol, tick, closed_symbols, state)
                     else:
                         completed.append((symbol, tick, None))
                 except Exception as exc:

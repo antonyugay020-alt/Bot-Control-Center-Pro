@@ -214,9 +214,13 @@ class PublicCache:
     def db(self):
         # One short SQL operation at a time within this process. Keeping the
         # connection open avoids the last-connection WAL checkpoint on every GET.
-        if not self._guard.acquire(timeout=0.2):
+        try:
+            admitted = self._guard.acquire(timeout=0.2)
+        except OSError as exc:
+            raise CacheBusy("Общий кэш: недоступна блокировка писателя: " + str(exc)) from exc
+        if not admitted:
             self.stats["local_busy"] += 1
-            raise CacheContention("Общий кэш занят другим запросом этого процесса")
+            raise CacheContention("Общий кэш занят другим запросом или процессом")
         try:
             if self._connection is None:
                 self._connection = sqlite3.connect(

@@ -1,4 +1,4 @@
-"""Process-local FIFO admission for all writers of one public WAL database.
+"""Process-local FIFO and cooperative interprocess public WAL admission.
 
 SQLite remains the cross-process authority. This gate never grants permission
 for an HTTP request, a market observation, or an account transaction.
@@ -11,16 +11,19 @@ from time import monotonic as _monotonic, sleep as _sleep
 import weakref
 from pathlib import Path
 from contextlib import contextmanager
+from .public_writer_ipc import ProcessWriterLock
 
 
 class WriterGate:
-    def __init__(self):
+    def __init__(self, path=None):
         self._cv = threading.Condition()
         self._owner = None
         self._depth = 0
         self._waiters = collections.deque()
         self._admitted = self._timeouts = 0
         self._max_wait = 0.
+        self._process_lock = ProcessWriterLock(path) if path is not None else None
+        self._process_timeouts = 0
 
     def acquire(self, blocking=True, timeout=-1):
         if not blocking and timeout != -1:
@@ -53,9 +56,22 @@ class WriterGate:
                     self._cv.notify_all()
             self._owner = ident
             self._depth = 1
-            self._admitted += 1
-            self._max_wait = max(self._max_wait, _monotonic() - began)
-            return True
+        # Do not hold the condition while waiting for another process.
+        acquired = False
+        try:
+            acquired = self._process_lock is None or self._process_lock.acquire(deadline, blocking)
+            return acquired
+        finally:
+            with self._cv:
+                if acquired:
+                    self._admitted += 1
+                    self._max_wait = max(self._max_wait, _monotonic() - began)
+                else:
+                    self._process_timeouts += 1
+                    self._timeouts += 1
+                    self._depth = 0
+                    self._owner = None
+                    self._cv.notify_all()
 
     def release(self):
         with self._cv:
@@ -63,8 +79,12 @@ class WriterGate:
                 raise RuntimeError('writer gate is not owned by this thread')
             self._depth -= 1
             if self._depth == 0:
-                self._owner = None
-                self._cv.notify_all()
+                try:
+                    if self._process_lock is not None:
+                        self._process_lock.release()
+                finally:
+                    self._owner = None
+                    self._cv.notify_all()
 
     def __enter__(self):
         self.acquire()
@@ -77,7 +97,8 @@ class WriterGate:
         with self._cv:
             return dict(admitted=self._admitted, timeouts=self._timeouts,
                         waiting=len(self._waiters), held=self._owner is not None,
-                        max_wait_seconds=round(self._max_wait, 6))
+                        max_wait_seconds=round(self._max_wait, 6),
+                        process_timeouts=self._process_timeouts)
 
 
 _gates = weakref.WeakValueDictionary()
@@ -85,11 +106,12 @@ _guard = threading.Lock()
 
 
 def writer_gate(path):
-    key = os.path.normcase(str(Path(path).resolve()))
+    path = os.path.normcase(str(Path(path).resolve()))
+    key = (os.getpid(), path)
     with _guard:
         gate = _gates.get(key)
         if gate is None:
-            gate = WriterGate()
+            gate = WriterGate(path)
             _gates[key] = gate
         return gate
 
