@@ -23,7 +23,7 @@ def test_fifteen_independent_processes_share_one_fetch(tmp_path):
         for child in children:
             out, err = child.communicate(timeout=20)
             if child.returncode:
-                errors.append((child.returncode, err[-500:]))
+                errors.append((child.returncode, err))
         assert not errors, errors
         assert (work / 'fetches.log').read_text(encoding="utf-8").splitlines() == ['fetch']
     finally:

@@ -154,6 +154,25 @@ class PublicCache:
                         raise CacheBusy("Hub public cache is not initialized")
                 self._ready = True
                 return
+            if not self._central_writer and self.path.is_file():
+                # Attaching to a migrated WAL database is a read, not a
+                # writer admission. Close the probe before any migration.
+                probe = None
+                try:
+                    probe = sqlite3.connect(self.path.resolve().as_uri() + '?mode=ro',
+                                            uri=True, timeout=.2, isolation_level=None)
+                    probe.execute('BEGIN')
+                    if (probe.execute('PRAGMA journal_mode').fetchone()[0].lower() == 'wal'
+                            and self._schema_current(probe)):
+                        self._ready = True
+                        return
+                except sqlite3.Error:
+                    # Failure is NOT a schema-ready receipt. Recheck using
+                    # the original serialized migration, never trust it.
+                    pass
+                finally:
+                    if probe is not None:
+                        probe.close()
             with self.db() as db:
                 # Avoid a cross-process writer lock for an already-migrated
                 # database. Schema discovery and index inspection are reads.
@@ -361,7 +380,7 @@ class PublicCache:
             if self._connection is not None:
                 self._connection.close()
                 self._connection = None
-                self._ready = False
+            self._ready = False
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -874,7 +893,20 @@ class PublicCache:
             key = LEASE_KEY
         self._ensure_schema()
         owner = uuid.uuid4().hex
-        if self.split_history_lanes and mark_leader is None:
+        if mark_leader is None and not self._central_writer:
+            # Followers of an existing request need no writer ticket. A
+            # consistent read snapshot proves cache, policy and active lease.
+            # A genuine miss still rechecks all authority under BEGIN IMMEDIATE.
+            with self.read_db() as reader:
+                reader.execute('BEGIN')
+                now = time.time()
+                value = self._cached(reader, key, host, now)
+                if value is not None:
+                    return key, None, json.loads(value)
+                lease = reader.execute('SELECT until FROM lease WHERE k=?', (key,)).fetchone()
+                if lease and lease[0] > now:
+                    raise CacheBusy("Данные уже запрашиваются другим ботом")
+        elif self.split_history_lanes and mark_leader is None:
             # Reuse a single read snapshot of the provider policy and cache
             # row without occupying the local WS publication writer guard.
             # Misses still recheck BOTH inside BEGIN IMMEDIATE below.
@@ -884,7 +916,7 @@ class PublicCache:
             if value is not None:
                 return key, None, json.loads(value)
         with self._guard.prioritize(mark_leader is not None), self.db() as db:
-            if not self.split_history_lanes and mark_leader is None:
+            if self._central_writer and not self.split_history_lanes and mark_leader is None:
                 value = self._cached(db, key, host, time.time())
                 if value is not None:
                     return key, None, json.loads(value)
