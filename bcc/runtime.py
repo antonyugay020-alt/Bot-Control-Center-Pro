@@ -79,6 +79,8 @@ def _expire_live_history(tick, now):
 
 
 def process_tick(cfg, store, engine, tick, *, observations=None):
+    if getattr(tick, 'closed_history', False):
+        tick.closed_decision_at = None
     now = market_now()
     symbol = tick.symbol
     book = tick.book
@@ -263,6 +265,11 @@ def process_tick(cfg, store, engine, tick, *, observations=None):
         if tick.bars:
             state.setdefault("charts", {})[symbol] = tick.bars[-120:]
         update_equity_metrics(state)
+    # Receipt evidence is set only after the risk transaction committed and
+    # only for actual strategy evaluation with finalized history. It never
+    # participates in financial admission or clears any market error.
+    if getattr(tick, 'closed_history', False) and tick.bars and not tick.history_error:
+        tick.closed_decision_at = decision_now
     log_events(events)
     return data_blocked
 
@@ -337,6 +344,9 @@ def run_loop(
     scheduler = (
         MarketScheduler(source, cfg, history_size) if engine is not None else None
     )
+    enable_tracking = getattr(scheduler, 'enable_closed_owner_tracking', None)
+    if callable(enable_tracking):
+        enable_tracking()
     books = {}
     seen = set()
     next_heartbeat = 0
@@ -365,6 +375,11 @@ def run_loop(
                 status["market_health"]["scheduler_pressure"] = dict(
                     getattr(scheduler, "last_pressure", {})
                 )
+                owner_snapshot = getattr(scheduler, 'closed_owner_snapshot', None)
+                if callable(owner_snapshot):
+                    snapshot = owner_snapshot()
+                    if snapshot is not None:
+                        status["market_health"]['closed_owner'] = snapshot
             status["draining"] = store.read(include_charts=False)["strategy"].get(
                 "draining", False
             )
@@ -440,6 +455,9 @@ def run_loop(
                         if callable(refresh_history):
                             refresh_history(tick, lambda: store.read(include_charts=False))
                         data_blocked = process_tick(cfg, store, engine, tick, observations=observations)
+                        record_owner = getattr(scheduler, 'record_closed_owner', None)
+                        if callable(record_owner):
+                            record_owner(tick)
                         if data_blocked:
                             retry_data_blocked = getattr(scheduler, 'retry_data_blocked', None)
                             if callable(retry_data_blocked):

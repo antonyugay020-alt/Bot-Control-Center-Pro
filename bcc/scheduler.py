@@ -29,6 +29,8 @@ class MarketTick:
     # asynchronous handoff, including each reuse alongside a fresh quote.
     live_history: bool = False
     history_denied: bool = False
+    closed_history: bool = False
+    closed_decision_at: float | None = None
 
 
 class MarketScheduler:
@@ -94,6 +96,8 @@ class MarketScheduler:
         self._closed_recovery_last = {}
         self._closed_recovery_sequence = 0
         self._closed_recovery_turn = True
+        self._closed_owner = None
+        self._closed_scan_recoveries = 0
 
     @staticmethod
     def _oldest_tier_first(priority, state):
@@ -211,7 +215,8 @@ class MarketScheduler:
                 book = None
                 quote_error = str(exc)
         return MarketTick(symbol, bars, book, rates, marks, history_error, quote_error,
-                          margin_data, live_history=True, history_denied=history_denied)
+                          margin_data, live_history=True, history_denied=history_denied,
+                          closed_history=closed_only and callable(getattr(self.source, "closed_candles", None)))
 
     def _quote(self, symbol):
         try:
@@ -267,6 +272,8 @@ class MarketScheduler:
                 self._closed_sizes.pop(symbol,None)
         req = ({s:n for s,n in self._closed_sizes.items() if s in closed_symbols}
                if boundary is not None else {})
+        if self._closed_owner is not None and boundary is not None:
+            self._closed_owner.advance(boundary)
         fresh = self._closed_cohort.poll(req,boundary,time.monotonic())
         # Only the first ready handoff of a new closed minute accelerates
         # evaluation. Existing jobs stay single-flight and retain ownership.
@@ -317,11 +324,13 @@ class MarketScheduler:
                 tick.bars=bars
                 tick.history_error=""
                 tick.live_history=True
+                tick.closed_history=True
                 history=self._history_results.get(symbol)
                 if history is not None and not history.history_denied:
                     history.bars=bars
                     history.history_error=""
                     history.live_history=True
+                    history.closed_history=True
                 applied+=1
         if staged:
             self._closed_staged += applied
@@ -329,13 +338,39 @@ class MarketScheduler:
             self._closed_handoffs += applied
         return applied
 
-    def _closed_recovery_order(self, state, priority, closed_symbols):
-        """Ready-but-not-consumed history errors get bounded quote priority.
+    def enable_closed_owner_tracking(self):
+        """Only the real account-owner loop enables receipt-based scheduling."""
+        from .closed_owner import ClosedOwnerReceipts
+        if (self.cfg.get('strategy') == 'VELES'
+                and os.environ.get('BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE') == '1'):
+            self._closed_owner = ClosedOwnerReceipts()
 
-        Persisted diagnostics are the owner's receipt, not a producer-ready
-        counter. Never clear diagnostics here and never manufacture a book.
-        Keep the normal fair lane even if many recoveries are pending.
-        """
+    def record_closed_owner(self, tick):
+        if (self._closed_owner is None or tick.symbol not in self._closed_sizes
+                or getattr(tick, 'closed_decision_at', None) is None):
+            return False
+        from .market_clock import clock
+        try:
+            bounds = clock.bounds()  # verified clock, never an OS-time fallback
+        except ValueError:
+            return False
+        return self._closed_owner.record(tick, bounds, self._closed_sizes[tick.symbol])
+
+    def closed_owner_snapshot(self):
+        if self._closed_owner is None:
+            return None
+        from .market_clock import clock
+        try:
+            low, high = clock.bounds()
+        except ValueError:
+            return dict(self._closed_owner.snapshot(), clock_valid=False)
+        self._closed_owner.advance(int(low // 60) * 60000)
+        return dict(self._closed_owner.snapshot(), clock_valid=True,
+                    clock_low_ms=math.floor(low * 1000), clock_high_ms=math.ceil(high * 1000))
+
+    def _closed_recovery_order(self, state, priority, closed_symbols):
+        """Prioritize real ready history without treating readiness as consumption."""
+        from .closed_owner import pending_ready
         cohort = self._closed_cohort
         ready = []
         if (cohort is not None and self.period != 0
@@ -345,23 +380,15 @@ class MarketScheduler:
             except ValueError:
                 boundary = None
             if boundary is not None and cohort.boundary == boundary:
-                diagnostics = state.get('diagnostics', {})
-                for symbol in priority:
-                    bars = cohort.ready.get(symbol)
-                    history = self._history_results.get(symbol)
-                    if (symbol not in closed_symbols or not bars
-                            or bars[-1]['t'] != boundary - 60000
-                            or len(bars) < self._closed_sizes.get(symbol, 100)
-                            or (history is not None and history.history_denied)):
-                        continue
-                    if any(isinstance(row, dict) and row.get('section') == 'Свечи'
-                           and row.get('reason') for row in diagnostics.get(symbol, [])):
-                        ready.append(symbol)
+                ready = pending_ready(symbols=priority, eligible=closed_symbols,
+                    ready=cohort.ready, boundary=boundary, sizes=self._closed_sizes,
+                    histories=self._history_results, diagnostics=state.get('diagnostics', {}),
+                    admissions=self._closed_recovery_last, receipts=self._closed_owner)
         active = set(ready)
         for symbol in tuple(self._closed_recovery_last):
             if symbol not in active:
                 del self._closed_recovery_last[symbol]
-        return sorted(ready, key=lambda s: self._closed_recovery_last.get(s, 0))
+        return ready
 
     def _note_recovery_admission(self, symbol):
         self._closed_recovery_sequence += 1
@@ -411,7 +438,8 @@ class MarketScheduler:
             symbol, tick.bars, None, tick.rates, tick.funding_marks,
             tick.history_error, '', tick.margin_data,
             live_history=tick.live_history,
-            history_denied=getattr(tick, 'history_denied', False))
+            history_denied=getattr(tick, 'history_denied', False),
+            closed_history=getattr(tick, 'closed_history', False))
 
     def collect(self, state, timeout=0.2):
         symbols = list(
@@ -598,7 +626,8 @@ class MarketScheduler:
                                       history.history_error if history else '', error,
                                       history.margin_data if history else None,
                                       live_history=bool(history and history.live_history),
-                                      history_denied=bool(history and history.history_denied))
+                                      history_denied=bool(history and history.history_denied),
+                                      closed_history=bool(history and history.closed_history))
                     if history is not None:
                         # A refreshed margin snapshot is delivered once;
                         # replaying it on each quote would regress newer
@@ -610,9 +639,12 @@ class MarketScheduler:
             if self.quote_pool is not None:
                 self.quote_pool.collect()
         drain_quotes()
-        recovery = self._closed_recovery_order(state, priority, closed_symbols)
-        recovery_set = set(recovery)
-        recovery_rank = {symbol: i for i, symbol in enumerate(recovery)}
+        recovery_inventory = priority if self._closed_owner is None else priority + scan
+        recovery_all = self._closed_recovery_order(state, recovery_inventory, closed_symbols)
+        recovery = [symbol for symbol in recovery_all if symbol in priority_set]
+        recovery_scans = [symbol for symbol in recovery_all if symbol in scan_set]
+        recovery_set = set(recovery_all)
+        recovery_rank = {symbol: i for i, symbol in enumerate(recovery_all)}
         for symbol in sorted(self._retry_ticks, key=lambda s: (
                 s not in priority_set, recovery_rank.get(s, len(recovery)))):
             urgent = symbol in priority_set and self._separate_quotes
@@ -781,16 +813,25 @@ class MarketScheduler:
         retry_limit = (max(1, self.capacity // 4) if discovery_ready else
                        max(1, self.capacity - int(bool(priority))))
         if self._scan_retry_turn and len(self._scan_retry_active) < retry_limit:
-            for symbol, retry_at in list(self._scan_retries.items()):
+            # Reserve no extra threads: a ready unconsumed scanner uses the
+            # existing bounded retry admission, alternating with discovery.
+            # The normal submit path still fetches a real executable book and
+            # all financial inputs; cohort history is not a synthetic tick.
+            recovery_scan_set = set(recovery_scans)
+            candidates = list(dict.fromkeys((*recovery_scans, *self._scan_retries)))
+            for symbol in candidates:
                 if len(self.jobs) + sum(not lane for _, lane in self._retry_jobs.values()) >= self.capacity:
                     break
-                if retry_at > now:
+                if self._scan_retries.get(symbol, 0) > now:
                     continue
                 if submit(symbol):
                     self._scan_retries.pop(symbol, None)
                     self._scan_retry_active.add(symbol)
                     self._scan_retry_turn = False
                     admitted_scans += 1
+                    if symbol in recovery_scan_set:
+                        self._note_recovery_admission(symbol)
+                        self._closed_scan_recoveries += 1
                     break
         discovered = False
         for _ in range(len(scan)):
@@ -803,7 +844,7 @@ class MarketScheduler:
             if submit(symbol):
                 admitted_scans += 1
                 discovered = True
-        if discovered or (not admitted_scans and self._scan_retries):
+        if discovered or (not admitted_scans and (self._scan_retries or recovery_scans)):
             self._scan_retry_turn = True
         pending_jobs = [*self.jobs.values(), *self.quote_jobs.values(),
                         *(job for job, _ in self._retry_jobs.values()),*self.risk_jobs.values()]
@@ -829,7 +870,9 @@ class MarketScheduler:
                 closed_cohort_handoffs=self._closed_handoffs,
                 closed_cohort_staged=self._closed_staged,
                 closed_recovery_ready=len(recovery),
-                closed_recovery_admissions=self._closed_recovery_sequence)
+                closed_recovery_admissions=self._closed_recovery_sequence,
+                closed_recovery_scan_ready=len(recovery_scans),
+                closed_recovery_scan_admissions=self._closed_scan_recoveries)
         self.last_pressure.update(quote_jobs=len(self.quote_jobs), quote_capacity=self.quote_capacity,
                                   history_jobs=len(self.jobs), history_capacity=self.capacity,
                                   deferred_refreshes=len(self._retry_ticks),risk_jobs=len(self.risk_jobs))
