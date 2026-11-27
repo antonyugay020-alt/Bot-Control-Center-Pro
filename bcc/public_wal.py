@@ -79,26 +79,33 @@ class WalMaintenance:
                 began = time.monotonic()
                 try:
                     busy, pages, done = db.execute('PRAGMA wal_checkpoint(PASSIVE)').fetchone()
-                    if pages < 0 or done < 0:
-                        raise RuntimeError('Public database is not in WAL mode')
-                    with self._guard:
-                        self._last = time.monotonic()
-                        self._backlog = max(0, pages-done)
-                        s = self._stats
-                        s['checkpoints'] += 1
-                        s['busy'] += int(bool(busy))
-                        s['last_log_pages'], s['last_checkpointed_pages'] = pages, done
-                        s['max_backlog_pages'] = max(s['max_backlog_pages'], self._backlog)
-                        s['max_checkpoint_seconds'] = max(s['max_checkpoint_seconds'], self._last-began)
-                        s['fallback_checks'] += int(self._backlog > MAX_BACKLOG_PAGES)
+                    if busy and (pages < 0 or done < 0):
+                        # Another checkpoint can own the checkpoint lock.
+                        # No usable frame counts: restore automatic handling
+                        # until a later successful passive observation.
+                        with self._guard:
+                            self._last = None
+                            self._stats['busy'] += 1
+                    else:
+                        if pages < 0 or done < 0:
+                            raise RuntimeError('Public database is not in WAL mode')
+                        with self._guard:
+                            self._last = time.monotonic()
+                            self._backlog = max(0, pages-done)
+                            s = self._stats
+                            s['checkpoints'] += 1
+                            s['busy'] += int(bool(busy))
+                            s['last_log_pages'], s['last_checkpointed_pages'] = pages, done
+                            s['max_backlog_pages'] = max(s['max_backlog_pages'], self._backlog)
+                            s['max_checkpoint_seconds'] = max(s['max_checkpoint_seconds'], self._last-began)
+                            s['fallback_checks'] += int(self._backlog > MAX_BACKLOG_PAGES)
+                        self._ready.set()
                 except sqlite3.Error:
                     # An I/O or lock error cannot silently leave auto-checkpoint
                     # disabled. Retry on the next maintenance interval.
                     with self._guard:
                         self._last = None
                         self._stats['errors'] += 1
-                finally:
-                    self._ready.set()
                 self._stop.wait(self.period)
         except Exception:
             with self._guard:

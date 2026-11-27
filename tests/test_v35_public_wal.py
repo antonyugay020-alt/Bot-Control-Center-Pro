@@ -77,7 +77,7 @@ def test_passive_checkpoint_never_requires_reader_to_end(database):
         before = lane.stats()['checkpoints']
         for i in range(2, 50):
             db.execute('INSERT INTO market VALUES(?,?)', (i, 'x'*4096))
-        wait_for(lambda: lane.stats()['checkpoints'] > before)
+        wait_for(lambda: lane.stats()['checkpoints'] > before and lane.stats()['max_backlog_pages'] > 0)
         assert reader.execute('SELECT count(*) FROM market').fetchone()[0] == 1
         assert lane.stats()['max_backlog_pages'] > 0
         reader.rollback()
@@ -142,3 +142,31 @@ def test_writer_timing_keeps_separate_wait_and_hold():
     assert stats['registry']['max_wait_seconds'] == .4
     stats['market']['count'] = 0
     assert timing.stats()['market']['count'] == 2
+
+
+def test_busy_checkpoint_with_unknown_frame_counts_retries_startup(database, monkeypatch):
+    path, db = database
+    original = sqlite3.connect
+    attempts = []
+    class BusyResult:
+        def fetchone(self):
+            return (1, -1, -1)
+    class Connection:
+        def __init__(self, real):
+            self.real = real
+        def execute(self, sql):
+            if sql == 'PRAGMA wal_checkpoint(PASSIVE)':
+                attempts.append(1)
+                if len(attempts) == 1:
+                    return BusyResult()
+            return self.real.execute(sql)
+        def close(self):
+            self.real.close()
+    monkeypatch.setattr(sqlite3, 'connect', lambda *a, **kw: Connection(original(*a, **kw)))
+    lane = WalMaintenance(path, period=.02)
+    lane.start()
+    try:
+        assert len(attempts) >= 2 and lane.stats()['busy'] >= 1
+        assert lane.healthy() and configure_writer(db, path) == 0
+    finally:
+        lane.close()
