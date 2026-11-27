@@ -90,6 +90,10 @@ class MarketScheduler:
         self._closed_cohort = None
         self._closed_sizes = {}
         self._closed_handoffs = 0
+        self._closed_staged = 0
+        self._closed_recovery_last = {}
+        self._closed_recovery_sequence = 0
+        self._closed_recovery_turn = True
 
     @staticmethod
     def _oldest_tier_first(priority, state):
@@ -267,6 +271,13 @@ class MarketScheduler:
         # Only the first ready handoff of a new closed minute accelerates
         # evaluation. Existing jobs stay single-flight and retain ownership.
         for symbol in fresh:
+            # A ready cohort is not an owner handoff. Stage its verified
+            # history now, independently of slow funding/history futures.
+            # A normal executable-book tick must still reach the owner.
+            history = self._history_results.get(symbol)
+            if history is not None:
+                self._apply_closed_cohort([(symbol, history, None)], closed_symbols,
+                                          state, staged=True)
             if symbol in priority_set:
                 self.quote_due[symbol]=0.
             else:
@@ -274,7 +285,7 @@ class MarketScheduler:
                 if symbol in self._scan_retries:
                     self._scan_retries[symbol]=0.
 
-    def _apply_closed_cohort(self, completed, closed_symbols, state):
+    def _apply_closed_cohort(self, completed, closed_symbols, state, *, staged=False):
         cohort=self._closed_cohort
         if (cohort is None or
                 os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE")!="1"):
@@ -291,7 +302,7 @@ class MarketScheduler:
                     or tick.history_denied or symbol not in closed_symbols):
                 continue
             bars=cohort.ready.get(symbol)
-            if bars is None:
+            if not bars or bars[-1]['t'] != boundary - 60000:
                 continue
             if (not tick.bars or tick.history_error
                     or tick.bars[-1]["t"] < bars[-1]["t"]):
@@ -312,8 +323,49 @@ class MarketScheduler:
                     history.history_error=""
                     history.live_history=True
                 applied+=1
-        self._closed_handoffs+=applied
+        if staged:
+            self._closed_staged += applied
+        else:
+            self._closed_handoffs += applied
         return applied
+
+    def _closed_recovery_order(self, state, priority, closed_symbols):
+        """Ready-but-not-consumed history errors get bounded quote priority.
+
+        Persisted diagnostics are the owner's receipt, not a producer-ready
+        counter. Never clear diagnostics here and never manufacture a book.
+        Keep the normal fair lane even if many recoveries are pending.
+        """
+        cohort = self._closed_cohort
+        ready = []
+        if (cohort is not None and self.period != 0
+                and os.environ.get("BCC_BYBIT_PORTFOLIO_HISTORY_CANDIDATE") == "1"):
+            try:
+                boundary = int(market_now() // 60) * 60000
+            except ValueError:
+                boundary = None
+            if boundary is not None and cohort.boundary == boundary:
+                diagnostics = state.get('diagnostics', {})
+                for symbol in priority:
+                    bars = cohort.ready.get(symbol)
+                    history = self._history_results.get(symbol)
+                    if (symbol not in closed_symbols or not bars
+                            or bars[-1]['t'] != boundary - 60000
+                            or len(bars) < self._closed_sizes.get(symbol, 100)
+                            or (history is not None and history.history_denied)):
+                        continue
+                    if any(isinstance(row, dict) and row.get('section') == 'Свечи'
+                           and row.get('reason') for row in diagnostics.get(symbol, [])):
+                        ready.append(symbol)
+        active = set(ready)
+        for symbol in tuple(self._closed_recovery_last):
+            if symbol not in active:
+                del self._closed_recovery_last[symbol]
+        return sorted(ready, key=lambda s: self._closed_recovery_last.get(s, 0))
+
+    def _note_recovery_admission(self, symbol):
+        self._closed_recovery_sequence += 1
+        self._closed_recovery_last[symbol] = self._closed_recovery_sequence
 
     def refresh_closed_handoff(self, tick, state_reader):
         """Consume completed closed-history work at the account-owner boundary.
@@ -558,10 +610,19 @@ class MarketScheduler:
             if self.quote_pool is not None:
                 self.quote_pool.collect()
         drain_quotes()
-        for symbol in sorted(self._retry_ticks, key=lambda s: s not in priority_set):
-            if symbol in self._retry_jobs or symbol in self.jobs or symbol in self.quote_jobs:
-                continue
+        recovery = self._closed_recovery_order(state, priority, closed_symbols)
+        recovery_set = set(recovery)
+        recovery_rank = {symbol: i for i, symbol in enumerate(recovery)}
+        for symbol in sorted(self._retry_ticks, key=lambda s: (
+                s not in priority_set, recovery_rank.get(s, len(recovery)))):
             urgent = symbol in priority_set and self._separate_quotes
+            # The separate quote dispatcher need not wait for an independent
+            # history-only future on a ready closed-minute recovery. The
+            # primary drain still cannot emit a second executable book.
+            independent_recovery = urgent and symbol in recovery_set and symbol in self._history_only
+            if (symbol in self._retry_jobs or symbol in self.quote_jobs
+                    or (symbol in self.jobs and not independent_recovery)):
+                continue
             occupied = sum(lane == urgent for _, lane in self._retry_jobs.values())
             if urgent:
                 if len(self.quote_jobs) + occupied >= self.quote_capacity:
@@ -575,6 +636,8 @@ class MarketScheduler:
                     continue
                 pool = self.pool
             self._retry_jobs[symbol] = (pool.submit(symbol, self._retry_book, symbol, urgent), urgent)
+            if symbol in recovery_set:
+                self._note_recovery_admission(symbol)
         if self._separate_quotes and priority:
             if self.quote_pool is None:
                 self.quote_pool = StrategyDispatcher(workers=self.quote_capacity,
@@ -586,14 +649,36 @@ class MarketScheduler:
             missing_initial = [s for s in priority if s not in self._quoted_once]
             next_due_regular = [priority[(self.quote_cursor+i) % len(priority)]
                                 for i in range(len(priority))]
-            for symbol in (*missing_initial, *next_due_regular):
-                if len(self.quote_jobs) + sum(lane for _, lane in self._retry_jobs.values()) >= self.quote_capacity:
-                    break
+            # At most one recovery admission ahead of ordinary admissions
+            # in this collect. With a single slot, alternate successful
+            # recovery/ordinary admissions rather than starving either lane.
+            regular = list(dict.fromkeys((*missing_initial, *next_due_regular)))
+            recovery_pending = iter(recovery)
+            ordinary_pending = iter(regular)
+            recovery_admitted = False
+            ordinary_exhausted = False
+            while len(self.quote_jobs) + sum(lane for _, lane in self._retry_jobs.values()) < self.quote_capacity:
+                prefer_recovery = (self._closed_recovery_turn and not recovery_admitted) or ordinary_exhausted
+                symbol = next(recovery_pending, None) if prefer_recovery else None
+                selected_recovery = symbol is not None
+                if symbol is None:
+                    symbol = next(ordinary_pending, None)
+                    if symbol is None:
+                        if ordinary_exhausted:
+                            break
+                        ordinary_exhausted = True
+                        continue
                 if (symbol in self.quote_jobs or symbol in quote_delivered or symbol in self._retry_ticks
                         or self.quote_due.get(symbol, 0) > time.monotonic()):
                     continue
                 self.quote_jobs[symbol] = self.quote_pool.submit(symbol, self._quote, symbol)
-                self.quote_cursor = (priority_index[symbol]+1) % len(priority)
+                if selected_recovery:
+                    self._note_recovery_admission(symbol)
+                    recovery_admitted = True
+                    self._closed_recovery_turn = False
+                else:
+                    self.quote_cursor = (priority_index[symbol]+1) % len(priority)
+                    self._closed_recovery_turn = True
         # A zero-period batch must hand its final results to the worker before
         # beginning another round. Otherwise very fast symbols reoccupy slots
         # before the owner has processed the completed ticks.
@@ -741,7 +826,10 @@ class MarketScheduler:
                 closed_cohort_reads=cohort.reads,
                 closed_cohort_delivered=cohort.delivered,
                 closed_cohort_errors=cohort.errors,
-                closed_cohort_handoffs=self._closed_handoffs)
+                closed_cohort_handoffs=self._closed_handoffs,
+                closed_cohort_staged=self._closed_staged,
+                closed_recovery_ready=len(recovery),
+                closed_recovery_admissions=self._closed_recovery_sequence)
         self.last_pressure.update(quote_jobs=len(self.quote_jobs), quote_capacity=self.quote_capacity,
                                   history_jobs=len(self.jobs), history_capacity=self.capacity,
                                   deferred_refreshes=len(self._retry_ticks),risk_jobs=len(self.risk_jobs))
