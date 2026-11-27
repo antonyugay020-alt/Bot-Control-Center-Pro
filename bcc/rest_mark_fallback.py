@@ -15,6 +15,8 @@ from .ws_symbols import USDT_SYMBOL
 URL = 'https://api.bybit.com/v5/market/tickers'
 HOST = 'api.bybit.com'
 KEY = hashlib.sha256(b'bcc.bybit.rest.mark.snapshot.v1').hexdigest()
+LEASE_KEY = hashlib.sha256(b'bcc.bybit.rest.mark.lease.v1').hexdigest()
+HTTP_RESERVE = 2  # inside the existing 60/s total; never an extra allowance
 KIND = 'bybit_rest_linear_snapshot_v1'
 
 

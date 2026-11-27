@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .public_writer import writer_gate
 from .hub_demand import enabled as central_demand_enabled
+from .public_wal import configure_writer, WriterTiming
 
 
 class CacheBusy(RuntimeError):
@@ -22,6 +23,22 @@ class CacheBusy(RuntimeError):
 
 class CacheContention(CacheBusy):
     """A retryable local/SQLite lock, never a provider quota or denial."""
+
+
+class RestMarkLeaseBusy(CacheBusy):
+    """The dedicated REST mark reservation is already owned."""
+
+
+class RestMarkBudgetBusy(CacheBusy):
+    """The existing shared Bybit HTTP budget is exhausted."""
+
+
+class RestMarkCooldown(CacheBusy):
+    """The provider's actual cooldown is still active."""
+
+
+class RestMarkLeaderUnavailable(CacheBusy):
+    """The requesting producer no longer owns the Hub lease."""
 
 
 class ProviderDenied(RuntimeError):
@@ -46,6 +63,8 @@ class PublicCache:
         self.central_closed_history = False
         self.central_repair = False
         self._guard = writer_gate(self.path)
+        self.writer_timing = WriterTiming()
+        self._central_writer = central_demand_enabled()
         self._read_only_client = central_demand_enabled() and os.environ.get("BCC_MARKET_HUB_MODE") == "client"
         self._connection = None
         # WAL readers must not queue behind this process's HTTP lease/cache
@@ -225,6 +244,7 @@ class PublicCache:
             raise CacheBusy("Hub client public cache is read-only")
         # One short SQL operation at a time within this process. Keeping the
         # connection open avoids the last-connection WAL checkpoint on every GET.
+        began = time.monotonic()
         try:
             admitted = self._guard.acquire(timeout=0.2)
         except OSError as exc:
@@ -232,6 +252,8 @@ class PublicCache:
         if not admitted:
             self.stats["local_busy"] += 1
             raise CacheContention("Общий кэш занят другим запросом или процессом")
+        entered = time.monotonic()
+        lane = 'market_priority' if getattr(getattr(self._guard, '_priority', None), 'urgent', False) else 'ordinary'
         try:
             if self._connection is None:
                 self._connection = sqlite3.connect(
@@ -243,6 +265,8 @@ class PublicCache:
                 self.stats["connections"] += 1
                 self._connection.execute("PRAGMA busy_timeout=200")
                 self._connection.execute("PRAGMA synchronous=NORMAL")
+            if self._central_writer and not self._connection.in_transaction:
+                configure_writer(self._connection, self.path)
             self.stats["operations"] += 1
             yield self._connection
         except sqlite3.Error as exc:
@@ -262,6 +286,7 @@ class PublicCache:
                     self._connection.rollback()
             finally:
                 self._guard.release()
+                self.writer_timing.record(lane, entered-began, time.monotonic()-entered)
 
     @contextmanager
     def priority_reads(self):
@@ -844,6 +869,9 @@ class PublicCache:
         key = hashlib.sha256(
             json.dumps([url, params], sort_keys=True).encode()
         ).hexdigest()
+        if mark_leader is not None:
+            from .rest_mark_fallback import LEASE_KEY
+            key = LEASE_KEY
         self._ensure_schema()
         owner = uuid.uuid4().hex
         if self.split_history_lanes and mark_leader is None:
@@ -869,10 +897,10 @@ class PublicCache:
                 if status is not None:
                     raise ProviderDenied(host,status)
                 if not self._mark_leader_valid(db,mark_leader,now):
-                    raise CacheBusy('REST mark refresh requires current Hub leadership')
+                    raise RestMarkLeaderUnavailable('REST mark refresh requires current Hub leadership')
                 cooldown = db.execute("SELECT until FROM cooldown WHERE host=?", (host,)).fetchone()
                 if cooldown and cooldown[0]>now:
-                    raise CacheBusy("Общий лимит запросов " + host)
+                    raise RestMarkCooldown("Общий лимит запросов " + host)
             else:
                 value = self._cached(db, key, host, now)
                 if value is not None:
@@ -880,7 +908,8 @@ class PublicCache:
                     return key, None, json.loads(value)
             lease = db.execute("SELECT until FROM lease WHERE k=?", (key,)).fetchone()
             if lease and lease[0] > now:
-                raise CacheBusy("Данные уже запрашиваются другим ботом")
+                error_type = RestMarkLeaseBusy if mark_leader is not None else CacheBusy
+                raise error_type("Данные уже запрашиваются другим ботом")
             if not websocket:
                 slot = int(now)
                 budget = db.execute(
@@ -892,8 +921,13 @@ class PublicCache:
                 # PAPER positions; real WS publications consume none of it.
                 reserved = 12 if host == "api.bybit.com" else 0
                 allowed = maximum if priority else maximum - reserved
+                if host == 'api.bybit.com' and mark_leader is None:
+                    from .rest_mark_fallback import enabled, HTTP_RESERVE
+                    if enabled():
+                        allowed = min(allowed, maximum - HTTP_RESERVE)
                 if count >= allowed:
-                    raise CacheBusy("Общий бюджет публичных запросов исчерпан; ожидание")
+                    error_type = RestMarkBudgetBusy if mark_leader is not None else CacheBusy
+                    raise error_type("Общий бюджет публичных запросов исчерпан; ожидание")
                 db.execute(
                     "INSERT OR REPLACE INTO request_budget VALUES(?,?,?)",
                     (host, slot, count + 1),
@@ -1006,17 +1040,19 @@ class PublicCache:
         # budgeted bulk HTTP lease, with the same Hub generation at commit.
         compact = None
         if mark_leader is not None:
-            from .rest_mark_fallback import enabled, URL, HOST, build_snapshot
+            from .rest_mark_fallback import enabled, LEASE_KEY, HOST, build_snapshot
             from .market_clock import book_is_fresh
-            expected = hashlib.sha256(json.dumps([URL,{'category':'linear'}],
-                                      sort_keys=True).encode()).hexdigest()
-            if (not enabled() or key!=expected or host!=HOST
+            if (not enabled() or key!=LEASE_KEY or host!=HOST
                     or type(mark_leader) is not tuple or len(mark_leader)!=2
                     or not all(type(v) is str and v for v in mark_leader)):
                 raise ValueError('Invalid REST mark publication fence')
             compact = build_snapshot(value,book_is_fresh)
             if compact is None:
                 value = None
+        elif value is not None:
+            from .rest_mark_fallback import LEASE_KEY
+            if key == LEASE_KEY:
+                raise ValueError('Dedicated mark lease requires leader-fenced publication')
         # Serialization may be expensive for a long candle history. It must not
         # run while blocking every other bot's short write transaction.
         # The dedicated collateral lane publishes ONLY its compact mark

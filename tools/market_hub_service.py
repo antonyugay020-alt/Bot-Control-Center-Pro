@@ -115,6 +115,7 @@ def main():
     publisher = None
     rest_pump = None
     demand_server = None
+    wal_maintenance = None
     if (args.bybit_ws_quotes or args.bybit_ws_books or
             args.bybit_ws_klines or args.poly_ws_books or
             args.binance_ws_price):
@@ -240,6 +241,10 @@ def main():
                     from bcc.hub_demand import enabled as demand_enabled, DemandServer
                     if demand_enabled():
                         hub.source.shared._ensure_schema()
+                        from bcc.public_wal import WalMaintenance
+                        wal_maintenance = WalMaintenance(args.cache)
+                        wal_maintenance.start()
+                        print('Independent public WAL checkpoint lane enabled', flush=True)
                         demand_server = DemandServer(args.cache, hub.registry.prepare_subscription,
                             lambda rows: hub.registry.commit_subscriptions(rows,
                                 owner=hub.owner, token=hub._leader_token))
@@ -373,6 +378,7 @@ def main():
                               "queue": queue_stats,
                               "publication": hub.ws_publication_stats(),
                               "central_demand": demand_server.stats() if demand_server is not None else None,
+                              "wal_maintenance": wal_maintenance.stats() if wal_maintenance is not None else None,
                               "rest_lanes": hub.rest_lane_health(),
                               "mark_delivery": {
                                   "enabled": os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")=="1",
@@ -431,7 +437,11 @@ def main():
             if demand_server is not None:
                 demand_server.close()
         finally:
-            hub.close()
+            try:
+                if wal_maintenance is not None:
+                    wal_maintenance.close()
+            finally:
+                hub.close()
 
 
 if __name__ == '__main__':

@@ -177,3 +177,46 @@ def test_dedicated_mark_writer_preserves_existing_ordinary_bulk_row(setup):
         after=db.execute("SELECT value,until FROM cache WHERE k=?", (key,)).fetchone()
     assert before==after
     assert cache.read_fresh_many([],HOST,include_rest_marks=True)[0]['time']==round(now[0]*1000)
+
+
+def test_mark_lease_is_independent_of_regular_bulk_lease(setup):
+    from bcc.data_cache import RestMarkLeaseBusy
+    from bcc.rest_mark_fallback import LEASE_KEY
+    now,cache,registry,fence,snapshot=setup
+    ordinary,ordinary_owner,_=cache.begin(URL,PARAMS,HOST,priority=True)
+    mark,mark_owner,_=cache.begin(URL,PARAMS,HOST,priority=True,mark_leader=fence)
+    assert mark==LEASE_KEY and ordinary!=mark
+    with pytest.raises(RestMarkLeaseBusy):
+        cache.begin(URL,PARAMS,HOST,priority=True,mark_leader=fence)
+    assert cache.finish(mark,mark_owner,HOST,snapshot(),ttl=1.,mark_leader=fence)
+    assert cache.finish(ordinary,ordinary_owner,HOST,snapshot(),ttl=1.)
+    assert cache.read_fresh(URL,PARAMS,HOST) is not None
+    assert cache.read_fresh_many([],HOST,include_rest_marks=True)[0] is not None
+
+
+def test_mark_reservation_never_increases_total_http_budget(setup,monkeypatch):
+    from bcc.data_cache import RestMarkBudgetBusy
+    now,cache,registry,fence,snapshot=setup
+    wall=time.time()
+    monkeypatch.setattr(time,'time',lambda:wall)
+    cache._ensure_schema()
+    with cache.db() as db:
+        db.execute('INSERT OR REPLACE INTO request_budget VALUES(?,?,?)',(HOST,int(wall),58))
+    with pytest.raises(CacheBusy,match='бюджет'):
+        cache.begin(URL,PARAMS,HOST,priority=True)
+    for _ in range(2):
+        key,owner,_=cache.begin(URL,PARAMS,HOST,priority=True,mark_leader=fence)
+        cache.finish(key,owner,HOST)
+    with pytest.raises(RestMarkBudgetBusy):
+        cache.begin(URL,PARAMS,HOST,priority=True,mark_leader=fence)
+    with cache.read_db() as db:
+        assert db.execute('SELECT count FROM request_budget WHERE host=?',(HOST,)).fetchone()[0]==60
+
+
+def test_mark_lease_cannot_be_used_as_ordinary_publication(setup):
+    now,cache,registry,fence,snapshot=setup
+    key,owner,_=cache.begin(URL,PARAMS,HOST,priority=True,mark_leader=fence)
+    with pytest.raises(ValueError,match='leader-fenced'):
+        cache.finish(key,owner,HOST,snapshot(),ttl=1.)
+    cache.finish(key,owner,HOST)
+    assert cache.read_fresh_many([],HOST,include_rest_marks=True)==[None]

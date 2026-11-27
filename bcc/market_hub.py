@@ -17,6 +17,8 @@ from pathlib import Path
 
 from .data_cache import PublicCache, CacheBusy
 from .public_writer import writer_gate, writer_transaction
+from .hub_demand import enabled as central_demand_enabled
+from .public_wal import configure_writer, WriterTiming
 
 
 class HubRegistry:
@@ -24,6 +26,8 @@ class HubRegistry:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._writer_gate = writer_gate(self.path)
+        self._central_writer = central_demand_enabled()
+        self.writer_timing = WriterTiming()
         self._init()
 
     @staticmethod
@@ -50,6 +54,8 @@ class HubRegistry:
         db = sqlite3.connect(self.path, timeout=1.0, isolation_level=None)
         try:
             db.execute('PRAGMA busy_timeout=1000')
+            if self._central_writer:
+                configure_writer(db, self.path)
             with db:
                 yield db
         finally:
@@ -58,8 +64,15 @@ class HubRegistry:
     @contextmanager
     def _write_connect(self, *, migration=False):
         """Join the cache's FIFO writer gate; read-only connections stay free."""
-        with writer_transaction(self._writer_gate, self._connect, migration=migration) as db:
-            yield db
+        began = time.monotonic()
+        entered = None
+        try:
+            with writer_transaction(self._writer_gate, self._connect, migration=migration) as db:
+                entered = time.monotonic()
+                yield db
+        finally:
+            if entered is not None:
+                self.writer_timing.record('registry', entered-began, time.monotonic()-entered)
 
     @staticmethod
     def _index_matches(db, name, columns):
@@ -1039,6 +1052,8 @@ class MarketDataHub:
             result['writer_gate'] = shared._guard.stats()
             result['cache_lock_counters'] = {name: shared.stats[name] for name in
                                              ('local_busy', 'sqlite_busy', 'read_local_busy')}
+            result['cache_writer_timing'] = shared.writer_timing.stats()
+            result['registry_writer_timing'] = self.registry.writer_timing.stats()
         return result
 
     def publish_ws_events(self, events):
