@@ -1,5 +1,5 @@
 {
-  "checkpoint": "BCC_V39_PAPER_DESKTOP",
+  "checkpoint": "BCC_V39_FULL_ACCEPTANCE",
   "files": {
     ".gitattributes": "7d65da6ba1e0544ef41abeade3052d915e5b99fafd02c8fda923f88720ea7348",
     ".github/workflows/bcc-ci.yml": "dc2ac6fb04fc4908b4fb69e07c0131c44e6a64e658fe3c46144244e64ee986c9",
@@ -42,6 +42,7 @@
     "RUN29_INTERNAL_QA_STATUS.json": "ccc793617803824ee7a4779ca4b0b1a0c17d8dd5f86e466a8ddcdb0797b90007",
     "RUN30_INTERNAL_ARCHITECTURE_NOTES_RU.md": "2caca2329f7b662fbc156be58f7e4b06427d3f30f1fe78bf1f0a984d27cb02d4",
     "RUN30_INTERNAL_QA_STATUS.json": "9e4535cf8be61dab560f70a7d60c957ea1f016c70f02817333e5ce8ebfb33744",
+    "RUN_ACCEPTANCE.ps1": "85f1f6fccb02c509daa4c8741a1bd4c75dc716a558872e977a91f11db598f99c",
     "START.bat": "3b6e7776d836eb709ed2086c99853ad80f9214abeaa192e894686fc8dad3217a",
     "STARTUP_VALIDATION_STATUS_20261106.json": "cea5673b552a3f8687666f8b9de57dfcbcdd3efd690f645823c3b8b3e691f0bc",
     "START_DIAGNOSTIC.bat": "3eefd4ade4f4fd4132980f8a769532aa5a9d138e76014f00e4a83e0ea54cfb99",
@@ -187,6 +188,7 @@
     "docs/REGRESSION_20261107.json": "2ff019b37c74d971f11e60c7e83b9f93679967941e9ce5078bbcf9ebbee5b517",
     "docs/RESOURCE_SCALING_CONTRACT.md": "0acd6330c15ba6bf033fe3adc760fe5454e5b5c76a59fce139f2aad646ad3f01",
     "docs/V39_PAPER_DESKTOP.md": "1413a87b95cc4ed9836b4303eaf335f4131cd43006623b2bf7ce9aebf8bb5918",
+    "docs/V39_WINDOWS_ACCEPTANCE_RUNNER.md": "d959783f1ff08252c2ac76102dd11d7055107ac4b2234c984c31730d238d377c",
     "docs/VELES_COIN_MARGIN_INTEGRATION_20261118.md": "a94c00391990c02980ebe8c2cd595750ca49deae31992fdc009b721bc378c25b",
     "docs/VELES_REVIEW_CONTINUATION_20261118.md": "364a15c20837f0111540102acfbd4f7f1f08f1d90653fdfd7cc5b8799d0da326",
     "docs/WINDOWS_ACTIVE_OWNER_RECEIPT_20261115.json": "e7ba284f49966b82f6313e5e7640e979bded1708788fc6052ff3f6e28c5c14d1",
@@ -631,9 +633,11 @@
     "tools/start_windows_check.ps1": "e9d258687cab2aa1974835914061e5edc9e7fe6c71ed5a9f8bd17acb03614e8d",
     "tools/ticker_proof_recovery.py": "02edcfa27e23aa4d5626bd9828fbc2fe20e2f2dec22f386ca1f5a576e90c9155",
     "tools/verify_package.py": "851edc97513ce1ff0fe3e6fe7782a98bda6c98a6e68511b909713849e0f2cd41",
-    "tools/verify_windows.py": "ea7b4c0d712075cff1129afe9b717bb35c2350ec6fc39df7452937bfa736d6bd",
+    "tools/verify_windows.py": "de214c8b6de169eaa973ee741e41d6dc516a7cfdc08b2099c85ea458010392c0",
     "tools/windows_ai_launcher.py": "89bb4ef92af88230b9471e35248c2db12a3df1b0d9a61924cb8508f7e6e94f70",
     "tools/windows_check.py": "6ca39be1d3a9a6e35e675f9daa964859e5401f21c454f4e48633d868ceb94bdf",
+    "tools/windows_v39_acceptance.py": "b483b4751b450b1fe083040988c249d1f5137d7b49da7f77e1a636e09daf01d9",
+    "tools/windows_v39_acceptance_selftest.py": "bfd2597bb4f860f975e756e049330d1124bdcfb50f2bc8a298ced5271e501519",
     "tools/ws_native_profile.py": "c0770f44ce98bd353177f72777ffa9aed5d64a2203e4336e6458b80378c701aa",
     "tools/ws_offline_acceptance.py": "aed71c8e11d0a0f8dddaf035337c9d9887439f7ef3aade3825b5d4885b72b7f8",
     "tools/ws_pair_delivery.py": "b4864fc0d71056eb283f62cac5f5fff661ac6306d4c87d24319110258d05b53e"

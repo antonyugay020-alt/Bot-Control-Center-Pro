@@ -535,7 +535,7 @@ def is_native_windows():
     return os.name == "nt" and os.environ.get("QT_QPA_PLATFORM", "windows") == "windows"
 
 
-def main():
+def main(argv=None, *, prechecked_ws=None):
     parser = argparse.ArgumentParser(description="Нативная проверка Windows Qt и PAPER")
     parser.add_argument(
         "--output",
@@ -550,9 +550,11 @@ def main():
     )
     parser.add_argument('--central-demand', action='store_true',
                         help='Require central public demand in the isolated Bybit WS stage')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.central_demand and args.venue != 'bybit':
         parser.error('--central-demand requires --venue bybit')
+    if prechecked_ws is not None and not args.central_demand:
+        raise ValueError('Prechecked WS requires the central Bybit profile')
     output = args.output.resolve()
     # A reused output directory might contain stale passing screenshots/XML.
     # Never let old evidence certify a new verification attempt.
@@ -615,7 +617,17 @@ def main():
             WINDOWS_QA_TIMEOUTS["public_sources"],
         ),
     ]
-    if args.venue == "bybit":
+    if prechecked_ws is not None:
+        from shutil import copyfile
+
+        # The same-run WS stage has already run before this verifier. Preserve
+        # its exact report and independently replay its profile during the
+        # standard Windows evidence verification.
+        ws_output = output / "bybit_ws"
+        (ws_output / "isolated_hub").mkdir(parents=True)
+        for name in ("live_ws_report.json", "isolated_hub/market_hub.log"):
+            copyfile(prechecked_ws / name, ws_output / name)
+    elif args.venue == "bybit":
         steps.insert(-1, (
             "bybit_ws", ["-m", "tools.bybit_ws_live_acceptance", "--output",
                          str(output / "bybit_ws"), "--require-mark"]
