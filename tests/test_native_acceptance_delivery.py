@@ -65,7 +65,15 @@ def test_duplicate_snapshot_and_empty_ack_never_extend_original_expiry(pair):
     now[0] += 1.5
     assert stream.refresh_stale_marks([SYMBOL]) == 1
     ack(reserve, stream, 'unsubscribe')
-    assert not frame(child, SYMBOL, 100., markPrice='100')
+    assert not frame(child, SYMBOL, 100., markPrice='101')
+    assert frame(child, SYMBOL, 100., markPrice='100')
+    ack(reserve, stream, 'subscribe')
+    assert child.maintained_mark(SYMBOL) == original
+    # The original snapshot is also enough to resume genuine ordered deltas.
+    assert child.chain_initialized(SYMBOL)
+    now[0] += .5
+    assert stream.refresh_stale_marks([SYMBOL]) == 1
+    ack(reserve, stream, 'unsubscribe')
     ack(reserve, stream, 'subscribe')
     assert child.maintained_mark(SYMBOL) == original
     assert child.refresh_pressure()['ack_without_fresh_mark'] == 1
@@ -86,3 +94,42 @@ def test_native_publication_retries_transient_writer_contention_from_live_state(
     replay = queue.take_batch(timeout=0)
     assert set(replay) == set(batch)
     assert all(hub.publish_ws_events(replay))
+
+
+def test_native_transport_readiness_requires_books_and_both_ticker_lanes():
+    from bcc.ws_orderbooks import BybitOrderbookWS
+    from bcc.ws_sharded_quotes import ShardedBybitQuoteStream
+    from tools.ws_native_profile import transport_ready
+
+    quotes = ShardedBybitQuoteStream()
+    books = BybitOrderbookWS()
+    try:
+        books.connect(Socket())
+        for shard in quotes._pairs:
+            shard._primary.connect(Socket())
+            shard._recovery.connect(Socket())
+        assert transport_ready(quotes, books)
+        assert not books._symbols and not quotes._demand
+        quotes._pairs[-1]._recovery.disconnect()
+        assert not transport_ready(quotes, books)
+        quotes._pairs[-1]._recovery.connect(Socket())
+        books.disconnect()
+        assert not transport_ready(quotes, books)
+    finally:
+        quotes.stop()
+        books.stop()
+
+
+def test_native_transport_wait_checks_owned_receipt_and_is_bounded(tmp_path):
+    import json
+
+    from tools.ws_native_profile import NATIVE_WS_READY, wait_transport_ready
+
+    with pytest.raises(TimeoutError, match='connections did not become ready'):
+        wait_transport_ready(tmp_path, 123, timeout=0)
+    path = tmp_path / NATIVE_WS_READY
+    receipt = dict(pid=123, ticker_connections=8, book_connections=1)
+    path.write_text(json.dumps(receipt), encoding='utf-8')
+    assert wait_transport_ready(tmp_path, 123) == receipt
+    with pytest.raises(ValueError, match='owned Hub'):
+        wait_transport_ready(tmp_path, 456)

@@ -19,7 +19,7 @@ RECOVERY_TOPICS_PER_SHARD = 4
 MISSING_GRACE = 2.0
 RETRY_INTERVAL = 12.0
 QUIET_SNAPSHOT_LEAD = 1.75
-QUIET_SNAPSHOT_INTERVAL = .65
+QUIET_SNAPSHOT_INTERVAL = .45
 
 
 class StablePair(DualBybitQuoteStream):
@@ -97,10 +97,10 @@ class StablePair(DualBybitQuoteStream):
         with self._recovery._lock:
             pending = set(self._recovery._wire_symbols)
         for symbol in sorted(symbols & self._demand & self._recovery_demand):
-            mark, _ = self.independent_observations_for_hub(symbol)
-            if mark is not None:
+            reserve = self._recovery.maintained_mark(symbol)
+            if reserve is not None:
                 self._missing_since.pop(symbol, None)
-                due = remaining(round(mark[1] * 1000), 3.) <= QUIET_SNAPSHOT_LEAD
+                due = remaining(round(reserve[1] * 1000), 3.) <= QUIET_SNAPSHOT_LEAD
             else:
                 due = now - self._missing_since.setdefault(symbol, now) >= .5
             if due and symbol not in pending and now >= self._retry_at.get(symbol, 0.):

@@ -46,7 +46,7 @@ class MaintainedMarks:
                 self.trackers.pop(symbol, None)
         self.active = selected
 
-    def ingest(self, payload, fence):
+    def ingest(self, payload, fence, *, prior_snapshot=None):
         if not self.fence or fence != self.fence or type(payload) is not dict:
             return False
         topic = payload.get('topic')
@@ -57,8 +57,11 @@ class MaintainedMarks:
             return False
         stamp, cs = payload.get('ts'), payload.get('cs')
         if symbol not in self.trackers:
-            if (type(stamp) is not int or stamp <= self.retired.get(symbol, 0)
-                    or payload.get('type') != 'snapshot'):
+            if type(stamp) is not int or payload.get('type') != 'snapshot':
+                return False
+            retired = self.retired.get(symbol, 0)
+            if stamp <= retired and not (
+                    stamp == retired and self._matches_prior_snapshot(payload, prior_snapshot)):
                 return False
             tracker = TickerState([symbol], age_bounds=self.age_bounds, monotonic=self.monotonic)
             self.trackers[symbol] = (tracker, tracker.connect())
@@ -83,6 +86,17 @@ class MaintainedMarks:
             self.watermarks[symbol] = (current.confirmed_ms, current.sequence, current.price)
             return True
         return previous is not None and current is None
+
+    @staticmethod
+    def _matches_prior_snapshot(payload, prior):
+        """An exact exchange observation can seed a chain at its original age."""
+        if (prior is None or round(prior[1] * 1000) != payload.get('ts')
+                or prior[4] != payload.get('cs')):
+            return False
+        try:
+            return float(payload['data']['markPrice']) == prior[0]
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return False
 
     def has_chain(self, symbol):
         """Distinguish an intact quiet chain from one requiring a snapshot."""

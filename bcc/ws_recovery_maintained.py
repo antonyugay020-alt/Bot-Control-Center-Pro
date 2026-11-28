@@ -156,7 +156,10 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
             symbol = topic[8:]
             if symbol not in self._maintained.active:
                 return False
-            changed = self._maintained.ingest(payload, self._connection_fence)
+            held = self._refreshing_marks.get(symbol)
+            prior = (self._maintained.mark_from_tracker(symbol, held, self._connection_fence)
+                     if held is not None else None)
+            changed = self._maintained.ingest(payload, self._connection_fence, prior_snapshot=prior)
             current = self._maintained.mark(symbol)
             if symbol in self._wire_symbols:
                 if symbol not in self._staging:

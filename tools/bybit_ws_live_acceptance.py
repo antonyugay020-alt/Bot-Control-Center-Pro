@@ -19,6 +19,7 @@ from bcc.market import PublicData, DataUnavailable, SourceAccessDenied
 from bcc.market_clock import clock, book_age_bounds
 from bcc.storage import atomic_json
 from tools.verify_package import verify, assert_same_snapshot
+from tools.ws_native_profile import NATIVE_DELIVERY_FLAG, wait_transport_ready
 
 MIN_ROUNDS = 24
 STEADY_READ_BUDGET = 1.5
@@ -280,6 +281,7 @@ def main(argv=None):
     }
     source = None
     hub_started = False
+    native_delivery = args.central_demand and os.environ.get(NATIVE_DELIVERY_FLAG) == '1'
     original = {k: os.environ.get(k) for k in (
         "BCC_PUBLIC_CACHE", "BCC_MARKET_HUB_MODE",
         "BCC_BYBIT_WS_QUOTES", "BCC_BYBIT_WS_BOOKS",
@@ -294,8 +296,16 @@ def main(argv=None):
             # This remains a strict WS-only gate; official REST fallback is
             # independently tested during the long PAPER acceptance.
             os.environ.pop('BCC_BYBIT_REST_MARK_FALLBACK', None)
-        ensure_hub(root, bybit_ws=True)
+        startup_started = time.monotonic()
+        hub_pid = ensure_hub(root, bybit_ws=True)
         hub_started = True
+        if native_delivery:
+            report["hub_process_startup_seconds"] = round(time.monotonic() - startup_started, 3)
+            transport_started = time.monotonic()
+            try:
+                report["native_ws_transport_ready"] = wait_transport_ready(root, hub_pid)
+            finally:
+                report["ws_transport_wait_seconds"] = round(time.monotonic() - transport_started, 3)
         os.environ["BCC_PUBLIC_CACHE"] = str(cache)
         os.environ["BCC_MARKET_HUB_MODE"] = "client"
         os.environ["BCC_BYBIT_WS_QUOTES"] = "1"
@@ -308,7 +318,7 @@ def main(argv=None):
                 rows = list(pool.map(
                     lambda symbol: probe(source, symbol,
                                          require_mark=args.require_mark,
-                                         initial=iteration == 0,
+                                         initial=iteration == 0 and not native_delivery,
                                          parallel=args.central_demand),
                     SYMBOLS,
                 ))

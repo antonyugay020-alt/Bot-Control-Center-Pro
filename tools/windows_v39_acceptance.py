@@ -17,7 +17,7 @@ WS_RUNS = 3
 WS_ROUNDS = 24
 WS_LIMIT = 1.5
 PRELIMINARY_COUNT = 543
-REGRESSION_COUNT = 4512
+REGRESSION_COUNT = 4514
 INTERPROCESS = (
     'test_v28_interprocess_writer.py', 'test_hub_multiprocess_delivery.py',
     'test_shared_singleflight_multiprocess.py', 'test_process.py',

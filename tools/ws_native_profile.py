@@ -1,9 +1,11 @@
 """Apply and prove the production candidate WS-only profile during native QA."""
 import json
+import time
 import zlib
 from pathlib import Path
 
 NATIVE_DELIVERY_FLAG = "BCC_BYBIT_NATIVE_WS_DELIVERY_CANDIDATE"
+NATIVE_WS_READY = "native_ws_transport_ready.json"
 
 FLAGS = (
     'BCC_PUBLIC_DEMAND_HUB_CANDIDATE',
@@ -23,6 +25,38 @@ def step_environment(env, name, arguments):
         result.update(dict.fromkeys(FLAGS, '1'))
         result.pop('BCC_BYBIT_REST_MARK_FALLBACK', None)
     return result
+
+
+def transport_ready(quotes, books):
+    """Check connected sockets without submitting demand or reading prices."""
+    if quotes is None or books is None:
+        return False
+    with books._lock:
+        if not books._connected:
+            return False
+    health = quotes.transport_health()
+    return (health["shard_count"] == 4
+            and all(health[lane]["connection"] == "connected"
+                    for lane in ("primary", "recovery")))
+
+
+def wait_transport_ready(root, pid, *, timeout=12):
+    """Accept only the readiness receipt from the owned, fresh Hub."""
+    path = Path(root) / NATIVE_WS_READY
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            receipt = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Bybit WS connections did not become ready") from None
+            time.sleep(min(.05, remaining))
+            continue
+        expected = {"pid": pid, "ticker_connections": 8, "book_connections": 1}
+        if receipt != expected:
+            raise ValueError("WS readiness receipt does not identify the owned Hub")
+        return receipt
 
 
 def profile_evidence(log, symbols):

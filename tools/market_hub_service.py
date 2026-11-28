@@ -11,7 +11,7 @@ import time
 from bcc.market_hub import MarketDataHub
 from bcc.market_clock import ClockUnavailable, clock, market_now
 from bcc.ws_dispatch import MarketEventQueue
-from tools.ws_native_profile import NATIVE_DELIVERY_FLAG
+from tools.ws_native_profile import NATIVE_DELIVERY_FLAG, NATIVE_WS_READY, transport_ready
 
 
 def create_market_event_queue():
@@ -212,6 +212,7 @@ def main():
     last_client = time.monotonic()
     last_ws_health = 0.0
     ready_logged = False
+    native_transport_pending = native_delivery and args.bybit_ws_quotes and args.bybit_ws_books
     clock_was_ready = None
     clock_outages = 0
     clock_recoveries = 0
@@ -298,6 +299,15 @@ def main():
                         ws_demand_changed.clear()
                         hub.rescan_ws_demand()
                     hub.poll_nonblocking(market_ready=market_ready)
+                    if (native_transport_pending and market_ready and hub._leader_held
+                            and transport_ready(quote_stream, book_stream)):
+                        from pathlib import Path
+                        from bcc.storage import atomic_json
+
+                        atomic_json(Path(args.cache).parent / NATIVE_WS_READY, {
+                            'pid': os.getpid(), 'ticker_connections': 8, 'book_connections': 1,
+                        })
+                        native_transport_pending = False
                 except ClockUnavailable:
                     # The clock may expire after the admission check and
                     # before an individual scheduler operation. This is a
