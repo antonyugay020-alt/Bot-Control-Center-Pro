@@ -16,7 +16,8 @@ from .ws_symbols import USDT_SYMBOL
 class DualBybitQuoteStream:
     """Two persistent sockets; only the secondary may request refresh snapshots."""
 
-    def __init__(self, *, wall=time.time, monotonic=time.monotonic, on_update=None, maintained=False, maintained_recovery=False):
+    def __init__(self, *, wall=time.time, monotonic=time.monotonic, on_update=None, maintained=False, maintained_recovery=False,
+                 refresh_quiet=False):
         self._wall = wall
         self._mono = monotonic
         self._lock = threading.RLock()
@@ -25,15 +26,21 @@ class DualBybitQuoteStream:
             raise ValueError('invalid maintained-mark candidate')
         if type(maintained_recovery) is not bool or (maintained_recovery and not maintained):
             raise ValueError("maintained recovery requires maintained primary")
+        if type(refresh_quiet) is not bool or (refresh_quiet and not maintained_recovery):
+            raise ValueError("quiet snapshots require maintained recovery")
+        self._refresh_quiet = refresh_quiet
         self.maintained_enabled = maintained
         self.maintained_recovery_enabled = maintained_recovery
         primary_type = MaintainedQuoteStream if maintained else BybitQuoteStream
         self._primary = primary_type(wall=wall, monotonic=monotonic, on_update=on_update)
-        recovery_type = RecoveryQuoteStream
         if maintained_recovery:
             from .ws_recovery_maintained import MaintainedRecoveryQuoteStream
-            recovery_type = MaintainedRecoveryQuoteStream
-        self._recovery = recovery_type(wall=wall, monotonic=monotonic, on_update=on_update, mark_only_recovery=True)
+            self._recovery = MaintainedRecoveryQuoteStream(
+                wall=wall, monotonic=monotonic, on_update=on_update,
+                mark_only_recovery=True, refresh_quiet=refresh_quiet)
+        else:
+            self._recovery = RecoveryQuoteStream(wall=wall, monotonic=monotonic,
+                                                 on_update=on_update, mark_only_recovery=True)
         self._demand = set()
         self._primary_added = {}
         self._recovery_demand = set()
@@ -236,8 +243,10 @@ class DualBybitQuoteStream:
                     now = self._wall()
                     ages = [now - row[1] / 1000 for row in child._marks.values()
                             if child._connected and row[3] == child._generation]
+                    received = (child.received_topic_count()
+                                if self._refresh_quiet and child is self._recovery else len(child._quotes))
                     return dict(connection='connected' if child._connected else 'reconnecting',
-                                subscribed=len(child._subscriptions), received_symbols=len(child._quotes),
+                                subscribed=len(child._subscriptions), received_symbols=received,
                                 explicit_mark_symbols=len(ages),
                                 explicit_mark_age_over_3s=sum(age > 3. for age in ages),
                                 explicit_mark_max_age_seconds=round(max(ages, default=0.), 6))

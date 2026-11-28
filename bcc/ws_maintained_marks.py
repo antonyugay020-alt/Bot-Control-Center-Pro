@@ -27,7 +27,7 @@ class MaintainedMarks:
         self.retired.clear()
         self.watermarks.clear()
 
-    def sync(self, symbols):
+    def sync(self, symbols, *, refreshing=()):
         selected = set(symbols) if self.fence else set()
         removed = self.active - selected
         if removed:
@@ -38,7 +38,11 @@ class MaintainedMarks:
                 cutoff = math.inf
             for symbol in removed:
                 prior = self.watermarks.pop(symbol, (0, 0, 0.))
-                self.retired[symbol] = max(cutoff, prior[0], self.retired.get(symbol, 0))
+                # A correlated resubscribe can return a genuine snapshot
+                # stamped before the control round trip. It must still
+                # advance the previous observation and meet its source TTL.
+                floor = 0 if symbol in refreshing else cutoff
+                self.retired[symbol] = max(floor, prior[0], self.retired.get(symbol, 0))
                 self.trackers.pop(symbol, None)
         self.active = selected
 
@@ -90,10 +94,14 @@ class MaintainedMarks:
         selected = self.trackers.get(symbol)
         if not self.fence or symbol not in self.active or selected is None:
             return None
+        return self.mark_from_tracker(symbol, selected, self.fence)
+
+    @staticmethod
+    def mark_from_tracker(symbol, selected, fence):
         state = selected[0].observations()[symbol]
         if state is None:
             return None
-        return (state.price, state.confirmed_ms / 1000, self.fence,
+        return (state.price, state.confirmed_ms / 1000, fence,
                 state.explicit_ms, state.sequence, state.chain)
 
     def stats(self):

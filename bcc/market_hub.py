@@ -792,6 +792,7 @@ class MarketDataHub:
         self._leader_token = None
         self._prune_due = 0.0
         self._ws_subscription_scan_due = 0.0
+        self._retry_ws_contention = False
         self._ws_mark_scan_due = 0.0
         self._ticker_demand_due = 0.0
         self._derived_ticker_renewals = 0
@@ -1086,7 +1087,8 @@ class MarketDataHub:
                 except CacheBusy as exc:
                     busy = len(valid)
                     from .data_cache import CacheContention
-                    if (getattr(self.source.shared, "central_closed_history", False)
+                    if ((self._retry_ws_contention
+                         or getattr(self.source.shared, "central_closed_history", False))
                             and isinstance(exc, CacheContention) and self._ws_dispatcher is not None):
                         # Re-read current exchange evidence on retry. Never
                         # replay stale payloads or extend original prices.
@@ -1141,8 +1143,12 @@ class MarketDataHub:
             routes.append("https://api.binance.com/api/v3/ticker/price")
         return tuple(routes)
 
-    def set_ws_dispatcher(self, dispatcher):
+    def set_ws_dispatcher(self, dispatcher, *, retry_contention=False):
         self._ws_dispatcher = dispatcher
+        self._retry_ws_contention = retry_contention
+        self.rescan_ws_demand()
+
+    def rescan_ws_demand(self):
         self._ws_subscription_scan_due = 0.
 
     def _schedule_minute_repairs(self, symbols):

@@ -9,8 +9,11 @@ from .ws_quotes import BybitQuoteStream, MaintainedQuoteStream, StreamUnavailabl
 
 
 class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
-    def __init__(self, **kwargs):
+    def __init__(self, *, refresh_quiet=False, **kwargs):
         super().__init__(**kwargs)
+        self._refresh_quiet = refresh_quiet
+        self._refreshing_marks = {}
+        self._received_topics = set()
         self._logical_demand = set()
         self._staging = set()
         self._early_snapshots = 0
@@ -28,6 +31,8 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
     def connect(self, socket=None):
         with self._lock:
             self._staging.clear()
+            self._refreshing_marks.clear()
+            self._received_topics.clear()
             generation = super().connect(socket)
             self._empty_acks_at_connect = self._empty_acks
             self._sync_chain()
@@ -38,6 +43,8 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
             if generation is not None and generation != self._generation:
                 return False
             self._staging.clear()
+            self._refreshing_marks.clear()
+            self._received_topics.clear()
             return super().disconnect(generation=generation)
 
     def subscribe_many(self, symbols):
@@ -55,6 +62,9 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
             selected = set(symbols)
             removed = self._logical_demand - selected
             self._logical_demand = selected
+            self._received_topics.difference_update(removed)
+            for symbol in removed:
+                self._refreshing_marks.pop(symbol, None)
             self._sync_chain()
             result = super().sync_active_symbols(symbols)
             self._sync_chain()
@@ -62,13 +72,38 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
             return result
 
     def _send_recovery_requests(self, symbols):
+        if self._refresh_quiet:
+            for symbol in symbols:
+                if self._maintained.mark(symbol) is not None:
+                    self._refreshing_marks[symbol] = self._maintained.trackers[symbol]
         self._maintained.sync((self._logical_demand & self._subscriptions)
-                              - self._wire_symbols - set(symbols))
+                              - self._wire_symbols - set(symbols),
+                              refreshing=symbols if self._refresh_quiet else ())
         for symbol in symbols:
             self._marks.pop(symbol, None)
             self._quotes.pop(symbol, None)
         self._notify_symbols(symbols)
         super()._send_recovery_requests(symbols)
+
+    def request_quiet_snapshots(self, symbols):
+        """Request actual snapshots with the existing correlated wire protocol."""
+        with self._lock:
+            # Run the normal ACK watchdog, independent of this request's budget.
+            self.refresh_stale_marks([])
+            if not self._connected or self._socket is None:
+                return ()
+            ready = tuple(symbol for symbol in symbols if symbol in self._logical_demand
+                          and symbol in self._subscriptions and symbol not in self._wire_symbols)
+            if ready:
+                try:
+                    self._send_recovery_requests(ready)
+                except Exception as exc:
+                    self._refresh_send_failures += 1
+                    self._retire_uncertain_socket()
+                    raise StreamUnavailable("Bybit quiet snapshot request failed") from exc
+                self._refresh_topics_sent += len(ready)
+                self._refresh_batches_sent += 1
+            return ready
 
     def _send_wire(self, op, symbols):
         # Called for subscribe ONLY after the matching unsubscribe ACK.
@@ -96,10 +131,13 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
                 for symbol in symbols:
                     if symbol not in self._logical_demand:
                         continue
-                    mark = self.maintained_mark(symbol)
+                    # Held evidence is never proof of the new subscription.
+                    mark = self._maintained.mark(symbol)
                     if mark is None:
                         self._empty_acks += 1
                         continue
+                    self._refreshing_marks.pop(symbol, None)
+                    self._received_topics.add(symbol)
                     self._snapshot_recovery.observe_snapshot(symbol, (mark[3],))
                     self._released += 1
                     released.append(symbol)
@@ -131,6 +169,8 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
                     return True
                 return False
             if changed and current is not None:
+                self._refreshing_marks.pop(symbol, None)
+                self._received_topics.add(symbol)
                 self._snapshot_recovery.observe_snapshot(symbol,(current[3],))
                 BybitQuoteStream.ingest(self,payload,generation=generation)
             elif changed:
@@ -170,9 +210,22 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
 
     def maintained_mark(self, symbol):
         with self._lock:
-            if symbol in self._wire_symbols or symbol not in self._logical_demand:
+            if symbol not in self._logical_demand:
                 return None
-            return self._maintained.mark(symbol)
+            current = None if symbol in self._wire_symbols else self._maintained.mark(symbol)
+            if current is not None:
+                return current
+            held = self._refreshing_marks.get(symbol)
+            if held is not None:
+                mark = self._maintained.mark_from_tracker(symbol, held, self._connection_fence)
+                if mark is None:
+                    self._refreshing_marks.pop(symbol, None)
+                return mark
+            return None
+
+    def received_topic_count(self):
+        with self._lock:
+            return len(self._received_topics)
 
     def mark(self, symbol):
         mark = self.maintained_mark(symbol)

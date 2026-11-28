@@ -75,7 +75,7 @@ def isolated_pair():
     p=object.__new__(StablePair)
     p._lock=threading.RLock();p._mono=lambda:now[0]
     p._demand=set(names);p._priority={'C20USDT'};p._recovery_demand=set(names)
-    p._missing_since={};p._retry_at={};p._recovery_attempts=0;p._deferred=0
+    p._missing_since={};p._retry_at={};p._recovery_attempts=0;p._deferred=0;p._refresh_quiet=False
     def refresh(names,*,max_topics):
         assert len(names)<=max_topics==RECOVERY_TOPICS_PER_SHARD
         calls.append(list(names));return len(names)

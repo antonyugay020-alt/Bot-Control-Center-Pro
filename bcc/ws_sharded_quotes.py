@@ -12,16 +12,20 @@ import zlib
 
 from .ws_dual_quotes import DualBybitQuoteStream
 from .ws_quotes import StreamUnavailable
+from .ws_split_ticker import remaining
 
 SHARDS = 4
 RECOVERY_TOPICS_PER_SHARD = 4
 MISSING_GRACE = 2.0
 RETRY_INTERVAL = 12.0
+QUIET_SNAPSHOT_LEAD = 1.75
+QUIET_SNAPSHOT_INTERVAL = .65
 
 
 class StablePair(DualBybitQuoteStream):
-    def __init__(self, **kwargs):
-        super().__init__(maintained=True, maintained_recovery=True, **kwargs)
+    def __init__(self, *, refresh_quiet=False, **kwargs):
+        super().__init__(maintained=True, maintained_recovery=True,
+                         refresh_quiet=refresh_quiet, **kwargs)
         self._missing_since = {}
         self._retry_at = {}
         self._recovery_attempts = 0
@@ -49,6 +53,8 @@ class StablePair(DualBybitQuoteStream):
     def refresh_stale_marks(self, symbols):
         selected = self._validate(symbols)
         with self._lock:
+            if self._refresh_quiet:
+                return self._refresh_native_snapshots(selected)
             now = self._mono()
             eligible = []
             with self._recovery._lock:
@@ -85,6 +91,29 @@ class StablePair(DualBybitQuoteStream):
             return self._recovery.refresh_stale_marks(selected,
                         max_topics=RECOVERY_TOPICS_PER_SHARD)
 
+    def _refresh_native_snapshots(self, symbols):
+        now = self._mono()
+        eligible = []
+        with self._recovery._lock:
+            pending = set(self._recovery._wire_symbols)
+        for symbol in sorted(symbols & self._demand & self._recovery_demand):
+            mark, _ = self.independent_observations_for_hub(symbol)
+            if mark is not None:
+                self._missing_since.pop(symbol, None)
+                due = remaining(round(mark[1] * 1000), 3.) <= QUIET_SNAPSHOT_LEAD
+            else:
+                due = now - self._missing_since.setdefault(symbol, now) >= .5
+            if due and symbol not in pending and now >= self._retry_at.get(symbol, 0.):
+                eligible.append(symbol)
+        eligible.sort(key=lambda symbol: (symbol not in self._priority,
+                                          self._retry_at.get(symbol, 0.), symbol))
+        self._deferred = max(0, len(eligible) - RECOVERY_TOPICS_PER_SHARD)
+        for symbol in eligible[:RECOVERY_TOPICS_PER_SHARD]:
+            self._retry_at[symbol] = now + QUIET_SNAPSHOT_INTERVAL
+        requested = self._recovery.request_quiet_snapshots(eligible[:RECOVERY_TOPICS_PER_SHARD])
+        self._recovery_attempts += len(requested)
+        return len(requested)
+
     def transport_health(self):
         with self._lock:
             result = super().transport_health()
@@ -112,14 +141,15 @@ class ShardedBybitQuoteStream:
     maintained_recovery_enabled = True
 
     def __init__(self, *, wall=time.time, monotonic=time.monotonic, on_update=None,
-                 pair_factory=StablePair):
+                 pair_factory=StablePair, refresh_quiet=False):
         self._lock = threading.RLock()
         self._control = threading.RLock()
         self._stop = threading.Event()
         self._demand = set()
         self._priority = set()
+        pair_options = {'refresh_quiet': True} if refresh_quiet else {}
         self._pairs = tuple(pair_factory(wall=wall, monotonic=monotonic,
-                            on_update=on_update) for _ in range(SHARDS))
+                            on_update=on_update, **pair_options) for _ in range(SHARDS))
 
     @staticmethod
     def _index(symbol):

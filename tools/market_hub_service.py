@@ -11,6 +11,7 @@ import time
 from bcc.market_hub import MarketDataHub
 from bcc.market_clock import ClockUnavailable, clock, market_now
 from bcc.ws_dispatch import MarketEventQueue
+from tools.ws_native_profile import NATIVE_DELIVERY_FLAG
 
 
 def create_market_event_queue():
@@ -64,6 +65,8 @@ def main():
     ws_threads = []
     ws_jobs = []
     ws_updates = create_market_event_queue()
+    native_delivery = os.environ.get(NATIVE_DELIVERY_FLAG) == "1"
+    ws_demand_changed = threading.Event()
 
     def on_update(kind, symbol):
         ws_updates.notify(kind, symbol)
@@ -129,7 +132,8 @@ def main():
                         or os.environ.get("BCC_BYBIT_MARK_DELIVERY_CANDIDATE")!="1"):
                     raise RuntimeError("Sharded tickers require verified split mark publication")
                 from bcc.ws_sharded_quotes import ShardedBybitQuoteStream
-                quote_stream = ShardedBybitQuoteStream(wall=market_now,on_update=on_update)
+                quote_stream = ShardedBybitQuoteStream(wall=market_now, on_update=on_update,
+                                                      refresh_quiet=native_delivery)
             elif os.environ.get('BCC_BYBIT_DUAL_WS_CANDIDATE') == '1':
                 from bcc.ws_dual_quotes import DualBybitQuoteStream
                 quote_stream = DualBybitQuoteStream(wall=market_now, on_update=on_update,
@@ -170,7 +174,7 @@ def main():
                 raise RuntimeError("Central repair requires closed history and split REST lanes")
             hub.source.shared.central_repair = True
             print("Canonical closed-minute repair enabled",flush=True)
-        hub.set_ws_dispatcher(ws_updates)
+        hub.set_ws_dispatcher(ws_updates, retry_contention=native_delivery)
         from bcc.rest_mark_fallback import enabled as rest_marks_enabled, RestMarkPump
         if rest_marks_enabled():
             if quote_stream is None or not hub.source.shared.bybit_ws_source_deadlines:
@@ -245,9 +249,15 @@ def main():
                         wal_maintenance = WalMaintenance(args.cache)
                         wal_maintenance.start()
                         print('Independent public WAL checkpoint lane enabled', flush=True)
+                        def commit_demand(rows):
+                            receipt = hub.registry.commit_subscriptions(
+                                rows, owner=hub.owner, token=hub._leader_token)
+                            if native_delivery and receipt.written_rows:
+                                ws_demand_changed.set()
+                            return receipt
+
                         demand_server = DemandServer(args.cache, hub.registry.prepare_subscription,
-                            lambda rows: hub.registry.commit_subscriptions(rows,
-                                owner=hub.owner, token=hub._leader_token))
+                                                     commit_demand)
                         demand_server.start()
                         print('Central Hub demand transport enabled', flush=True)
                     if args.ready_file:
@@ -284,6 +294,9 @@ def main():
                     print('Market Hub leader lease acquired', flush=True)
                     ready_logged = True
                 try:
+                    if market_ready and ws_demand_changed.is_set():
+                        ws_demand_changed.clear()
+                        hub.rescan_ws_demand()
                     hub.poll_nonblocking(market_ready=market_ready)
                 except ClockUnavailable:
                     # The clock may expire after the admission check and
