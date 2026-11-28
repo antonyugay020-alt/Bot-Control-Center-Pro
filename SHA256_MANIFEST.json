@@ -523,6 +523,7 @@
     "tests/test_v36_standalone_cache_admission.py": "e642b0576c6cfa6a126f26961074bd2375817a6b73e824330eb7a68d19017101",
     "tests/test_v37_closed_owner_handoff.py": "13a2edab43f641007f3c3f646a87feafd305bde0e1e8e5eef9a62e88cf1f4784",
     "tests/test_v38_closed_owner.py": "9dbeeb43fd378037755d43b3d26db82fe68cf22011540471a764b48833cd118a",
+    "tests/test_v39_native_ws_profile.py": "beb4cd9c8f263c78ea327c6f74571310540bbdac91fb1d0150d6226184216b57",
     "tests/test_veles_behaviour.py": "f1d9dc24571690c561b84ec2eb5ed2669c9faa4e424d18fc32b3bdfb29f7d7c8",
     "tests/test_veles_capital_per_coin_mode.py": "372668cf685f9ddc5f4a48f0f90378bae5f26235120995effd5fee674d705306",
     "tests/test_veles_coin_transaction_integration.py": "86594ae79809d66803d158c7ab6281b72be8194436a0559bec269117021775cf",
@@ -628,9 +629,10 @@
     "tools/start_windows_check.ps1": "e9d258687cab2aa1974835914061e5edc9e7fe6c71ed5a9f8bd17acb03614e8d",
     "tools/ticker_proof_recovery.py": "02edcfa27e23aa4d5626bd9828fbc2fe20e2f2dec22f386ca1f5a576e90c9155",
     "tools/verify_package.py": "851edc97513ce1ff0fe3e6fe7782a98bda6c98a6e68511b909713849e0f2cd41",
-    "tools/verify_windows.py": "eec2bb4d3875fbc2dafb843bdf492ddde9a523170059c2707ef8b08fc2d1abec",
+    "tools/verify_windows.py": "ea7b4c0d712075cff1129afe9b717bb35c2350ec6fc39df7452937bfa736d6bd",
     "tools/windows_ai_launcher.py": "89bb4ef92af88230b9471e35248c2db12a3df1b0d9a61924cb8508f7e6e94f70",
     "tools/windows_check.py": "6ca39be1d3a9a6e35e675f9daa964859e5401f21c454f4e48633d868ceb94bdf",
+    "tools/ws_native_profile.py": "c0770f44ce98bd353177f72777ffa9aed5d64a2203e4336e6458b80378c701aa",
     "tools/ws_offline_acceptance.py": "aed71c8e11d0a0f8dddaf035337c9d9887439f7ef3aade3825b5d4885b72b7f8",
     "tools/ws_pair_delivery.py": "b4864fc0d71056eb283f62cac5f5fff661ac6306d4c87d24319110258d05b53e"
   }

@@ -50,6 +50,8 @@ def run_step(name, arguments, output, timeout):
     log = output / (name + ".log")
     env = python_environment()
     env["PYTHONIOENCODING"] = "utf-8"
+    from tools.ws_native_profile import step_environment
+    env = step_environment(env, name, arguments)
     if name == "tests":
         env["BCC_TEST_ARTIFACTS"] = str(output / "process_checks")
         # The project's tests rely on pytest core only; ambient machine-wide
@@ -400,6 +402,12 @@ def validate_required_evidence(output, *, venue="all", central_demand=False):
             ws_report = json.loads((output / "bybit_ws" / "live_ws_report.json").read_text(encoding="utf-8"))
             problems.extend(validate_report(ws_report, verify(ROOT)["manifest_sha256"],
                                             require_central=central_demand))
+            if central_demand:
+                from tools.ws_native_profile import profile_evidence
+                from tools.bybit_ws_live_acceptance import SYMBOLS
+                profile = profile_evidence(output / "bybit_ws" / "isolated_hub" / "market_hub.log", SYMBOLS)
+                atomic_json(output / "bybit_ws" / "native_ws_profile.json", profile)
+                problems.extend(profile["errors"])
         except (OSError, ValueError, TypeError) as exc:
             problems.append("Bybit WS evidence unavailable: " + str(exc))
     try:
