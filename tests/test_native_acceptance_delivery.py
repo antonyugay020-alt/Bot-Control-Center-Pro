@@ -133,3 +133,23 @@ def test_native_transport_wait_checks_owned_receipt_and_is_bounded(tmp_path):
     assert wait_transport_ready(tmp_path, 123) == receipt
     with pytest.raises(ValueError, match='owned Hub'):
         wait_transport_ready(tmp_path, 456)
+
+
+def test_preserve_staged_snapshot_during_other_topic_refresh_on_same_reserve(pair):
+    now, stream, reserve = pair
+    child = stream._recovery
+    other = 'ADAUSDT'
+    stream.sync_symbols([SYMBOL, other])
+    assert frame(child, other, now[0], markPrice='200')
+    now[0] = 101.5
+    assert child.request_quiet_snapshots([SYMBOL]) == (SYMBOL,)
+    ack(reserve, stream, 'unsubscribe')
+    staged_subscribe = reserve.sent[-1]
+    assert child.request_quiet_snapshots([other]) == (other,)
+    assert SYMBOL in child._maintained.active
+    assert frame(child, SYMBOL, 101., cs=2, markPrice='101')
+    assert child.maintained_mark(SYMBOL)[:2] == (100., 100.)
+    payload = dict(op='subscribe', req_id=staged_subscribe['req_id'], success=True)
+    assert child._handle_control_message(reserve, payload, child._generation)
+    assert child.maintained_mark(SYMBOL)[:2] == (101., 101.)
+    assert other in child._wire_symbols

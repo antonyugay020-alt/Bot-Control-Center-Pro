@@ -76,8 +76,11 @@ class MaintainedRecoveryQuoteStream(RecoveryQuoteStream, MaintainedQuoteStream):
             for symbol in symbols:
                 if self._maintained.mark(symbol) is not None:
                     self._refreshing_marks[symbol] = self._maintained.trackers[symbol]
+        # Another topic may already await its subscribe ACK. Preserve
+        # its staged chain while sending this independent unsubscribe.
+        pending = self._wire_symbols - self._staging if self._refresh_quiet else self._wire_symbols
         self._maintained.sync((self._logical_demand & self._subscriptions)
-                              - self._wire_symbols - set(symbols),
+                              - pending - set(symbols),
                               refreshing=symbols if self._refresh_quiet else ())
         for symbol in symbols:
             self._marks.pop(symbol, None)
