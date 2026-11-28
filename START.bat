@@ -10,7 +10,7 @@ rem The application is NOT the Codex development cycle. It does not require
 rem Codex, Ollama, Git, API credentials or an AI workspace.
 if not exist "%PY%" goto install
 if not exist "%PYW%" goto install
-"%PY%" -c "import PySide6, requests, psutil" >nul 2>&1
+"%PY%" -c "import PySide6, requests, psutil, websocket" >nul 2>&1
 if errorlevel 1 goto install
  goto launch
 
@@ -20,7 +20,7 @@ set "BCC_INSTALL_NO_PAUSE=1"
 call "%~dp0INSTALL.bat"
 if errorlevel 1 goto failed
 if not exist "%PYW%" goto failed
-"%PY%" -c "import PySide6, requests, psutil" >nul 2>&1
+"%PY%" -c "import PySide6, requests, psutil, websocket" >nul 2>&1
 if errorlevel 1 goto failed
 
 :launch

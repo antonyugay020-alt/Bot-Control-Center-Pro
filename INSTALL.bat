@@ -16,7 +16,7 @@ if errorlevel 1 goto failed
 :install_packages
 "%VENV%\Scripts\python.exe" -m pip install --disable-pip-version-check -r "%~dp0requirements.txt"
 if errorlevel 1 goto failed
-"%VENV%\Scripts\python.exe" -c "import PySide6, requests, psutil"
+"%VENV%\Scripts\python.exe" -c "import PySide6, requests, psutil, websocket"
 if errorlevel 1 goto failed
 if not exist "%VENV%\Scripts\pythonw.exe" goto failed
 echo [BCC] Private Python/Qt runtime ready.
